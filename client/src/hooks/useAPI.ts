@@ -126,7 +126,7 @@ export function useAPI<T extends { id: string }>(table: string) {
 }
 
 // 特定表的类型导出
-export type { IEmployee } from './types';
+export type { IEmployee } from '../store/useHRData';
 
 // 便捷 Hook 工厂函数
 export function createAPIHooks() {

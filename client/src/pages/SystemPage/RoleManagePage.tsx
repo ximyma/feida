@@ -47,7 +47,7 @@ export default function RoleManagePage() {
 
   const handleSave = async () => {
     try {
-      const body = { ...form, permissionIds: JSON.stringify(selectedPerms) };
+      const body: Record<string, any> = { ...form, permissionIds: JSON.stringify(selectedPerms) };
       if (editingItem) {
         await fetch(`/api/${TABLE}/${editingItem.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       } else {

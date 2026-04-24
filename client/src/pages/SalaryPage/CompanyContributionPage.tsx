@@ -1,202 +1,420 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Card, Table, Button, Modal, Form, Input, Select, InputNumber,
+  Tag, Space, Popconfirm, message, Badge, Drawer, Descriptions, Statistic,
+  Row, Col, Tooltip
+} from "antd";
+const { Option } = Select;
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
+  DollarOutlined, EyeOutlined, BankOutlined
+} from "@ant-design/icons";
 
-const TABLE_NAME = 'company_contributions';
-const PAGE_TITLE = '企业缴纳';
-const FIELDS = ["employeeId","employeeName","month","pension","medical","unemployment","injury","maternity","housingFund","total"];
+const TABLE = "company_contributions";
 
-export default function CompanycontributionsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [form, setForm] = useState<Record<string, any>>({});
+interface IRecord {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  month: string;
+  pension: number;
+  medical: number;
+  unemployment: number;
+  injury: number;
+  maternity: number;
+  housingFund: number;
+  enterpriseAnnuity: number;
+  total: number;
+  createdAt: string;
+}
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+interface IEmployee {
+  id: number;
+  name: string;
+  department?: string;
+}
 
-  const fetchData = async () => {
+export default function CompanyContributionPage() {
+  const [data, setData] = useState<IRecord[]>([]);
+  const [employees, setEmployees] = useState<IEmployee[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<IRecord | null>(null);
+  const [viewingRecord, setViewingRecord] = useState<IRecord | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [monthFilter, setMonthFilter] = useState<string>("");
+  const [form] = Form.useForm();
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/${TABLE_NAME}`);
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-    } catch (e) {
-      console.error('获取数据失败', e);
+      const params = new URLSearchParams();
+      if (searchText) params.append("search", searchText);
+      if (monthFilter) params.append("month", monthFilter);
+      
+      const res = await fetch(`/api/${TABLE}?${params.toString()}`);
+      const result = await res.json();
+      setData(result.data || []);
+    } catch (err) {
+      message.error("加载失败");
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchText, monthFilter]);
 
-  const openAddDialog = () => {
-    setEditingItem(null);
-    setForm({});
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (item: any) => {
-    setEditingItem(item);
-    setForm({ ...item });
-    setDialogOpen(true);
-  };
-
-  const handleSave = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
-      const url = editingItem 
-        ? `/api/${TABLE_NAME}/${editingItem.id}`
-        : `/api/${TABLE_NAME}`;
-      const method = editingItem ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      
-      if (res.ok) {
-        setDialogOpen(false);
-        fetchData();
-      } else {
-        alert('保存失败');
-      }
-    } catch (e) {
-      alert('保存失败');
+      const res = await fetch("/api/employees");
+      const result = await res.json();
+      setEmployees(result.data || []);
+    } catch {
+      // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    fetchEmployees();
+  }, [fetchData, fetchEmployees]);
+
+  const handleAdd = () => {
+    setEditingRecord(null);
+    form.resetFields();
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    form.setFieldsValue({ month: currentMonth });
+    setModalVisible(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该记录吗？')) return;
+  const handleEdit = (record: IRecord) => {
+    setEditingRecord(record);
+    form.setFieldsValue(record);
+    setModalVisible(true);
+  };
+
+  const handleView = (record: IRecord) => {
+    setViewingRecord(record);
+    setDrawerVisible(true);
+  };
+
+  const handleDelete = async (id: number) => {
     try {
-      await fetch(`/api/${TABLE_NAME}/${id}`, { method: 'DELETE' });
+      await fetch(`/api/${TABLE}/${id}`, { method: "DELETE" });
+      message.success("删除成功");
       fetchData();
-    } catch (e) {
-      alert('删除失败');
+    } catch {
+      message.error("删除失败");
     }
   };
 
-  const filtered = data.filter(item => {
-    if (!search) return true;
-    return JSON.stringify(item).toLowerCase().includes(search.toLowerCase());
-  });
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      const payload = {
+        ...values,
+        pension: Number(values.pension) || 0,
+        medical: Number(values.medical) || 0,
+        unemployment: Number(values.unemployment) || 0,
+        injury: Number(values.injury) || 0,
+        maternity: Number(values.maternity) || 0,
+        housingFund: Number(values.housingFund) || 0,
+        enterpriseAnnuity: Number(values.enterpriseAnnuity) || 0,
+        total: (Number(values.pension) || 0) + (Number(values.medical) || 0) + 
+               (Number(values.unemployment) || 0) + (Number(values.injury) || 0) + 
+               (Number(values.maternity) || 0) + (Number(values.housingFund) || 0) + 
+               (Number(values.enterpriseAnnuity) || 0),
+      };
+      
+      if (editingRecord) {
+        await fetch(`/api/${TABLE}/${editingRecord.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        message.success("更新成功");
+      } else {
+        await fetch(`/api/${TABLE}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        message.success("创建成功");
+      }
+      setModalVisible(false);
+      fetchData();
+    } catch {
+      message.error("操作失败");
+    }
+  };
 
-  const columns = data.length > 0 ? Object.keys(data[0]).filter(c => !c.startsWith('_')) : [];
+  const columns = [
+    { title: "ID", dataIndex: "id", width: 60 },
+    {
+      title: "员工",
+      dataIndex: "employeeName",
+      render: (v: string) => <Tag color="blue">{v}</Tag>,
+    },
+    {
+      title: "月份",
+      dataIndex: "month",
+      width: 100,
+      render: (v: string) => <Tag color="purple">{v}</Tag>,
+    },
+    {
+      title: "养老保险",
+      dataIndex: "pension",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "医疗保险",
+      dataIndex: "medical",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "失业保险",
+      dataIndex: "unemployment",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "工伤保险",
+      dataIndex: "injury",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "生育保险",
+      dataIndex: "maternity",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "住房公积金",
+      dataIndex: "housingFund",
+      width: 110,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "企业年金",
+      dataIndex: "enterpriseAnnuity",
+      width: 100,
+      render: (v: number) => <span style={{ color: "#52c41a" }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "合计",
+      dataIndex: "total",
+      width: 110,
+      render: (v: number) => <span style={{ color: "#fa8c16", fontWeight: 600 }}>¥{v?.toLocaleString()}</span>,
+    },
+    {
+      title: "操作",
+      width: 160,
+      render: (_: any, record: IRecord) => (
+        <Space>
+          <Tooltip title="查看">
+            <Button icon={<EyeOutlined />} size="small" onClick={() => handleView(record)} />
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} />
+          </Tooltip>
+          <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)}>
+            <Button icon={<DeleteOutlined />} size="small" danger />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const stats = {
+    total: data.length,
+    totalAmount: data.reduce((sum, d) => sum + (d.total || 0), 0),
+    pensionTotal: data.reduce((sum, d) => sum + (d.pension || 0), 0),
+    housingFundTotal: data.reduce((sum, d) => sum + (d.housingFund || 0), 0),
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{PAGE_TITLE}</h1>
-          <p className="text-sm text-muted-foreground mt-1">共 {data.length} 条记录</p>
-        </div>
-        <button 
-          onClick={openAddDialog}
-          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-        >
-          ➕ 新增
-        </button>
-      </div>
+    <div style={{ padding: 24 }}>
+      <Card style={{ marginBottom: 16 }}>
+        <Row gutter={16}>
+          <Col span={6}>
+            <Statistic title="记录总数" value={stats.total} prefix={<BankOutlined />} />
+          </Col>
+          <Col span={6}>
+            <Statistic 
+              title="缴费合计" 
+              value={stats.totalAmount} 
+              prefix="¥"
+              formatter={(v) => `${Number(v).toLocaleString()}`}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic 
+              title="养老险合计" 
+              value={stats.pensionTotal} 
+              prefix="¥"
+              valueStyle={{ color: "#722ed1" }}
+              formatter={(v) => `${Number(v).toLocaleString()}`}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic 
+              title="公积金合计" 
+              value={stats.housingFundTotal} 
+              prefix="¥"
+              valueStyle={{ color: "#1890ff" }}
+              formatter={(v) => `${Number(v).toLocaleString()}`}
+            />
+          </Col>
+        </Row>
+      </Card>
 
-      <div className="bg-card rounded-xl border border-border p-4">
-        <div className="mb-4 flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="搜索..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 max-w-sm px-3 py-2 border border-input rounded-lg bg-background"
-          />
-          <button 
-            onClick={fetchData}
-            className="px-3 py-2 border border-input rounded-lg hover:bg-muted"
-          >
-            🔄 刷新
-          </button>
-        </div>
+      <Card
+        title="企业缴费列表"
+        extra={
+          <Space>
+            <Input.Search
+              placeholder="搜索员工"
+              allowClear
+              style={{ width: 150 }}
+              onSearch={setSearchText}
+            />
+            <Input
+              placeholder="月份(YYYY-MM)"
+              allowClear
+              style={{ width: 120 }}
+              onChange={(e) => setMonthFilter(e.target.value)}
+            />
+            <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增缴费</Button>
+          </Space>
+        }
+      >
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 1300 }}
+        />
+      </Card>
 
-        {loading ? (
-          <div className="text-center py-12 text-muted-foreground">加载中...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">暂无数据</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  {columns.slice(0, 10).map(col => (
-                    <th key={col} className="text-left p-3 font-medium">{col}</th>
+      <Modal
+        title={editingRecord ? "编辑缴费记录" : "新增缴费记录"}
+        open={modalVisible}
+        onOk={handleSubmit}
+        onCancel={() => setModalVisible(false)}
+        width={700}
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="employeeId" label="员工" rules={[{ required: true }]}>
+                <Select placeholder="选择员工" showSearch optionFilterProp="children">
+                  {employees.map(e => (
+                    <Option key={e.id} value={e.id}>{e.name} ({e.department || ""})</Option>
                   ))}
-                  <th className="text-left p-3 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.slice(0, 100).map((item, i) => (
-                  <tr key={item.id || i} className="border-b hover:bg-muted/30">
-                    {columns.slice(0, 10).map(col => (
-                      <td key={col} className="p-3">
-                        {typeof item[col] === 'boolean' 
-                          ? (item[col] ? '✓' : '✕')
-                          : String(item[col] || '-').slice(0, 30)}
-                      </td>
-                    ))}
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => openEditDialog(item)}
-                          className="text-primary hover:underline text-xs"
-                        >
-                          编辑
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          className="text-destructive hover:underline text-xs"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="month" label="缴费月份" rules={[{ required: true }]}>
+                <Input placeholder="如: 2026-04" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="pension" label="养老保险">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="medical" label="医疗保险">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="unemployment" label="失业保险">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="injury" label="工伤保险">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="maternity" label="生育保险">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="housingFund" label="住房公积金">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="enterpriseAnnuity" label="企业年金">
+                <InputNumber min={0} style={{ width: "100%" }} prefix="¥" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
 
-      {/* 新增/编辑弹窗 */}
-      {dialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDialogOpen(false)}>
-          <div className="bg-card rounded-xl w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">{editingItem ? '编辑' : '新增'}</h2>
-              <button onClick={() => setDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              {FIELDS.map(field => (
-                <div key={field}>
-                  <label className="block text-sm text-muted-foreground mb-1">{field}</label>
-                  <input
-                    className="w-full border border-input rounded-lg px-3 py-2 bg-background"
-                    value={form[field] || ''}
-                    onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    placeholder={field}
-                  />
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex justify-end gap-2 mt-6">
-              <button onClick={() => setDialogOpen(false)} className="px-4 py-2 border border-input rounded-lg hover:bg-muted">
-                取消
-              </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Drawer
+        title="缴费详情"
+        placement="right"
+        width={500}
+        open={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+      >
+        {viewingRecord && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="ID">{viewingRecord.id}</Descriptions.Item>
+            <Descriptions.Item label="员工">
+              <Tag color="blue">{viewingRecord.employeeName}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="月份">
+              <Tag color="purple">{viewingRecord.month}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="养老保险">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.pension?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="医疗保险">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.medical?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="失业保险">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.unemployment?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="工伤保险">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.injury?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="生育保险">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.maternity?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="住房公积金">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.housingFund?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="企业年金">
+              <span style={{ color: "#52c41a" }}>¥{viewingRecord.enterpriseAnnuity?.toLocaleString()}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="合计">
+              <span style={{ color: "#fa8c16", fontWeight: 600, fontSize: 16 }}>
+                ¥{viewingRecord.total?.toLocaleString()}
+              </span>
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">{viewingRecord.createdAt}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Drawer>
     </div>
   );
 }

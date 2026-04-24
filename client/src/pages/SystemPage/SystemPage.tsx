@@ -70,12 +70,12 @@ export default function SystemPage() {
                       <td className="p-3 text-xs">{u.email || '-'}</td>
                       <td className="p-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${u.userType === 'super_admin' ? 'bg-purple-100 text-purple-700' : u.userType === 'tech_admin' ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'}`}>
-                          {{ super_admin: '超级管理员', tech_admin: '技术管理员', employee: '员工' }[u.userType] || u.userType}
+                          {{super_admin: '超级管理员', tech_admin: '技术管理员', employee: '员工'}[u.userType as keyof {super_admin:string;tech_admin:string;employee:string}] || u.userType}
                         </span>
                       </td>
                       <td className="p-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${u.status === 'active' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-                          {{ active: '正常', inactive: '停用', locked: '锁定', pending: '待激活' }[u.status] || u.status}
+                          {{active: '正常', inactive: '停用', locked: '锁定', pending: '待激活'}[u.status as keyof {active:string;inactive:string;locked:string;pending:string}] || u.status}
                         </span>
                       </td>
                     </tr>

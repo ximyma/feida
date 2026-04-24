@@ -1,202 +1,320 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Card, Table, Button, Modal, Form, Input, Select, DatePicker,
+  Tag, Space, Popconfirm, message, InputNumber, Switch, Badge,
+  Drawer, Descriptions, Statistic, Row, Col, Tooltip, Progress
+} from "antd";
+import {
+  PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
+  EditOutlined, DeleteOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  FileTextOutlined, ClockCircleOutlined, TeamOutlined, BarChartOutlined
+} from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
+import { useAPI } from "../../hooks/useAPI";
 
-const TABLE_NAME = 'assessment_tools';
-const PAGE_TITLE = '测评工具';
-const FIELDS = ["name","type","description","isActive","questions"];
+const TABLE = "assessment_tools";
 
-export default function AssessmenttoolsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [form, setForm] = useState<Record<string, any>>({});
+const STATUS_COLORS: Record<string, string> = {
+  active: "green",
+  inactive: "default",
+};
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+const TYPE_COLORS: Record<string, string> = {
+  personality: "blue",
+  skill: "purple",
+  cognitive: "cyan",
+  behavioral: "orange",
+};
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/${TABLE_NAME}`);
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-    } catch (e) {
-      console.error('获取数据失败', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+const TYPE_NAMES: Record<string, string> = {
+  personality: "性格测评",
+  skill: "技能测评",
+  cognitive: "认知测评",
+  behavioral: "行为测评",
+};
 
-  const openAddDialog = () => {
-    setEditingItem(null);
-    setForm({});
-    setDialogOpen(true);
-  };
+interface IRecord {
+  id: number;
+  name: string;
+  type: string;
+  description: string;
+  questionCount: number;
+  duration: number;
+  isActive: boolean;
+  createdAt: string;
+}
 
-  const openEditDialog = (item: any) => {
-    setEditingItem(item);
-    setForm({ ...item });
-    setDialogOpen(true);
-  };
+const AssessmentPage: React.FC = () => {
+  const { data, loading, create, update, remove, refresh } = useAPI<IRecord>(TABLE);
+  const [searchText, setSearchText] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [modalVisible, setModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [currentRecord, setCurrentRecord] = useState<IRecord | null>(null);
+  const [form] = Form.useForm();
 
-  const handleSave = async () => {
-    try {
-      const url = editingItem 
-        ? `/api/${TABLE_NAME}/${editingItem.id}`
-        : `/api/${TABLE_NAME}`;
-      const method = editingItem ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      
-      if (res.ok) {
-        setDialogOpen(false);
-        fetchData();
-      } else {
-        alert('保存失败');
-      }
-    } catch (e) {
-      alert('保存失败');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该记录吗？')) return;
-    try {
-      await fetch(`/api/${TABLE_NAME}/${id}`, { method: 'DELETE' });
-      fetchData();
-    } catch (e) {
-      alert('删除失败');
-    }
-  };
-
-  const filtered = data.filter(item => {
-    if (!search) return true;
-    return JSON.stringify(item).toLowerCase().includes(search.toLowerCase());
+  const filteredData = data.filter(item => {
+    const matchSearch = !searchText || 
+      item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.description?.toLowerCase().includes(searchText.toLowerCase());
+    const matchType = !typeFilter || item.type === typeFilter;
+    const matchStatus = !statusFilter || 
+      (statusFilter === "active" && item.isActive) ||
+      (statusFilter === "inactive" && !item.isActive);
+    return matchSearch && matchType && matchStatus;
   });
 
-  const columns = data.length > 0 ? Object.keys(data[0]).filter(c => !c.startsWith('_')) : [];
+  const stats = {
+    total: data.length,
+    active: data.filter(i => i.isActive).length,
+    totalQuestions: data.reduce((sum, i) => sum + (i.questionCount || 0), 0),
+    avgDuration: data.length ? Math.round(data.reduce((sum, i) => sum + (i.duration || 0), 0) / data.length) : 0,
+  };
+
+  const handleCreate = () => {
+    setCurrentRecord(null);
+    form.resetFields();
+    form.setFieldsValue({ isActive: true, questionCount: 20, duration: 30 });
+    setModalVisible(true);
+  };
+
+  const handleEdit = (record: IRecord) => {
+    setCurrentRecord(record);
+    form.setFieldsValue(record);
+    setModalVisible(true);
+  };
+
+  const handleView = (record: IRecord) => {
+    setCurrentRecord(record);
+    setDrawerVisible(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    await remove(id);
+    message.success("删除成功");
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      if (currentRecord) {
+        await update(currentRecord.id, values);
+        message.success("更新成功");
+      } else {
+        await create(values);
+        message.success("创建成功");
+      }
+      setModalVisible(false);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const columns: ColumnsType<IRecord> = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      width: 60,
+      align: "center",
+    },
+    {
+      title: "测评名称",
+      dataIndex: "name",
+      width: 180,
+      render: (text: string) => <strong>{text}</strong>,
+    },
+    {
+      title: "类型",
+      dataIndex: "type",
+      width: 100,
+      render: (type: string) => (
+        <Tag color={TYPE_COLORS[type] || "default"}>{TYPE_NAMES[type] || type}</Tag>
+      ),
+    },
+    {
+      title: "题目数",
+      dataIndex: "questionCount",
+      width: 80,
+      align: "center",
+      render: (count: number) => <Badge count={count} showZero style={{ backgroundColor: "#1890ff" }} />,
+    },
+    {
+      title: "时长(分钟)",
+      dataIndex: "duration",
+      width: 90,
+      align: "center",
+      render: (duration: number) => (
+        <Space><ClockCircleOutlined />{duration}</Space>
+      ),
+    },
+    {
+      title: "描述",
+      dataIndex: "description",
+      ellipsis: true,
+      render: (text: string) => (
+        <Tooltip title={text}>{text || "-"}</Tooltip>
+      ),
+    },
+    {
+      title: "状态",
+      dataIndex: "isActive",
+      width: 80,
+      align: "center",
+      render: (active: boolean) => (
+        <Badge status={active ? "success" : "default"} text={active ? "启用" : "停用"} />
+      ),
+    },
+    {
+      title: "创建时间",
+      dataIndex: "createdAt",
+      width: 160,
+      render: (date: string) => date ? dayjs(date).format("YYYY-MM-DD HH:mm") : "-",
+    },
+    {
+      title: "操作",
+      key: "action",
+      width: 150,
+      align: "center",
+      render: (_, record) => (
+        <Space size="small">
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>详情</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定删除吗？" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{PAGE_TITLE}</h1>
-          <p className="text-sm text-muted-foreground mt-1">共 {data.length} 条记录</p>
-        </div>
-        <button 
-          onClick={openAddDialog}
-          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-        >
-          ➕ 新增
-        </button>
-      </div>
+    <div style={{ padding: 16 }}>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card><Statistic title="测评总数" value={stats.total} prefix={<FileTextOutlined />} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="启用中" value={stats.active} prefix={<CheckCircleOutlined />} valueStyle={{ color: "#52c41a" }} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="题目总数" value={stats.totalQuestions} prefix={<BarChartOutlined />} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="平均时长" value={stats.avgDuration} suffix="分钟" prefix={<ClockCircleOutlined />} /></Card>
+        </Col>
+      </Row>
 
-      <div className="bg-card rounded-xl border border-border p-4">
-        <div className="mb-4 flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="搜索..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 max-w-sm px-3 py-2 border border-input rounded-lg bg-background"
-          />
-          <button 
-            onClick={fetchData}
-            className="px-3 py-2 border border-input rounded-lg hover:bg-muted"
-          >
-            🔄 刷新
-          </button>
+      <Card>
+        <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <Space wrap>
+            <Input.Search
+              placeholder="搜索测评名称/描述"
+              allowClear
+              style={{ width: 220 }}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              prefix={<SearchOutlined />}
+            />
+            <Select
+              placeholder="类型筛选"
+              allowClear
+              style={{ width: 120 }}
+              value={typeFilter || undefined}
+              onChange={setTypeFilter}
+              options={Object.entries(TYPE_NAMES).map(([k, v]) => ({ label: v, value: k }))}
+            />
+            <Select
+              placeholder="状态筛选"
+              allowClear
+              style={{ width: 100 }}
+              value={statusFilter || undefined}
+              onChange={setStatusFilter}
+              options={[{ label: "启用", value: "active" }, { label: "停用", value: "inactive" }]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={refresh}>刷新</Button>
+          </Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建测评</Button>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12 text-muted-foreground">加载中...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">暂无数据</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  {columns.slice(0, 10).map(col => (
-                    <th key={col} className="text-left p-3 font-medium">{col}</th>
-                  ))}
-                  <th className="text-left p-3 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.slice(0, 100).map((item, i) => (
-                  <tr key={item.id || i} className="border-b hover:bg-muted/30">
-                    {columns.slice(0, 10).map(col => (
-                      <td key={col} className="p-3">
-                        {typeof item[col] === 'boolean' 
-                          ? (item[col] ? '✓' : '✕')
-                          : String(item[col] || '-').slice(0, 30)}
-                      </td>
-                    ))}
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => openEditDialog(item)}
-                          className="text-primary hover:underline text-xs"
-                        >
-                          编辑
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          className="text-destructive hover:underline text-xs"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <Table
+          columns={columns}
+          dataSource={filteredData}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+        />
+      </Card>
+
+      <Modal
+        title={currentRecord ? "编辑测评" : "新建测评"}
+        open={modalVisible}
+        onOk={handleSubmit}
+        onCancel={() => setModalVisible(false)}
+        width={600}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="测评名称" rules={[{ required: true, message: "请输入测评名称" }]}>
+                <Input placeholder="请输入测评名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="type" label="测评类型" rules={[{ required: true, message: "请选择类型" }]}>
+                <Select placeholder="请选择类型" options={Object.entries(TYPE_NAMES).map(([k, v]) => ({ label: v, value: k }))} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="questionCount" label="题目数量" rules={[{ required: true, message: "请输入题目数量" }]}>
+                <InputNumber min={1} max={500} style={{ width: "100%" }} placeholder="请输入题目数量" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="duration" label="时长(分钟)" rules={[{ required: true, message: "请输入时长" }]}>
+                <InputNumber min={1} max={180} style={{ width: "100%" }} placeholder="请输入时长" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="description" label="描述说明">
+            <Input.TextArea rows={3} placeholder="请输入描述说明" />
+          </Form.Item>
+          <Form.Item name="isActive" label="是否启用" valuePropName="checked">
+            <Switch checkedChildren="启用" unCheckedChildren="停用" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Drawer
+        title="测评详情"
+        placement="right"
+        width={500}
+        open={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+      >
+        {currentRecord && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="测评ID">{currentRecord.id}</Descriptions.Item>
+            <Descriptions.Item label="测评名称"><strong>{currentRecord.name}</strong></Descriptions.Item>
+            <Descriptions.Item label="类型">
+              <Tag color={TYPE_COLORS[currentRecord.type]}>{TYPE_NAMES[currentRecord.type] || currentRecord.type}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="题目数量">{currentRecord.questionCount} 题</Descriptions.Item>
+            <Descriptions.Item label="时长">{currentRecord.duration} 分钟</Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Badge status={currentRecord.isActive ? "success" : "default"} text={currentRecord.isActive ? "启用" : "停用"} />
+            </Descriptions.Item>
+            <Descriptions.Item label="描述">{currentRecord.description || "-"}</Descriptions.Item>
+            <Descriptions.Item label="创建时间">{currentRecord.createdAt ? dayjs(currentRecord.createdAt).format("YYYY-MM-DD HH:mm:ss") : "-"}</Descriptions.Item>
+          </Descriptions>
         )}
-      </div>
-
-      {/* 新增/编辑弹窗 */}
-      {dialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDialogOpen(false)}>
-          <div className="bg-card rounded-xl w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">{editingItem ? '编辑' : '新增'}</h2>
-              <button onClick={() => setDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              {FIELDS.map(field => (
-                <div key={field}>
-                  <label className="block text-sm text-muted-foreground mb-1">{field}</label>
-                  <input
-                    className="w-full border border-input rounded-lg px-3 py-2 bg-background"
-                    value={form[field] || ''}
-                    onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    placeholder={field}
-                  />
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex justify-end gap-2 mt-6">
-              <button onClick={() => setDialogOpen(false)} className="px-4 py-2 border border-input rounded-lg hover:bg-muted">
-                取消
-              </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </Drawer>
     </div>
   );
-}
+};
+
+export default AssessmentPage;

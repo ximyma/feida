@@ -47,6 +47,18 @@ import OvertimeApprovalPage from './pages/ApprovalPage/OvertimePage';
 import ResignationPage from './pages/ApprovalPage/ResignationPage';
 import ApprovalRecordPage from './pages/ApprovalPage/RecordPage';
 import SystemPage from './pages/SystemPage/SystemPage';
+import SystemOverviewPage from './pages/SystemPage/SystemOverviewPage';
+import UserManagePage from './pages/SystemPage/UserManagePage';
+import RoleManagePage from './pages/SystemPage/RoleManagePage';
+import SystemConfigPage from './pages/SystemPage/SystemConfigPage';
+import DataManagePage from './pages/SystemPage/DataManagePage';
+import AuditLogPage from './pages/SystemPage/AuditLogPage';
+import LoginLogPage from './pages/SystemPage/LoginLogPage/LoginLogPage';
+import AppSettingsPage from './pages/SystemPage/AppSettingsPage/AppSettingsPage';
+import WeChatSettingsPage from './pages/SystemPage/WeChatSettingsPage/WeChatSettingsPage';
+import DingTalkSettingsPage from './pages/SystemPage/DingTalkSettingsPage/DingTalkSettingsPage';
+import ApiDocPage from './pages/SystemPage/ApiDocPage/ApiDocPage';
+import TaskManagePage from './pages/SystemPage/TaskManagePage/TaskManagePage';
 import TrainingPage from './pages/TrainingPage/TrainingPage';
 import CoursePage from './pages/TrainingPage/CoursePage';
 import AnnouncementPage from './pages/OfficePage/AnnouncementPage';
@@ -138,7 +150,18 @@ export default function App() {
         <Route path="/selfservice" element={<SelfServicePage />} />
 
         {/* 系统管理 */}
-        <Route path="/system" element={<SystemPage />} />
+        <Route path="/system" element={<SystemOverviewPage />} />
+        <Route path="/system/users" element={<UserManagePage />} />
+        <Route path="/system/roles" element={<RoleManagePage />} />
+        <Route path="/system/config" element={<SystemConfigPage />} />
+        <Route path="/system/data" element={<DataManagePage />} />
+        <Route path="/system/logs" element={<AuditLogPage />} />
+        <Route path="/system/login-logs" element={<LoginLogPage />} />
+        <Route path="/system/app-settings" element={<AppSettingsPage />} />
+        <Route path="/system/wechat" element={<WeChatSettingsPage />} />
+        <Route path="/system/dingtalk" element={<DingTalkSettingsPage />} />
+        <Route path="/system/api-doc" element={<ApiDocPage />} />
+        <Route path="/system/tasks" element={<TaskManagePage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

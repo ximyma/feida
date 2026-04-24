@@ -237,8 +237,17 @@ function apiRouter() {
   router.get('/:table', (req, res) => {
     const { table } = req.params;
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
-    const filters = Object.fromEntries(Object.entries(req.query).filter(([k]) => k !== '_'));
-    const data = Object.keys(filters).length > 0 ? db.findWhere(table, filters) : db.findAll(table);
+    const skipKeys = new Set(['_', 'limit', 'offset', 'page', 'pageSize', 'sort', 'order', 'fields']);
+    const filters = Object.fromEntries(Object.entries(req.query).filter(([k]) => !skipKeys.has(k)));
+    const limitVal = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+    const offsetVal = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+    let data;
+    if (Object.keys(filters).length > 0) {
+      data = limitVal ? db.findWhere(table, filters, limitVal) : db.findWhere(table, filters);
+    } else {
+      data = db.findAll(table);
+      if (limitVal) data = data.slice(offsetVal || 0, (offsetVal || 0) + limitVal);
+    }
     res.json(data);
   });
 
@@ -253,7 +262,22 @@ function apiRouter() {
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
     const data = req.body;
     if (!data.id) data.id = `${table.slice(0,3)}_${Date.now()}`;
-    if (!data.createdAt) data.createdAt = new Date().toISOString();
+    // Don't force createdAt - let tables with timestamp handle their own field
+    if (!data.createdAt && !data.timestamp) data.createdAt = new Date().toISOString();
+    // Remove fields that may not exist in target table
+    const safeData = { ...data };
+    delete safeData.createdAt;
+    delete safeData.timestamp;
+    // Check if table has createdAt or timestamp column
+    try {
+      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const cols = tableInfo.map((c: any) => c.name);
+      if (cols.includes('createdAt')) safeData.createdAt = data.createdAt || new Date().toISOString();
+      if (cols.includes('timestamp')) safeData.timestamp = data.timestamp || new Date().toISOString();
+      if (!cols.includes('createdAt')) delete safeData.createdAt;
+      if (!cols.includes('timestamp')) delete safeData.timestamp;
+    } catch {}
+    Object.assign(data, safeData);
     res.json(db.insert(table, data));
   });
 
@@ -273,9 +297,18 @@ function apiRouter() {
     const { table } = req.params;
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
     const items: any[] = req.body.items || [];
+    // Check table columns
+    let hasCreatedAt = true, hasTimestamp = false;
+    try {
+      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const cols = tableInfo.map((c: any) => c.name);
+      hasCreatedAt = cols.includes('createdAt');
+      hasTimestamp = cols.includes('timestamp');
+    } catch {}
     for (const item of items) {
       if (!item.id) item.id = `${table.slice(0,3)}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-      if (!item.createdAt) item.createdAt = new Date().toISOString();
+      if (hasCreatedAt && !item.createdAt) item.createdAt = new Date().toISOString();
+      if (hasTimestamp && !item.timestamp) item.timestamp = new Date().toISOString();
       db.insert(table, item);
     }
     res.json({ success: true, count: items.length });
@@ -305,7 +338,7 @@ function apiRouter() {
     const { requestId, approverId, approverName, action, comment } = req.body;
     try {
       const result = processApproval(requestId, approverId, approverName, action, comment);
-      res.json({ success: true, ...result });
+      res.json({ success: true, result });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
     }

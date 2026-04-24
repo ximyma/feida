@@ -1,11 +1,14 @@
 const Database = require('better-sqlite3');
-const db = new Database('D:/feida/data/ehr.db');
+const db = new Database('./data/ehr.db');
 
-const tables = ['schedules', 'attendance_records', 'leave_balances'];
+const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
 tables.forEach(t => {
-  console.log(`\n=== ${t} 表结构 ===`);
-  const info = db.prepare(`PRAGMA table_info(${t})`).all();
-  console.log(info.map(c => c.name).join(', '));
+  try {
+    const cnt = db.prepare('SELECT COUNT(*) as c FROM ' + t.name).get();
+    console.log(t.name + ': ' + cnt.c + ' rows');
+  } catch(e) {
+    console.log(t.name + ': error');
+  }
 });
 
 db.close();

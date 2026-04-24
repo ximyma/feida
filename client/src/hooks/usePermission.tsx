@@ -61,8 +61,8 @@ export function usePermission() {
     roleIds.forEach(roleId => {
       // 从 roleId 提取角色名称 (如 'role_super_admin' -> 'super_admin')
       const roleName = roleId.replace('role_', '');
-      const perms = ROLE_PERMISSIONS[roleName] || [];
-      perms.forEach(p => allPermissions.add(p));
+      const perms = (ROLE_PERMISSIONS as Record<string, string[]>)[roleName] || [];
+      perms.forEach((p: string) => allPermissions.add(p));
     });
     
     return Array.from(allPermissions);

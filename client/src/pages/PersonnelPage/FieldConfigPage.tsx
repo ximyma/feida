@@ -1,202 +1,413 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Card, Table, Button, Modal, Form, Input, Select, Switch, InputNumber,
+  Tag, Space, Popconfirm, message, Badge, Drawer, Descriptions, Statistic,
+  Row, Col, Tooltip
+} from "antd";
+const { Option } = Select;
+const { TextArea } = Input;
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
+  SettingOutlined, EyeOutlined
+} from "@ant-design/icons";
 
-const TABLE_NAME = 'field_definitions';
-const PAGE_TITLE = '字段配置';
-const FIELDS = ["name","fieldKey","type","group","visibility","required","order"];
+const TABLE = "field_definitions";
 
-export default function FielddefinitionsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [form, setForm] = useState<Record<string, any>>({});
+const FIELD_TYPES = [
+  { value: "text", label: "文本" },
+  { value: "number", label: "数字" },
+  { value: "date", label: "日期" },
+  { value: "select", label: "下拉选择" },
+  { value: "textarea", label: "多行文本" },
+  { value: "checkbox", label: "复选框" },
+  { value: "radio", label: "单选框" },
+  { value: "file", label: "文件上传" },
+];
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+const GROUP_OPTIONS = [
+  { value: "basic", label: "基本信息" },
+  { value: "work", label: "工作信息" },
+  { value: "contact", label: "联系方式" },
+  { value: "education", label: "教育背景" },
+  { value: "family", label: "家庭信息" },
+  { value: "bank", label: "银行账户" },
+  { value: "contract", label: "合同信息" },
+  { value: "custom", label: "自定义" },
+];
 
-  const fetchData = async () => {
+interface IRecord {
+  id: number;
+  name: string;
+  fieldKey: string;
+  type: string;
+  groupName: string;
+  visibility: number;
+  required: number;
+  displayOrder: number;
+  isSystem: number;
+  options: string | null;
+  defaultValue: string | null;
+  validation: string | null;
+  createdAt: string;
+}
+
+export default function FieldConfigPage() {
+  const [data, setData] = useState<IRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<IRecord | null>(null);
+  const [viewingRecord, setViewingRecord] = useState<IRecord | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [groupFilter, setGroupFilter] = useState<string>("");
+  const [form] = Form.useForm();
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/${TABLE_NAME}`);
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-    } catch (e) {
-      console.error('获取数据失败', e);
+      const params = new URLSearchParams();
+      if (searchText) params.append("search", searchText);
+      if (typeFilter) params.append("type", typeFilter);
+      if (groupFilter) params.append("groupName", groupFilter);
+      
+      const res = await fetch(`/api/${TABLE}?${params.toString()}`);
+      const result = await res.json();
+      setData(result.data || []);
+    } catch (err) {
+      message.error("加载失败");
     } finally {
       setLoading(false);
     }
+  }, [searchText, typeFilter, groupFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleAdd = () => {
+    setEditingRecord(null);
+    form.resetFields();
+    setModalVisible(true);
   };
 
-  const openAddDialog = () => {
-    setEditingItem(null);
-    setForm({});
-    setDialogOpen(true);
+  const handleEdit = (record: IRecord) => {
+    setEditingRecord(record);
+    form.setFieldsValue({
+      ...record,
+      visibility: Boolean(record.visibility),
+      required: Boolean(record.required),
+      isSystem: Boolean(record.isSystem),
+    });
+    setModalVisible(true);
   };
 
-  const openEditDialog = (item: any) => {
-    setEditingItem(item);
-    setForm({ ...item });
-    setDialogOpen(true);
+  const handleView = (record: IRecord) => {
+    setViewingRecord(record);
+    setDrawerVisible(true);
   };
 
-  const handleSave = async () => {
+  const handleDelete = async (id: number) => {
     try {
-      const url = editingItem 
-        ? `/api/${TABLE_NAME}/${editingItem.id}`
-        : `/api/${TABLE_NAME}`;
-      const method = editingItem ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      
-      if (res.ok) {
-        setDialogOpen(false);
-        fetchData();
-      } else {
-        alert('保存失败');
-      }
-    } catch (e) {
-      alert('保存失败');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该记录吗？')) return;
-    try {
-      await fetch(`/api/${TABLE_NAME}/${id}`, { method: 'DELETE' });
+      await fetch(`/api/${TABLE}/${id}`, { method: "DELETE" });
+      message.success("删除成功");
       fetchData();
-    } catch (e) {
-      alert('删除失败');
+    } catch {
+      message.error("删除失败");
     }
   };
 
-  const filtered = data.filter(item => {
-    if (!search) return true;
-    return JSON.stringify(item).toLowerCase().includes(search.toLowerCase());
-  });
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      const payload = {
+        ...values,
+        visibility: values.visibility ? 1 : 0,
+        required: values.required ? 1 : 0,
+        isSystem: values.isSystem ? 1 : 0,
+      };
+      
+      if (editingRecord) {
+        await fetch(`/api/${TABLE}/${editingRecord.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        message.success("更新成功");
+      } else {
+        await fetch(`/api/${TABLE}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        message.success("创建成功");
+      }
+      setModalVisible(false);
+      fetchData();
+    } catch {
+      message.error("操作失败");
+    }
+  };
 
-  const columns = data.length > 0 ? Object.keys(data[0]).filter(c => !c.startsWith('_')) : [];
+  const columns = [
+    { title: "ID", dataIndex: "id", width: 60 },
+    { 
+      title: "字段名称", 
+      dataIndex: "name",
+      render: (v: string) => <Tag color="blue">{v}</Tag>
+    },
+    { 
+      title: "字段标识", 
+      dataIndex: "fieldKey",
+      render: (v: string) => <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 3 }}>{v}</code>
+    },
+    {
+      title: "字段类型",
+      dataIndex: "type",
+      render: (v: string) => {
+        const type = FIELD_TYPES.find(t => t.value === v);
+        return <Tag color="purple">{type?.label || v}</Tag>;
+      },
+    },
+    {
+      title: "分组",
+      dataIndex: "groupName",
+      render: (v: string) => {
+        const group = GROUP_OPTIONS.find(g => g.value === v);
+        return group?.label || v;
+      },
+    },
+    {
+      title: "显示顺序",
+      dataIndex: "displayOrder",
+      width: 100,
+      sorter: (a: IRecord, b: IRecord) => a.displayOrder - b.displayOrder,
+    },
+    {
+      title: "可见",
+      dataIndex: "visibility",
+      width: 80,
+      render: (v: number) => (
+        <Badge status={v ? "success" : "default"} text={v ? "是" : "否"} />
+      ),
+    },
+    {
+      title: "必填",
+      dataIndex: "required",
+      width: 80,
+      render: (v: number) => (
+        <Badge status={v ? "error" : "default"} text={v ? "是" : "否"} />
+      ),
+    },
+    {
+      title: "系统字段",
+      dataIndex: "isSystem",
+      width: 90,
+      render: (v: number) => (
+        <Tag color={v ? "orange" : "default"}>{v ? "系统" : "自定义"}</Tag>
+      ),
+    },
+    {
+      title: "操作",
+      width: 160,
+      render: (_: any, record: IRecord) => (
+        <Space>
+          <Tooltip title="查看">
+            <Button icon={<EyeOutlined />} size="small" onClick={() => handleView(record)} />
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} />
+          </Tooltip>
+          <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)}>
+            <Button icon={<DeleteOutlined />} size="small" danger />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const stats = {
+    total: data.length,
+    visible: data.filter(d => d.visibility).length,
+    required: data.filter(d => d.required).length,
+    system: data.filter(d => d.isSystem).length,
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{PAGE_TITLE}</h1>
-          <p className="text-sm text-muted-foreground mt-1">共 {data.length} 条记录</p>
-        </div>
-        <button 
-          onClick={openAddDialog}
-          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-        >
-          ➕ 新增
-        </button>
-      </div>
+    <div style={{ padding: 24 }}>
+      <Card style={{ marginBottom: 16 }}>
+        <Row gutter={16}>
+          <Col span={6}>
+            <Statistic title="总字段数" value={stats.total} prefix={<SettingOutlined />} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="可见字段" value={stats.visible} valueStyle={{ color: "#3f8600" }} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="必填字段" value={stats.required} valueStyle={{ color: "#cf1322" }} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="系统字段" value={stats.system} valueStyle={{ color: "#fa8c16" }} />
+          </Col>
+        </Row>
+      </Card>
 
-      <div className="bg-card rounded-xl border border-border p-4">
-        <div className="mb-4 flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="搜索..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 max-w-sm px-3 py-2 border border-input rounded-lg bg-background"
-          />
-          <button 
-            onClick={fetchData}
-            className="px-3 py-2 border border-input rounded-lg hover:bg-muted"
-          >
-            🔄 刷新
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12 text-muted-foreground">加载中...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">暂无数据</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  {columns.slice(0, 10).map(col => (
-                    <th key={col} className="text-left p-3 font-medium">{col}</th>
-                  ))}
-                  <th className="text-left p-3 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.slice(0, 100).map((item, i) => (
-                  <tr key={item.id || i} className="border-b hover:bg-muted/30">
-                    {columns.slice(0, 10).map(col => (
-                      <td key={col} className="p-3">
-                        {typeof item[col] === 'boolean' 
-                          ? (item[col] ? '✓' : '✕')
-                          : String(item[col] || '-').slice(0, 30)}
-                      </td>
-                    ))}
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => openEditDialog(item)}
-                          className="text-primary hover:underline text-xs"
-                        >
-                          编辑
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          className="text-destructive hover:underline text-xs"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* 新增/编辑弹窗 */}
-      {dialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDialogOpen(false)}>
-          <div className="bg-card rounded-xl w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">{editingItem ? '编辑' : '新增'}</h2>
-              <button onClick={() => setDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              {FIELDS.map(field => (
-                <div key={field}>
-                  <label className="block text-sm text-muted-foreground mb-1">{field}</label>
-                  <input
-                    className="w-full border border-input rounded-lg px-3 py-2 bg-background"
-                    value={form[field] || ''}
-                    onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    placeholder={field}
-                  />
-                </div>
+      <Card
+        title="字段配置列表"
+        extra={
+          <Space>
+            <Input.Search
+              placeholder="搜索字段名"
+              allowClear
+              style={{ width: 150 }}
+              onSearch={setSearchText}
+            />
+            <Select
+              placeholder="字段类型"
+              allowClear
+              style={{ width: 120 }}
+              onChange={setTypeFilter}
+            >
+              {FIELD_TYPES.map(t => (
+                <Option key={t.value} value={t.value}>{t.label}</Option>
               ))}
-            </div>
-            
-            <div className="flex justify-end gap-2 mt-6">
-              <button onClick={() => setDialogOpen(false)} className="px-4 py-2 border border-input rounded-lg hover:bg-muted">
-                取消
-              </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </Select>
+            <Select
+              placeholder="分组"
+              allowClear
+              style={{ width: 120 }}
+              onChange={setGroupFilter}
+            >
+              {GROUP_OPTIONS.map(g => (
+                <Option key={g.value} value={g.value}>{g.label}</Option>
+              ))}
+            </Select>
+            <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增字段</Button>
+          </Space>
+        }
+      >
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
+        />
+      </Card>
+
+      <Modal
+        title={editingRecord ? "编辑字段" : "新增字段"}
+        open={modalVisible}
+        onOk={handleSubmit}
+        onCancel={() => setModalVisible(false)}
+        width={600}
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="字段名称" rules={[{ required: true }]}>
+                <Input placeholder="请输入字段名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fieldKey" label="字段标识" rules={[{ required: true }]}>
+                <Input placeholder="如: employeeNo" disabled={!!editingRecord} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="type" label="字段类型" rules={[{ required: true }]}>
+                <Select placeholder="选择字段类型">
+                  {FIELD_TYPES.map(t => (
+                    <Option key={t.value} value={t.value}>{t.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="groupName" label="所属分组" rules={[{ required: true }]}>
+                <Select placeholder="选择分组">
+                  {GROUP_OPTIONS.map(g => (
+                    <Option key={g.value} value={g.value}>{g.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="displayOrder" label="显示顺序" initialValue={0}>
+                <InputNumber min={0} max={999} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="visibility" label="是否可见" valuePropName="checked" initialValue={true}>
+                <Switch checkedChildren="是" unCheckedChildren="否" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="required" label="是否必填" valuePropName="checked" initialValue={false}>
+                <Switch checkedChildren="是" unCheckedChildren="否" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="options" label="选项值">
+            <TextArea rows={3} placeholder="下拉选项，每行一个" />
+          </Form.Item>
+          <Form.Item name="defaultValue" label="默认值">
+            <Input placeholder="字段的默认值" />
+          </Form.Item>
+          <Form.Item name="validation" label="校验规则">
+            <Input placeholder="如: email, phone, idcard" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Drawer
+        title="字段详情"
+        placement="right"
+        width={500}
+        open={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+      >
+        {viewingRecord && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="ID">{viewingRecord.id}</Descriptions.Item>
+            <Descriptions.Item label="字段名称">
+              <Tag color="blue">{viewingRecord.name}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="字段标识">
+              <code>{viewingRecord.fieldKey}</code>
+            </Descriptions.Item>
+            <Descriptions.Item label="字段类型">
+              <Tag color="purple">
+                {FIELD_TYPES.find(t => t.value === viewingRecord.type)?.label || viewingRecord.type}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="所属分组">
+              {GROUP_OPTIONS.find(g => g.value === viewingRecord.groupName)?.label || viewingRecord.groupName}
+            </Descriptions.Item>
+            <Descriptions.Item label="显示顺序">{viewingRecord.displayOrder}</Descriptions.Item>
+            <Descriptions.Item label="是否可见">
+              <Badge status={viewingRecord.visibility ? "success" : "default"} text={viewingRecord.visibility ? "是" : "否"} />
+            </Descriptions.Item>
+            <Descriptions.Item label="是否必填">
+              <Badge status={viewingRecord.required ? "error" : "default"} text={viewingRecord.required ? "是" : "否"} />
+            </Descriptions.Item>
+            <Descriptions.Item label="系统字段">
+              <Tag color={viewingRecord.isSystem ? "orange" : "default"}>
+                {viewingRecord.isSystem ? "系统字段" : "自定义字段"}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="选项值">{viewingRecord.options || "-"}</Descriptions.Item>
+            <Descriptions.Item label="默认值">{viewingRecord.defaultValue || "-"}</Descriptions.Item>
+            <Descriptions.Item label="校验规则">{viewingRecord.validation || "-"}</Descriptions.Item>
+            <Descriptions.Item label="创建时间">{viewingRecord.createdAt}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Drawer>
     </div>
   );
 }

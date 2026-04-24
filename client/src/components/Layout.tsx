@@ -107,12 +107,17 @@ const subMenuItems: Record<string, { label: string; to: string }[]> = {
   ],
   '/system': [
     { label: '系统概览', to: '/system' },
-    { label: '用户管理', to: '/system' },
-    { label: '角色权限', to: '/system' },
-    { label: '系统配置', to: '/system' },
-    { label: '数据管理', to: '/system' },
-    { label: '迁移管理', to: '/system' },
-    { label: '审计日志', to: '/system' },
+    { label: '用户管理', to: '/system/users' },
+    { label: '角色权限', to: '/system/roles' },
+    { label: '系统配置', to: '/system/config' },
+    { label: 'APP设置', to: '/system/app-settings' },
+    { label: '数据管理', to: '/system/data' },
+    { label: '审计日志', to: '/system/logs' },
+    { label: '登录日志', to: '/system/login-logs' },
+    { label: '企业微信', to: '/system/wechat' },
+    { label: '钉钉集成', to: '/system/dingtalk' },
+    { label: 'API文档', to: '/system/api-doc' },
+    { label: '任务管理', to: '/system/tasks' },
   ],
 };
 

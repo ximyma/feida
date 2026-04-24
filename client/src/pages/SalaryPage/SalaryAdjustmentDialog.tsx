@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fieldToLabel } from '@/utils/fieldLabels';
 
 const TABLE_NAME = 'salary_adjustments';
 const PAGE_TITLE = '薪资调整';
@@ -124,7 +125,7 @@ export default function SalaryadjustmentsPage() {
               <thead>
                 <tr className="border-b bg-muted/50">
                   {columns.slice(0, 10).map(col => (
-                    <th key={col} className="text-left p-3 font-medium">{col}</th>
+                    <th key={col} className="text-left p-3 font-medium">{fieldToLabel(col)}</th>
                   ))}
                   <th className="text-left p-3 font-medium">操作</th>
                 </tr>
@@ -175,7 +176,7 @@ export default function SalaryadjustmentsPage() {
             <div className="grid grid-cols-2 gap-4">
               {FIELDS.map(field => (
                 <div key={field}>
-                  <label className="block text-sm text-muted-foreground mb-1">{field}</label>
+                  <label className="block text-sm text-muted-foreground mb-1">{fieldToLabel(field)}</label>
                   <input
                     className="w-full border border-input rounded-lg px-3 py-2 bg-background"
                     value={form[field] || ''}
