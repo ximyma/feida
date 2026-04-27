@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { useAppConfig } from '../contexts/AppConfigContext';
 import {
   LayoutDashboard,
   Building2,
@@ -150,6 +151,7 @@ const newModuleLabels: Record<string, string> = {
 };
 
 const Layout: React.FC = () => {
+  const { config } = useAppConfig();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -345,7 +347,7 @@ const Layout: React.FC = () => {
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div className="animate-fade-in">
-              <h1 className="text-white font-bold text-base leading-tight">飞达智能 HR</h1>
+              <h1 className="text-white font-bold text-base leading-tight">{config.appName}</h1>
               <p className="text-white/60 text-xs">人力资源管理系统</p>
             </div>
           </div>
@@ -450,7 +452,7 @@ const Layout: React.FC = () => {
               <div className="w-8 h-8 rounded-lg bg-sidebar flex items-center justify-center">
                 <Building2 className="w-4 h-4 text-white" />
               </div>
-              <span className="font-semibold text-foreground">飞达智能 HR</span>
+              <span className="font-semibold text-foreground">{config.appName}</span>
             </div>
           </div>
         </header>

@@ -315,6 +315,61 @@ function apiRouter() {
     }
   });
 
+  // ============ 第三方平台连接测试 ============
+  router.post('/integration_test', async (req, res) => {
+    const { platform, config } = req.body || {};
+    try {
+      if (platform === 'wechat') {
+        if (!config.corpId || !config.secret) {
+          return res.json({ success: false, message: '缺少 CorpID 或 Secret' });
+        }
+        // 尝试获取企业微信 access_token
+        const tokenUrl = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${encodeURIComponent(config.corpId)}&corpsecret=${encodeURIComponent(config.secret)}`;
+        const resp = await fetch(tokenUrl);
+        const data = await resp.json() as any;
+        if (data.errcode === 0) {
+          res.json({ success: true, message: `连接成功，企业名称: ${data.corpname || '未获取'}` });
+        } else {
+          res.json({ success: false, message: `企业微信返回错误: ${data.errmsg} (errcode: ${data.errcode})` });
+        }
+      } else if (platform === 'dingtalk') {
+        if (!config.appKey || !config.appSecret) {
+          return res.json({ success: false, message: '缺少 AppKey 或 AppSecret' });
+        }
+        // 尝试获取钉钉 access_token
+        const tokenUrl = 'https://oapi.dingtalk.com/gettoken';
+        const resp = await fetch(`${tokenUrl}?appkey=${encodeURIComponent(config.appKey)}&appsecret=${encodeURIComponent(config.appSecret)}`);
+        const data = await resp.json() as any;
+        if (data.errcode === 0) {
+          res.json({ success: true, message: '连接成功，已获取 access_token' });
+        } else {
+          res.json({ success: false, message: `钉钉返回错误: ${data.errmsg} (errcode: ${data.errcode})` });
+        }
+      } else if (platform === 'feishu') {
+        if (!config.appId || !config.appSecret) {
+          return res.json({ success: false, message: '缺少 App ID 或 App Secret' });
+        }
+        // 尝试获取飞书 tenant_access_token
+        const tokenUrl = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
+        const resp = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_id: config.appId, app_secret: config.appSecret }),
+        });
+        const data = await resp.json() as any;
+        if (data.code === 0) {
+          res.json({ success: true, message: '连接成功，已获取 tenant_access_token' });
+        } else {
+          res.json({ success: false, message: `飞书返回错误: ${data.msg} (code: ${data.code})` });
+        }
+      } else {
+        res.json({ success: false, message: `不支持的平台: ${platform}` });
+      }
+    } catch (e: any) {
+      res.json({ success: false, message: `连接异常: ${e.message}` });
+    }
+  });
+
   // ============ 原有 CRUD API ============
   
   router.get('/:table', (req, res) => {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAppConfig } from '../../contexts/AppConfigContext';
 
 function simpleHash(pwd: string): string {
   let hash = 0;
@@ -11,6 +12,7 @@ function simpleHash(pwd: string): string {
 }
 
 export default function LoginPage() {
+  const { config } = useAppConfig();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'admin' | 'employee'>('admin');
   const [adminUsername, setAdminUsername] = useState('');
@@ -85,9 +87,9 @@ export default function LoginPage() {
       <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.15)', padding: '40px 36px', width: 440, maxWidth: '92vw' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ width: 60, height: 60, borderRadius: 14, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontSize: 28, fontWeight: 700 }}>飞</span>
+            <span style={{ color: '#fff', fontSize: 28, fontWeight: 700 }}>{config.appName.charAt(0)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 4px' }}>飞达智能HR系统</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 4px' }}>{config.appName}系统</h1>
           <p style={{ color: '#666', fontSize: 13, margin: 0 }}>请选择登录方式</p>
         </div>
 
