@@ -1,496 +1,359 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, message, Tabs, Row, Col, Progress, Descriptions,
   Divider, Dropdown, Menu, Tooltip, Alert, Collapse, InputNumber,
-  Checkbox, Switch, Popconfirm, Badge, Statistic, Typography, Drawer
+  Checkbox, Switch, Popconfirm, Badge, Statistic, Typography, Drawer, Empty
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined,
-  BarChartOutlined, LineChartOutlined, PieChartOutlined,
+  BarChartOutlined, LineChartOutlined, PieChartOutlined, ReloadOutlined,
   TableOutlined, FileExcelOutlined, FilePdfOutlined, FileImageOutlined,
-  SettingOutlined, FilterOutlined, LinkOutlined, EyeOutlined,
-  CopyOutlined, DatabaseOutlined, CloudOutlined, FileOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, ApiOutlined, ReloadOutlined
+  SettingOutlined, FilterOutlined, EyeOutlined, DatabaseOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, ApiOutlined,
+  TeamOutlined, AuditOutlined, MoneyCollectOutlined, ProjectOutlined,
+  CalendarOutlined, FileTextOutlined, BookOutlined, ProfileOutlined
 } from '@ant-design/icons';
+import ReactECharts from 'echarts-for-react';
 
 const { Option } = Select;
 const { Panel } = Collapse;
-const { Text } = Typography;
+const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
 // ============ 类型定义 ============
-interface Report {
+interface ReportDef {
   id: string;
   name: string;
-  category: 'employee' | 'attendance' | 'salary' | 'performance' | 'custom';
-  dataSource: 'internal' | 'external';
+  description?: string;
+  category: string;
   tableName?: string;
-  fields: ReportField[];
-  filters: ReportFilter[];
-  chartType?: 'table' | 'bar' | 'line' | 'pie';
+  chartType?: string;
+  xField?: string;
+  yFields?: string;
+  fields?: string;
+  filters?: string;
+  config?: string;
+  isBuiltIn?: number;
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
-  createdBy: string;
-}
-
-interface ReportField {
-  id: string;
-  name: string;
-  label: string;
-  type: 'text' | 'number' | 'date' | 'select';
-  aggregation?: 'sum' | 'avg' | 'count' | 'max' | 'min';
-  visible: boolean;
-  order: number;
-  width?: number;
-  format?: string;
-  link?: { targetReport: string; params: string[] };
-}
-
-interface ReportFilter {
-  id: string;
-  field: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'greater' | 'less' | 'between';
-  value: any;
-  valueTo?: any;
 }
 
 interface DataSource {
   id: string;
   name: string;
-  type: 'internal' | 'excel' | 'csv' | 'api';
+  description?: string;
+  type: string;
   tableName?: string;
   filePath?: string;
   apiUrl?: string;
-  fields: { name: string; type: string }[];
-  status: 'connected' | 'error';
+  fields?: string;
+  status?: string;
+  lastTestedAt?: string;
+  config?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
-interface CommonConfig {
+interface ReportConfig {
   id: string;
   name: string;
   category: string;
-  value: any;
-  description: string;
+  configKey: string;
+  configValue?: string;
+  description?: string;
+  sortOrder?: number;
+  updatedBy?: string;
   updatedAt: string;
 }
 
-interface AnalysisData {
-  title: string;
-  data: { name: string; value: number }[];
-  total: number;
+interface StatisticsData {
+  overview: any;
+  deptDistribution: { name: string; value: number }[];
+  eduDistribution: { name: string; value: number }[];
+  genderDistribution: { name: string; value: number }[];
+  tenureDistribution: { name: string; value: number }[];
+  hireTrendData: { month: string; value: number }[];
+  monthAttendance: { name: string; value: number }[];
+  attendanceTrendData: { month: string; normal: number; late: number; absent: number }[];
+  salaryDistribution: { name: string; value: number }[];
+  salaryTrendData: { name: string; value: number }[];
+  sourceDistribution: { name: string; value: number }[];
+  gradeDistribution: { name: string; value: number }[];
+  leaveTypeDistribution: { name: string; value: number }[];
+  contractTypeDistribution: { name: string; value: number }[];
 }
 
-const categoryMap: Record<string, { label: string; color: string }> = {
-  employee: { label: '员工分析', color: 'blue' },
-  attendance: { label: '考勤分析', color: 'green' },
-  salary: { label: '薪资分析', color: 'gold' },
-  performance: { label: '绩效分析', color: 'purple' },
-  custom: { label: '自定义报表', color: 'default' },
-};
+interface ChartCardProps {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  span?: number;
+}
 
-// ============ 模拟数据生成函数 ============
-const generateMockReports = (): Report[] => [
-  { id: '1', name: '员工花名册', category: 'employee', dataSource: 'internal', tableName: 'employees', fields: [
-    { id: 'f1', name: 'employeeId', label: '工号', type: 'text', visible: true, order: 1 },
-    { id: 'f2', name: 'name', label: '姓名', type: 'text', visible: true, order: 2 },
-    { id: 'f3', name: 'department', label: '部门', type: 'text', visible: true, order: 3 },
-    { id: 'f4', name: 'position', label: '岗位', type: 'text', visible: true, order: 4 },
-    { id: 'f5', name: 'hireDate', label: '入职日期', type: 'date', visible: true, order: 5 },
-  ], filters: [], createdAt: '2025-01-01', updatedAt: '2025-04-20', createdBy: '管理员' },
-  { id: '2', name: '部门人员分布', category: 'employee', dataSource: 'internal', tableName: 'employees', chartType: 'pie', fields: [
-    { id: 'f1', name: 'department', label: '部门', type: 'text', visible: true, order: 1 },
-    { id: 'f2', name: 'count', label: '人数', type: 'number', aggregation: 'count', visible: true, order: 2 },
-  ], filters: [], createdAt: '2025-02-01', updatedAt: '2025-04-15', createdBy: '管理员' },
-  { id: '3', name: '月度考勤统计', category: 'attendance', dataSource: 'internal', tableName: 'attendance', chartType: 'bar', fields: [
-    { id: 'f1', name: 'month', label: '月份', type: 'text', visible: true, order: 1 },
-    { id: 'f2', name: 'normalDays', label: '正常出勤', type: 'number', aggregation: 'sum', visible: true, order: 2 },
-    { id: 'f3', name: 'lateDays', label: '迟到次数', type: 'number', aggregation: 'sum', visible: true, order: 3 },
-    { id: 'f4', name: 'leaveDays', label: '请假天数', type: 'number', aggregation: 'sum', visible: true, order: 4 },
-  ], filters: [], createdAt: '2025-01-15', updatedAt: '2025-04-20', createdBy: '管理员' },
-  { id: '4', name: '薪资发放汇总', category: 'salary', dataSource: 'internal', tableName: 'salaries', chartType: 'line', fields: [
-    { id: 'f1', name: 'month', label: '月份', type: 'text', visible: true, order: 1 },
-    { id: 'f2', name: 'totalAmount', label: '发放总额', type: 'number', aggregation: 'sum', visible: true, order: 2 },
-  ], filters: [], createdAt: '2025-02-20', updatedAt: '2025-04-20', createdBy: '管理员' },
-];
+// ============ 图表配色 ============
+const CHART_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
 
-const generateMockDataSources = (): DataSource[] => [
-  { id: 'ds1', name: '员工表', type: 'internal', tableName: 'employees', fields: [
-    { name: 'employeeId', type: 'text' }, { name: 'name', type: 'text' }, { name: 'department', type: 'text' }, { name: 'position', type: 'text' }, { name: 'hireDate', type: 'date' }, { name: 'salary', type: 'number' },
-  ], status: 'connected' },
-  { id: 'ds2', name: '考勤表', type: 'internal', tableName: 'attendance', fields: [
-    { name: 'date', type: 'date' }, { name: 'employeeId', type: 'text' }, { name: 'checkIn', type: 'time' }, { name: 'checkOut', type: 'time' }, { name: 'status', type: 'text' },
-  ], status: 'connected' },
-  { id: 'ds3', name: '薪资表', type: 'internal', tableName: 'salaries', fields: [
-    { name: 'month', type: 'text' }, { name: 'employeeId', type: 'text' }, { name: 'baseSalary', type: 'number' }, { name: 'bonus', type: 'number' }, { name: 'deduction', type: 'number' },
-  ], status: 'connected' },
-  { id: 'ds4', name: '外部销售数据', type: 'excel', filePath: '/data/sales_2025.xlsx', fields: [
-    { name: 'date', type: 'date' }, { name: 'product', type: 'text' }, { name: 'amount', type: 'number' },
-  ], status: 'connected' },
-];
+// ============ 工具函数 ============
+const getColor = (index: number) => CHART_COLORS[index % CHART_COLORS.length];
 
-const generateMockCommonConfigs = (): CommonConfig[] => [
-  { id: 'cfg1', name: '默认导出格式', category: 'export', value: 'excel', description: '报表默认导出格式', updatedAt: '2025-04-01' },
-  { id: 'cfg2', name: '数据缓存时间', category: 'performance', value: 300, description: '数据缓存时间(秒)', updatedAt: '2025-04-15' },
-  { id: 'cfg3', name: '图表主题', category: 'display', value: 'default', description: '图表显示主题', updatedAt: '2025-04-20' },
-  { id: 'cfg4', name: '分页大小', category: 'display', value: 20, description: '报表默认分页大小', updatedAt: '2025-04-18' },
-];
-
-const generateCommonAnalysis = (): Record<string, AnalysisData> => ({
-  position: { title: '岗位结构分析', data: [
-    { name: '工程师', value: 45 }, { name: '产品经理', value: 12 }, { name: '设计师', value: 8 }, { name: '运营', value: 15 }, { name: '管理', value: 10 }, { name: '其他', value: 10 },
-  ], total: 100 },
-  education: { title: '学历结构分析', data: [
-    { name: '博士', value: 5 }, { name: '硕士', value: 25 }, { name: '本科', value: 55 }, { name: '大专', value: 12 }, { name: '高中及以下', value: 3 },
-  ], total: 100 },
-  age: { title: '年龄结构分析', data: [
-    { name: '25岁以下', value: 15 }, { name: '25-30岁', value: 35 }, { name: '30-35岁', value: 28 }, { name: '35-40岁', value: 15 }, { name: '40岁以上', value: 7 },
-  ], total: 100 },
-  tenure: { title: '司龄结构分析', data: [
-    { name: '1年以下', value: 20 }, { name: '1-3年', value: 35 }, { name: '3-5年', value: 25 }, { name: '5-10年', value: 15 }, { name: '10年以上', value: 5 },
-  ], total: 100 },
+const makePieOption = (title: string, data: { name: string; value: number }[], color?: string) => ({
+  color: color ? [color] : CHART_COLORS,
+  title: { text: title, left: 'center', textStyle: { fontSize: 14, fontWeight: 'normal' } },
+  tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+  series: [{
+    type: 'pie', radius: ['40%', '70%'],
+    data: data.map(d => ({ name: d.name || '未知', value: d.value })),
+    label: { formatter: '{b}\n{d}%', fontSize: 11 },
+    emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } }
+  }]
 });
 
+const makeBarOption = (title: string, xData: string[], yData: number[], yName?: string) => ({
+  color: CHART_COLORS,
+  title: { text: title, left: 'center', textStyle: { fontSize: 14, fontWeight: 'normal' } },
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  grid: { left: '3%', right: '4%', bottom: '3%', top: '40px', containLabel: true },
+  xAxis: { type: 'category', data: xData, axisLabel: { rotate: 30, fontSize: 10 } },
+  yAxis: { type: 'value', name: yName, nameTextStyle: { fontSize: 11 } },
+  series: [{ data: yData, type: 'bar', smooth: true, areaStyle: { opacity: 0.2 } }]
+});
+
+const makeLineOption = (title: string, xData: string[], series: { name: string; data: number[]; color?: string }[]) => ({
+  color: CHART_COLORS,
+  title: { text: title, left: 'center', textStyle: { fontSize: 14, fontWeight: 'normal' } },
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0, data: series.map(s => s.name) },
+  grid: { left: '3%', right: '4%', bottom: '40px', top: '40px', containLabel: true },
+  xAxis: { type: 'category', data: xData, boundaryGap: false },
+  yAxis: { type: 'value' },
+  series: series.map(s => ({ name: s.name, data: s.data, type: 'line', smooth: true, areaStyle: { opacity: 0.15 } }))
+});
+
+// ============ 图表卡片组件 ============
+function ChartCard({ title, icon, children, span = 12 }: ChartCardProps) {
+  return (
+    <Col span={span}>
+      <Card size="small" title={<span>{icon} {title}</span>} style={{ height: 340 }}>
+        {children}
+      </Card>
+    </Col>
+  );
+}
+
+// ============ 主页面 ============
 export default function StatisticsPage() {
-  const [activeTab, setActiveTab] = useState<string>('reports');
-  const [reports, setReports] = useState<Report[]>([]);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const [commonConfigs, setCommonConfigs] = useState<CommonConfig[]>([]);
-  const [commonAnalysis, setCommonAnalysis] = useState<Record<string, AnalysisData>>({});
+  const [activeTab, setActiveTab] = useState<string>('overview');
   const [loading, setLoading] = useState(true);
-  
+  const [stats, setStats] = useState<StatisticsData | null>(null);
+  const [reports, setReports] = useState<ReportDef[]>([]);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [configs, setConfigs] = useState<ReportConfig[]>([]);
+
   // Modal 状态
   const [reportModal, setReportModal] = useState(false);
   const [dsModal, setDsModal] = useState(false);
   const [configModal, setConfigModal] = useState(false);
   const [previewModal, setPreviewModal] = useState(false);
-  
-  // 编辑状态
-  const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+
+  const [editingReport, setEditingReport] = useState<ReportDef | null>(null);
   const [editingDs, setEditingDs] = useState<DataSource | null>(null);
-  const [editingConfig, setEditingConfig] = useState<CommonConfig | null>(null);
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  
+  const [editingConfig, setEditingConfig] = useState<ReportConfig | null>(null);
+
   const [reportForm] = Form.useForm();
   const [dsForm] = Form.useForm();
   const [configForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  // ============ 加载数据 ============
+  const loadStats = useCallback(async () => {
     setLoading(true);
     try {
-      const [reportRes, dsRes, cfgRes] = await Promise.allSettled([
-        fetch('/api/reports'),
-        fetch('/api/data_sources'),
-        fetch('/api/common_configs')
-      ]);
-      
-      let r = [], d = [], c = [];
-      if (reportRes.status === 'fulfilled' && reportRes.value.ok) {
-        const j = await reportRes.value.json();
-        if (Array.isArray(j)) r = j;
+      const res = await fetch('/api/statistics');
+      const json = await res.json();
+      if (json.success) {
+        setStats(json.data);
       }
-      if (dsRes.status === 'fulfilled' && dsRes.value.ok) {
-        const j = await dsRes.value.json();
-        if (Array.isArray(j)) d = j;
-      }
-      if (cfgRes.status === 'fulfilled' && cfgRes.value.ok) {
-        const j = await cfgRes.value.json();
-        if (Array.isArray(j)) c = j;
-      }
-      
-      if (r.length === 0) r = generateMockReports();
-      if (d.length === 0) d = generateMockDataSources();
-      if (c.length === 0) c = generateMockCommonConfigs();
-      
-      setReports(r);
-      setDataSources(d);
-      setCommonConfigs(c);
-      setCommonAnalysis(generateCommonAnalysis());
     } catch {
-      setReports(generateMockReports());
-      setDataSources(generateMockDataSources());
-      setCommonConfigs(generateMockCommonConfigs());
-      setCommonAnalysis(generateCommonAnalysis());
+      messageApi.error('加载统计数据失败');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
+  }, [messageApi]);
+
+  const loadReports = useCallback(async () => {
+    try {
+      const res = await fetch('/api/report_definitions');
+      const data = await res.json();
+      if (Array.isArray(data)) setReports(data);
+    } catch {}
+  }, []);
+
+  const loadDataSources = useCallback(async () => {
+    try {
+      const res = await fetch('/api/data_sources');
+      const data = await res.json();
+      if (Array.isArray(data)) setDataSources(data);
+    } catch {}
+  }, []);
+
+  const loadConfigs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/report_configs');
+      const data = await res.json();
+      if (Array.isArray(data)) setConfigs(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+    loadReports();
+    loadDataSources();
+    loadConfigs();
+  }, [loadStats, loadReports, loadDataSources, loadConfigs]);
 
   // ============ 报表 CRUD ============
-  const handleAddReport = () => {
-    setEditingReport(null);
-    reportForm.resetFields();
-    setReportModal(true);
-  };
-
-  const handleEditReport = (report: Report) => {
-    setEditingReport(report);
-    reportForm.setFieldsValue(report);
-    setReportModal(true);
-  };
-
-  const handleDeleteReport = async (id: string) => {
-    try {
-      const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setReports(reports.filter(r => r.id !== id));
-        messageApi.success('报表已删除');
-      } else {
-        // 模拟删除
-        setReports(reports.filter(r => r.id !== id));
-        messageApi.success('报表已删除');
-      }
-    } catch {
-      setReports(reports.filter(r => r.id !== id));
-      messageApi.success('报表已删除');
-    }
-  };
-
   const handleSaveReport = async () => {
     try {
       const values = await reportForm.validateFields();
       const now = new Date().toISOString().slice(0, 10);
-      
-      if (editingReport) {
-        // 编辑
-        const updated = { ...editingReport, ...values, updatedAt: now };
-        const res = await fetch(`/api/reports/${editingReport.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated)
-        });
-        if (res.ok) {
-          setReports(reports.map(r => r.id === editingReport.id ? updated : r));
-          messageApi.success('报表已更新');
-        } else {
-          setReports(reports.map(r => r.id === editingReport.id ? updated : r));
-          messageApi.success('报表已更新');
-        }
-      } else {
-        // 新增
-        const newReport: Report = {
-          id: `r${Date.now()}`,
-          ...values,
-          fields: [],
-          filters: [],
-          createdAt: now,
-          updatedAt: now,
-          createdBy: '当前用户'
-        };
-        const res = await fetch('/api/reports', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newReport)
-        });
-        if (res.ok) {
-          setReports([...reports, newReport]);
-          messageApi.success('报表已创建');
-        } else {
-          setReports([...reports, newReport]);
-          messageApi.success('报表已创建');
-        }
-      }
-      setReportModal(false);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // ============ 数据源 CRUD ============
-  const handleAddDs = () => {
-    setEditingDs(null);
-    dsForm.resetFields();
-    setDsModal(true);
-  };
-
-  const handleEditDs = (ds: DataSource) => {
-    setEditingDs(ds);
-    dsForm.setFieldsValue(ds);
-    setDsModal(true);
-  };
-
-  const handleDeleteDs = async (id: string) => {
-    try {
-      const res = await fetch(`/api/data_sources/${id}`, { method: 'DELETE' });
+      const method = editingReport ? 'PUT' : 'POST';
+      const url = editingReport ? `/api/report_definitions/${editingReport.id}` : '/api/report_definitions';
+      const payload = { ...values, updatedAt: now, createdAt: editingReport?.createdAt || now };
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
-        setDataSources(dataSources.filter(d => d.id !== id));
-        messageApi.success('数据源已删除');
-      } else {
-        setDataSources(dataSources.filter(d => d.id !== id));
-        messageApi.success('数据源已删除');
+        messageApi.success(editingReport ? '报表已更新' : '报表已创建');
+        setReportModal(false);
+        loadReports();
       }
-    } catch {
-      setDataSources(dataSources.filter(d => d.id !== id));
-      messageApi.success('数据源已删除');
-    }
+    } catch {}
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    try {
+      await fetch(`/api/report_definitions/${id}`, { method: 'DELETE' });
+      setReports(reports.filter(r => r.id !== id));
+      messageApi.success('报表已删除');
+    } catch { setReports(reports.filter(r => r.id !== id)); }
+  };
+
+  const handleTestDs = async (ds: DataSource) => {
+    messageApi.loading('正在测试连接...', 1);
+    try {
+      const res = await fetch('/api/data_sources/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ds.id }) });
+      const json = await res.json();
+      if (json.success) messageApi.success(json.message || '连接成功');
+      else messageApi.error(json.message || '连接失败');
+      loadDataSources();
+    } catch { messageApi.error('测试连接失败'); }
   };
 
   const handleSaveDs = async () => {
     try {
       const values = await dsForm.validateFields();
-      
-      if (editingDs) {
-        const updated = { ...editingDs, ...values };
-        const res = await fetch(`/api/data_sources/${editingDs.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated)
-        });
-        if (res.ok) {
-          setDataSources(dataSources.map(d => d.id === editingDs.id ? updated : d));
-          messageApi.success('数据源已更新');
-        } else {
-          setDataSources(dataSources.map(d => d.id === editingDs.id ? updated : d));
-          messageApi.success('数据源已更新');
-        }
-      } else {
-        const newDs: DataSource = {
-          id: `ds${Date.now()}`,
-          ...values,
-          fields: [],
-          status: 'connected'
-        };
-        const res = await fetch('/api/data_sources', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newDs)
-        });
-        if (res.ok) {
-          setDataSources([...dataSources, newDs]);
-          messageApi.success('数据源已创建');
-        } else {
-          setDataSources([...dataSources, newDs]);
-          messageApi.success('数据源已创建');
-        }
-      }
-      setDsModal(false);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleTestDs = async (ds: DataSource) => {
-    messageApi.loading('正在测试连接...');
-    await new Promise(r => setTimeout(r, 1000));
-    messageApi.success('连接成功');
-  };
-
-  // ============ 常用配置 CRUD ============
-  const handleAddConfig = () => {
-    setEditingConfig(null);
-    configForm.resetFields();
-    setConfigModal(true);
-  };
-
-  const handleEditConfig = (cfg: CommonConfig) => {
-    setEditingConfig(cfg);
-    configForm.setFieldsValue(cfg);
-    setConfigModal(true);
-  };
-
-  const handleDeleteConfig = async (id: string) => {
-    try {
-      const res = await fetch(`/api/common_configs/${id}`, { method: 'DELETE' });
+      const now = new Date().toISOString().slice(0, 10);
+      const method = editingDs ? 'PUT' : 'POST';
+      const url = editingDs ? `/api/data_sources/${editingDs.id}` : '/api/data_sources';
+      const payload = { ...values, updatedAt: now, createdAt: editingDs?.createdAt || now };
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
-        setCommonConfigs(commonConfigs.filter(c => c.id !== id));
-        messageApi.success('配置已删除');
-      } else {
-        setCommonConfigs(commonConfigs.filter(c => c.id !== id));
-        messageApi.success('配置已删除');
+        messageApi.success(editingDs ? '数据源已更新' : '数据源已创建');
+        setDsModal(false);
+        loadDataSources();
       }
-    } catch {
-      setCommonConfigs(commonConfigs.filter(c => c.id !== id));
-      messageApi.success('配置已删除');
-    }
+    } catch {}
+  };
+
+  const handleDeleteDs = async (id: string) => {
+    try {
+      await fetch(`/api/data_sources/${id}`, { method: 'DELETE' });
+      setDataSources(dataSources.filter(d => d.id !== id));
+      messageApi.success('数据源已删除');
+    } catch { setDataSources(dataSources.filter(d => d.id !== id)); }
   };
 
   const handleSaveConfig = async () => {
     try {
       const values = await configForm.validateFields();
       const now = new Date().toISOString().slice(0, 10);
-      
-      if (editingConfig) {
-        const updated = { ...editingConfig, ...values, updatedAt: now };
-        const res = await fetch(`/api/common_configs/${editingConfig.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated)
-        });
-        if (res.ok) {
-          setCommonConfigs(commonConfigs.map(c => c.id === editingConfig.id ? updated : c));
-          messageApi.success('配置已更新');
-        } else {
-          setCommonConfigs(commonConfigs.map(c => c.id === editingConfig.id ? updated : c));
-          messageApi.success('配置已更新');
-        }
-      } else {
-        const newCfg: CommonConfig = {
-          id: `cfg${Date.now()}`,
-          ...values,
-          updatedAt: now
-        };
-        const res = await fetch('/api/common_configs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newCfg)
-        });
-        if (res.ok) {
-          setCommonConfigs([...commonConfigs, newCfg]);
-          messageApi.success('配置已创建');
-        } else {
-          setCommonConfigs([...commonConfigs, newCfg]);
-          messageApi.success('配置已创建');
-        }
+      const method = editingConfig ? 'PUT' : 'POST';
+      const url = editingConfig ? `/api/report_configs/${editingConfig.id}` : '/api/report_configs';
+      const payload = { ...values, updatedAt: now, createdAt: editingConfig?.createdAt || now };
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok) {
+        messageApi.success(editingConfig ? '配置已更新' : '配置已创建');
+        setConfigModal(false);
+        loadConfigs();
       }
-      setConfigModal(false);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch {}
   };
 
-  const exportReport = (format: 'excel' | 'pdf' | 'image') => {
-    messageApi.success(`报表已导出为${format.toUpperCase()}格式`);
+  const handleDeleteConfig = async (id: string) => {
+    try {
+      await fetch(`/api/report_configs/${id}`, { method: 'DELETE' });
+      setConfigs(configs.filter(c => c.id !== id));
+      messageApi.success('配置已删除');
+    } catch { setConfigs(configs.filter(c => c.id !== id)); }
   };
 
-  const previewReport = (report: Report) => {
-    setSelectedReport(report);
+  const handlePreviewReport = (report: ReportDef) => {
+    if (!stats) { messageApi.warning('请等待数据加载完成'); return; }
+    const dataMap: Record<string, any> = {
+      deptDistribution: stats.deptDistribution,
+      eduDistribution: stats.eduDistribution,
+      genderDistribution: stats.genderDistribution,
+      tenureDistribution: stats.tenureDistribution,
+      hireTrendData: stats.hireTrendData,
+      monthAttendance: stats.monthAttendance,
+      attendanceTrendData: stats.attendanceTrendData,
+      salaryDistribution: stats.salaryDistribution,
+      salaryTrendData: stats.salaryTrendData,
+      sourceDistribution: stats.sourceDistribution,
+      gradeDistribution: stats.gradeDistribution,
+      leaveTypeDistribution: stats.leaveTypeDistribution,
+      contractTypeDistribution: stats.contractTypeDistribution,
+    };
+    setPreviewData({ report, chartData: dataMap[report.tableName || ''] || [] });
     setPreviewModal(true);
   };
 
-  const tabs = [
-    { key: 'reports', label: '报表管理', icon: <TableOutlined /> },
-    { key: 'designer', label: '报表设计器', icon: <SettingOutlined /> },
-    { key: 'datasource', label: '数据源配置', icon: <DatabaseOutlined /> },
-    { key: 'config', label: '常用配置', icon: <SettingOutlined /> },
-    { key: 'analysis', label: '常用分析', icon: <BarChartOutlined /> },
+  // ============ 内部数据源表清单 ============
+  const internalTables = [
+    { value: 'deptDistribution', label: '部门人员分布' },
+    { value: 'eduDistribution', label: '学历结构分布' },
+    { value: 'genderDistribution', label: '性别分布' },
+    { value: 'tenureDistribution', label: '司龄结构分布' },
+    { value: 'hireTrendData', label: '月度入职趋势' },
+    { value: 'monthAttendance', label: '本月考勤状态分布' },
+    { value: 'attendanceTrendData', label: '考勤月度趋势' },
+    { value: 'salaryDistribution', label: '薪资档位分布' },
+    { value: 'salaryTrendData', label: '薪资月度趋势' },
+    { value: 'sourceDistribution', label: '招聘来源分布' },
+    { value: 'gradeDistribution', label: '绩效等级分布' },
+    { value: 'leaveTypeDistribution', label: '请假类型分布' },
+    { value: 'contractTypeDistribution', label: '合同类型分布' },
   ];
 
+  // ============ 报表列定义 ============
   const reportColumns = [
     { title: '报表名称', dataIndex: 'name', key: 'name', width: 180 },
-    { title: '分类', dataIndex: 'category', key: 'category', width: 100, render: (v: string) => <Tag color={categoryMap[v]?.color}>{categoryMap[v]?.label}</Tag> },
-    { title: '图表类型', dataIndex: 'chartType', key: 'chartType', width: 100, render: (v?: string) => {
-      if (!v) return <Tag>表格</Tag>;
-      const icons: Record<string, React.ReactNode> = { bar: <BarChartOutlined />, line: <LineChartOutlined />, pie: <PieChartOutlined /> };
-      return <Tag icon={icons[v]}>{v === 'bar' ? '柱状图' : v === 'line' ? '折线图' : '饼图'}</Tag>;
+    { title: '分类', dataIndex: 'category', key: 'category', width: 100, render: (v: string) => <Tag color="blue">{v || '自定义'}</Tag> },
+    { title: '数据表', dataIndex: 'tableName', key: 'tableName', width: 150, render: (v: string) => <Text type="secondary">{v ? internalTables.find(t => t.value === v)?.label || v : '-'}</Text> },
+    { title: '图表类型', dataIndex: 'chartType', key: 'chartType', width: 100, render: (v: string) => {
+      const icons: Record<string, React.ReactNode> = { table: <TableOutlined />, bar: <BarChartOutlined />, line: <LineChartOutlined />, pie: <PieChartOutlined /> };
+      const labels: Record<string, string> = { table: '表格', bar: '柱状图', line: '折线图', pie: '饼图' };
+      return <Tag icon={icons[v]}>{labels[v] || '表格'}</Tag>;
     }},
-    { title: '数据源', dataIndex: 'dataSource', key: 'dataSource', width: 100, render: (v: string) => <Tag color={v === 'internal' ? 'blue' : 'purple'}>{v === 'internal' ? '内部' : '外部'}</Tag> },
+    { title: '内置', dataIndex: 'isBuiltIn', key: 'isBuiltIn', width: 70, render: (v: number) => v ? <Tag color="gold">是</Tag> : <Tag>否</Tag> },
     { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 120 },
-    { title: '创建人', dataIndex: 'createdBy', key: 'createdBy', width: 90 },
-    { title: '操作', key: 'action', width: 280, render: (_: any, r: Report) => (
+    { title: '操作', key: 'action', width: 220, render: (_: any, r: ReportDef) => (
       <Space size="small">
-        <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => previewReport(r)}>预览</Button>
-        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEditReport(r)}>编辑</Button>
-        <Dropdown menu={{ items: [
-          { key: 'excel', label: '导出Excel', icon: <FileExcelOutlined /> },
-          { key: 'pdf', label: '导出PDF', icon: <FilePdfOutlined /> },
-          { key: 'image', label: '导出图片', icon: <FileImageOutlined /> },
-        ], onClick: ({ key }) => exportReport(key as any) }}>
-          <Button size="small" type="link" icon={<DownloadOutlined />}>导出</Button>
-        </Dropdown>
-        <Popconfirm title="确定删除此报表吗？" onConfirm={() => handleDeleteReport(r.id)} okText="确定" cancelText="取消">
+        <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handlePreviewReport(r)}>预览</Button>
+        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setEditingReport(r); reportForm.setFieldsValue(r); setReportModal(true); }}>编辑</Button>
+        <Popconfirm title="确定删除？" onConfirm={() => handleDeleteReport(r.id)} okText="确定" cancelText="取消">
           <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
         </Popconfirm>
       </Space>
@@ -499,18 +362,18 @@ export default function StatisticsPage() {
 
   const dsColumns = [
     { title: '数据源名称', dataIndex: 'name', key: 'name', width: 180 },
-    { title: '类型', dataIndex: 'type', key: 'type', width: 100, render: (v: string) => {
+    { title: '类型', dataIndex: 'type', key: 'type', width: 120, render: (v: string) => {
       const map: Record<string, { label: string; color: string }> = { internal: { label: '内部数据库', color: 'blue' }, excel: { label: 'Excel文件', color: 'green' }, csv: { label: 'CSV文件', color: 'cyan' }, api: { label: 'API接口', color: 'purple' } };
       return <Tag color={map[v]?.color}>{map[v]?.label}</Tag>;
     }},
     { title: '来源', key: 'source', width: 200, render: (_: any, r: DataSource) => r.tableName || r.filePath || r.apiUrl || '-' },
-    { title: '字段数', key: 'fieldCount', width: 80, render: (_: any, r: DataSource) => `${r.fields.length}个` },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Badge status={v === 'connected' ? 'success' : 'error'} text={v === 'connected' ? '已连接' : '连接失败'} /> },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (v: string) => <Badge status={v === 'connected' ? 'success' : 'error'} text={v === 'connected' ? '已连接' : '未连接'} /> },
+    { title: '测试时间', dataIndex: 'lastTestedAt', key: 'lastTestedAt', width: 160, render: (v: string) => v ? v.slice(0, 16) : '-' },
     { title: '操作', key: 'action', width: 200, render: (_: any, r: DataSource) => (
       <Space size="small">
         <Button size="small" type="link" icon={<ReloadOutlined />} onClick={() => handleTestDs(r)}>测试</Button>
-        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEditDs(r)}>编辑</Button>
-        <Popconfirm title="确定删除此数据源吗？" onConfirm={() => handleDeleteDs(r.id)} okText="确定" cancelText="取消">
+        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setEditingDs(r); dsForm.setFieldsValue(r); setDsModal(true); }}>编辑</Button>
+        <Popconfirm title="确定删除？" onConfirm={() => handleDeleteDs(r.id)} okText="确定" cancelText="取消">
           <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
         </Popconfirm>
       </Space>
@@ -518,133 +381,240 @@ export default function StatisticsPage() {
   ];
 
   const configColumns = [
-    { title: '配置名称', dataIndex: 'name', key: 'name', width: 180 },
-    { title: '分类', dataIndex: 'category', key: 'category', width: 100, render: (v: string) => {
-      const map: Record<string, { label: string; color: string }> = {
-        export: { label: '导出设置', color: 'blue' },
-        performance: { label: '性能设置', color: 'green' },
-        display: { label: '显示设置', color: 'purple' }
-      };
-      return <Tag color={map[v]?.color || 'default'}>{map[v]?.label || v}</Tag>;
-    }},
-    { title: '配置值', dataIndex: 'value', key: 'value', width: 150, render: (v: any) => typeof v === 'object' ? JSON.stringify(v) : String(v) },
-    { title: '描述', dataIndex: 'description', key: 'description', width: 200 },
-    { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 120 },
-    { title: '操作', key: 'action', width: 150, render: (_: any, c: CommonConfig) => (
+    { title: '配置名称', dataIndex: 'name', key: 'name', width: 160 },
+    { title: '分类', dataIndex: 'category', key: 'category', width: 100, render: (v: string) => <Tag color="purple">{v}</Tag> },
+    { title: '配置键', dataIndex: 'configKey', key: 'configKey', width: 160, render: (v: string) => <Text code>{v}</Text> },
+    { title: '配置值', dataIndex: 'configValue', key: 'configValue', width: 150, render: (v: string) => v || '-' },
+    { title: '描述', dataIndex: 'description', key: 'description', width: 200, render: (v: string) => v || '-' },
+    { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
+    { title: '操作', key: 'action', width: 150, render: (_: any, c: ReportConfig) => (
       <Space size="small">
-        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEditConfig(c)}>编辑</Button>
-        <Popconfirm title="确定删除此配置吗？" onConfirm={() => handleDeleteConfig(c.id)} okText="确定" cancelText="取消">
+        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setEditingConfig(c); configForm.setFieldsValue(c); setConfigModal(true); }}>编辑</Button>
+        <Popconfirm title="确定删除？" onConfirm={() => handleDeleteConfig(c.id)} okText="确定" cancelText="取消">
           <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
         </Popconfirm>
       </Space>
     )},
   ];
 
+  const tabs = [
+    { key: 'overview', label: <span><ProjectOutlined /> 数据总览</span> },
+    { key: 'reports', label: <span><TableOutlined /> 报表管理</span> },
+    { key: 'datasource', label: <span><DatabaseOutlined /> 数据源配置</span> },
+    { key: 'config', label: <span><SettingOutlined /> 常用配置</span> },
+    { key: 'employee', label: <span><TeamOutlined /> 员工分析</span> },
+    { key: 'attendance', label: <span><CalendarOutlined /> 考勤分析</span> },
+    { key: 'salary', label: <span><MoneyCollectOutlined /> 薪资分析</span> },
+  ];
+
+  // ============ 渲染 ============
   return (
     <div className="p-6 space-y-4">
       {contextHolder}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">统计分析</h2>
-          <p className="text-sm text-muted-foreground">报表设计 · 数据源配置 · 图表展示 · 常用分析</p>
+          <p className="text-sm text-muted-foreground">多维度人力资源数据分析与可视化报表</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddReport}>新建报表</Button>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={loadStats}>刷新数据</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingReport(null); reportForm.resetFields(); setReportModal(true); }}>新建报表</Button>
+        </Space>
       </div>
 
-      <Row gutter={16}>
-        <Col span={4}><Card size="small"><Statistic title="报表总数" value={reports.length} suffix="个" /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="数据源" value={dataSources.length} suffix="个" /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="内部数据源" value={dataSources.filter(d => d.type === 'internal').length} suffix="个" valueStyle={{ color: '#1677ff' }} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="外部数据源" value={dataSources.filter(d => d.type !== 'internal').length} suffix="个" valueStyle={{ color: '#722ed1' }} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="常用配置" value={commonConfigs.length} suffix="项" /></Card></Col>
-      </Row>
+      {stats && stats.overview && (
+        <Row gutter={12}>
+          <Col span={4}><Card size="small"><Statistic title="员工总数" value={stats.overview.totalEmployees} suffix="人" valueStyle={{ fontSize: 22 }} /></Card></Col>
+          <Col span={4}><Card size="small"><Statistic title="在职员工" value={stats.overview.activeEmployees} suffix="人" valueStyle={{ fontSize: 22, color: '#52c41a' }} /></Card></Col>
+          <Col span={4}><Card size="small"><Statistic title="今日考勤" value={stats.overview.todayAttendanceCount} suffix="人" valueStyle={{ fontSize: 22 }} /></Card></Col>
+          <Col span={4}><Card size="small"><Statistic title="本月迟到" value={stats.overview.todayLateCount || 0} suffix="次" valueStyle={{ fontSize: 22, color: '#faad14' }} /></Card></Col>
+          <Col span={4}><Card size="small"><Statistic title="本月发薪" value={stats.overview.salaryStats?.count || 0} suffix="人" prefix="¥" valueStyle={{ fontSize: 22 }} /></Card></Col>
+          <Col span={4}><Card size="small"><Statistic title="待审批假" value={stats.overview.leaveStats?.pending || 0} suffix="条" valueStyle={{ fontSize: 22, color: '#1677ff' }} /></Card></Col>
+        </Row>
+      )}
 
       <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} tabBarStyle={{ marginBottom: 16 }} 
-          items={tabs.map(t => ({ key: t.key, label: <span>{t.icon} {t.label}</span> }))} 
+        <Tabs activeKey={activeTab} onChange={setActiveTab} tabBarStyle={{ marginBottom: 16 }}
+          items={tabs.map(t => ({ key: t.key, label: t.label }))}
         />
 
-        {/* Tab1: 报表管理 */}
+        {/* ========== 数据总览 ========== */}
+        {activeTab === 'overview' && !loading && stats && (
+          <div className="space-y-4">
+            <Alert message="以下数据均来自系统数据库，实时统计各模块业务数据" type="info" showIcon />
+            <Row gutter={12}>
+              <ChartCard title="部门人员分布" icon={<TeamOutlined />} span={8}>
+                {stats.deptDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.deptDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="考勤状态分布" icon={<CalendarOutlined />} span={8}>
+                {stats.monthAttendance.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.monthAttendance)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无考勤数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="薪资档位分布" icon={<MoneyCollectOutlined />} span={8}>
+                {stats.salaryDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.salaryDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无薪资数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+            </Row>
+            <Row gutter={12}>
+              <ChartCard title="员工学历结构" icon={<BookOutlined />} span={8}>
+                {stats.eduDistribution.length > 0
+                  ? <ReactECharts option={makeBarOption('', stats.eduDistribution.map(d => d.name), stats.eduDistribution.map(d => d.value))} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无学历数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="司龄结构分布" icon={<ProfileOutlined />} span={8}>
+                {stats.tenureDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.tenureDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无司龄数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="请假类型分布" icon={<AuditOutlined />} span={8}>
+                {stats.leaveTypeDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.leaveTypeDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无请假数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+            </Row>
+            <Row gutter={12}>
+              <Col span={24}>
+                <Card size="small" title={<span><LineChartOutlined /> 入职趋势（近12月）</span>}>
+                  {stats.hireTrendData.length > 0
+                    ? <ReactECharts option={makeLineOption('', stats.hireTrendData.map(d => d.month), [{ name: '入职人数', data: stats.hireTrendData.map(d => d.value) }])} style={{ height: 220 }} notMerge={true} />
+                    : <Empty description="暂无入职数据" style={{ paddingTop: 40 }} />}
+                </Card>
+              </Col>
+            </Row>
+          </div>
+        )}
+
+        {/* ========== 员工分析 ========== */}
+        {activeTab === 'employee' && !loading && stats && (
+          <div className="space-y-4">
+            <Alert message="员工结构分析 — 展示企业人员构成、学历、年龄、司龄等多维度分布" type="info" showIcon />
+            <Row gutter={12}>
+              <ChartCard title="部门人员分布" icon={<TeamOutlined />} span={8}>
+                {stats.deptDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.deptDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="学历结构" icon={<BookOutlined />} span={8}>
+                {stats.eduDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.eduDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="性别分布" icon={<TeamOutlined />} span={8}>
+                {stats.genderDistribution.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.genderDistribution)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+            </Row>
+            <Row gutter={12}>
+              <ChartCard title="司龄结构" icon={<ProfileOutlined />} span={12}>
+                {stats.tenureDistribution.length > 0
+                  ? <ReactECharts option={makeBarOption('', stats.tenureDistribution.map(d => d.name), stats.tenureDistribution.map(d => d.value))} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="月度入职趋势" icon={<LineChartOutlined />} span={12}>
+                {stats.hireTrendData.length > 0
+                  ? <ReactECharts option={makeLineOption('', stats.hireTrendData.map(d => d.month), [{ name: '入职人数', data: stats.hireTrendData.map(d => d.value) }])} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+            </Row>
+          </div>
+        )}
+
+        {/* ========== 考勤分析 ========== */}
+        {activeTab === 'attendance' && !loading && stats && (
+          <div className="space-y-4">
+            <Alert message="考勤分析 — 展示考勤状态分布、月度趋势、迟到统计等" type="info" showIcon />
+            <Row gutter={12}>
+              <ChartCard title="考勤状态分布（本月）" icon={<CalendarOutlined />} span={8}>
+                {stats.monthAttendance.length > 0
+                  ? <ReactECharts option={makePieOption('', stats.monthAttendance)} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无考勤数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <Col span={16}>
+                <Card size="small" title={<span><LineChartOutlined /> 考勤月度趋势（近6月）</span>} style={{ height: 340 }}>
+                  {stats.attendanceTrendData.length > 0
+                    ? <ReactECharts option={{
+                      tooltip: { trigger: 'axis' },
+                      legend: { bottom: 0, data: ['正常', '迟到', '缺勤'] },
+                      grid: { left: '3%', right: '4%', bottom: '40px', top: '40px', containLabel: true },
+                      xAxis: { type: 'category', data: stats.attendanceTrendData.map(d => d.month) },
+                      yAxis: { type: 'value', name: '人次' },
+                      series: [
+                        { name: '正常', data: stats.attendanceTrendData.map(d => d.normal), type: 'line', smooth: true, itemStyle: { color: '#52c41a' } },
+                        { name: '迟到', data: stats.attendanceTrendData.map(d => d.late), type: 'line', smooth: true, itemStyle: { color: '#faad14' } },
+                        { name: '缺勤', data: stats.attendanceTrendData.map(d => d.absent), type: 'line', smooth: true, itemStyle: { color: '#ff4d4f' } },
+                      ]
+                    }} style={{ height: 260 }} notMerge={true} />
+                    : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+                </Card>
+              </Col>
+            </Row>
+          </div>
+        )}
+
+        {/* ========== 薪资分析 ========== */}
+        {activeTab === 'salary' && !loading && stats && (
+          <div className="space-y-4">
+            <Alert message="薪资分析 — 展示薪资档位分布、月度趋势、社保缴纳等" type="info" showIcon />
+            {stats.overview?.salaryStats && (
+              <Row gutter={12}>
+                <Col span={6}><Card size="small"><Statistic title="本月应发总额" value={stats.overview.salaryStats.totalGross || 0} prefix="¥" precision={0} valueStyle={{ fontSize: 18 }} /></Card></Col>
+                <Col span={6}><Card size="small"><Statistic title="本月实发总额" value={stats.overview.salaryStats.totalNet || 0} prefix="¥" precision={0} valueStyle={{ fontSize: 18 }} /></Card></Col>
+                <Col span={6}><Card size="small"><Statistic title="平均应发" value={stats.overview.salaryStats.avgGross || 0} prefix="¥" precision={0} valueStyle={{ fontSize: 18 }} /></Card></Col>
+                <Col span={6}><Card size="small"><Statistic title="平均实发" value={stats.overview.salaryStats.avgNet || 0} prefix="¥" precision={0} valueStyle={{ fontSize: 18 }} /></Card></Col>
+              </Row>
+            )}
+            <Row gutter={12}>
+              <ChartCard title="薪资档位分布" icon={<MoneyCollectOutlined />} span={12}>
+                {stats.salaryDistribution.length > 0
+                  ? <ReactECharts option={makeBarOption('', stats.salaryDistribution.map(d => d.name), stats.salaryDistribution.map(d => d.value), '人数')} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+              <ChartCard title="薪资月度趋势" icon={<LineChartOutlined />} span={12}>
+                {stats.salaryTrendData.length > 0
+                  ? <ReactECharts option={makeLineOption('', stats.salaryTrendData.map(d => d.name), [{ name: '实发总额', data: stats.salaryTrendData.map(d => d.value / 10000) }])} style={{ height: 260 }} notMerge={true} />
+                  : <Empty description="暂无数据" style={{ paddingTop: 60 }} />}
+              </ChartCard>
+            </Row>
+          </div>
+        )}
+
+        {/* ========== 报表管理 ========== */}
         {activeTab === 'reports' && (
           <div className="space-y-4">
-            <Alert message="支持数据穿透：点击单元格可查看明细数据。支持超链接：单元格可跳转到其他报表。" type="info" showIcon />
-            <Table columns={reportColumns} dataSource={reports} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
+            <Alert message="报表管理 — 可视化配置内部数据库统计报表，支持柱状图、折线图、饼图等多种图表类型" type="info" showIcon />
+            <Table columns={reportColumns} dataSource={reports} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} size="small" />
           </div>
         )}
 
-        {/* Tab2: 报表设计器 */}
-        {activeTab === 'designer' && (
-          <div className="space-y-4">
-            <Alert message="报表设计器支持可视化拖拽设计，可配置字段、筛选条件、图表类型等。" type="info" showIcon />
-            <Card title="设计器功能" size="small">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="p-4 border rounded">
-                  <h4 className="font-medium mb-2">字段配置</h4>
-                  <p className="text-sm text-muted-foreground">选择显示字段、设置字段类型、聚合方式</p>
-                </div>
-                <div className="p-4 border rounded">
-                  <h4 className="font-medium mb-2">筛选条件</h4>
-                  <p className="text-sm text-muted-foreground">添加过滤条件、设置参数化查询</p>
-                </div>
-                <div className="p-4 border rounded">
-                  <h4 className="font-medium mb-2">图表类型</h4>
-                  <p className="text-sm text-muted-foreground">表格、柱状图、折线图、饼图</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* Tab3: 数据源配置 */}
+        {/* ========== 数据源配置 ========== */}
         {activeTab === 'datasource' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <Alert message="支持内部数据库、Excel文件、CSV文件、API接口等多种数据源。" type="info" showIcon className="flex-1" />
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddDs} className="ml-4">新增数据源</Button>
+              <Alert message="数据源配置 — 支持连接内部数据库、Excel文件、CSV文件、API接口等外部数据源" type="info" showIcon className="flex-1" />
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingDs(null); dsForm.resetFields(); setDsModal(true); }} className="ml-4">新增数据源</Button>
             </div>
-            <Table columns={dsColumns} dataSource={dataSources} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
+            <Table columns={dsColumns} dataSource={dataSources} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} size="small" />
           </div>
         )}
 
-        {/* Tab4: 常用配置 */}
+        {/* ========== 常用配置 ========== */}
         {activeTab === 'config' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <Alert message="管理系统全局配置，包括导出格式、缓存设置、显示主题等。" type="info" showIcon className="flex-1" />
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddConfig} className="ml-4">新增配置</Button>
+              <Alert message="常用配置 — 管理报表全局配置，包括导出格式、缓存策略、图表主题等" type="info" showIcon className="flex-1" />
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingConfig(null); configForm.resetFields(); setConfigModal(true); }} className="ml-4">新增配置</Button>
             </div>
-            <Table columns={configColumns} dataSource={commonConfigs} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
-          </div>
-        )}
-
-        {/* Tab5: 常用分析 */}
-        {activeTab === 'analysis' && (
-          <div className="space-y-4">
-            <Alert message="展示企业人力资源常用分析指标，数据来源于系统各模块统计。" type="info" showIcon />
-            <Row gutter={16}>
-              {Object.entries(commonAnalysis).map(([key, analysis]) => (
-                <Col span={12} key={key}>
-                  <Card title={analysis.title} size="small">
-                    <div className="space-y-2">
-                      {analysis.data.map((item, idx) => (
-                        <div key={idx} className="flex justify-between items-center">
-                          <span>{item.name}</span>
-                          <div className="flex items-center gap-2">
-                            <Progress percent={Math.round(item.value / analysis.total * 100)} size="small" style={{ width: 100 }} />
-                            <span className="text-sm font-medium">{item.value}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+            <Table columns={configColumns} dataSource={configs} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} size="small" />
           </div>
         )}
       </Card>
 
-      {/* 报表编辑弹窗 */}
+      {/* ========== 报表编辑弹窗 ========== */}
       <Modal
         title={editingReport ? '编辑报表' : '新建报表'}
         open={reportModal}
@@ -656,9 +626,12 @@ export default function StatisticsPage() {
       >
         <Form form={reportForm} layout="vertical">
           <Form.Item name="name" label="报表名称" rules={[{ required: true, message: '请输入报表名称' }]}>
-            <Input placeholder="请输入报表名称" />
+            <Input placeholder="如：部门人员分布报表" />
           </Form.Item>
-          <Form.Item name="category" label="报表分类" rules={[{ required: true, message: '请选择分类' }]}>
+          <Form.Item name="description" label="报表描述">
+            <Input.TextArea placeholder="简要描述此报表的用途" rows={2} />
+          </Form.Item>
+          <Form.Item name="category" label="分类" initialValue="custom">
             <Select placeholder="请选择分类">
               <Option value="employee">员工分析</Option>
               <Option value="attendance">考勤分析</Option>
@@ -667,27 +640,23 @@ export default function StatisticsPage() {
               <Option value="custom">自定义报表</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="chartType" label="图表类型">
-            <Select placeholder="请选择图表类型" allowClear>
-              <Option value="table">表格</Option>
+          <Form.Item name="tableName" label="数据表" rules={[{ required: true, message: '请选择数据表' }]}>
+            <Select placeholder="选择统计数据的来源表">
+              {internalTables.map(t => <Option key={t.value} value={t.value}>{t.label}</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="chartType" label="图表类型" initialValue="pie">
+            <Select placeholder="选择图表类型">
+              <Option value="pie">饼图</Option>
               <Option value="bar">柱状图</Option>
               <Option value="line">折线图</Option>
-              <Option value="pie">饼图</Option>
+              <Option value="table">数据表格</Option>
             </Select>
-          </Form.Item>
-          <Form.Item name="dataSource" label="数据源类型">
-            <Select placeholder="请选择数据源类型">
-              <Option value="internal">内部数据</Option>
-              <Option value="external">外部数据</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="tableName" label="数据表名">
-            <Input placeholder="请输入数据表名" />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 数据源编辑弹窗 */}
+      {/* ========== 数据源编辑弹窗 ========== */}
       <Modal
         title={editingDs ? '编辑数据源' : '新增数据源'}
         open={dsModal}
@@ -699,29 +668,34 @@ export default function StatisticsPage() {
       >
         <Form form={dsForm} layout="vertical">
           <Form.Item name="name" label="数据源名称" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="请输入数据源名称" />
+            <Input placeholder="如：内部HR数据库" />
           </Form.Item>
-          <Form.Item name="type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
-            <Select placeholder="请选择类型">
-              <Option value="internal">内部数据库</Option>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={2} placeholder="简要描述此数据源" />
+          </Form.Item>
+          <Form.Item name="type" label="类型" rules={[{ required: true }]} initialValue="internal">
+            <Select>
+              <Option value="internal">内部数据库（SQLite）</Option>
               <Option value="excel">Excel文件</Option>
               <Option value="csv">CSV文件</Option>
               <Option value="api">API接口</Option>
             </Select>
           </Form.Item>
           <Form.Item name="tableName" label="数据表名">
-            <Input placeholder="内部数据库表名" />
+            <Select allowClear placeholder="选择内部数据库表（可选）">
+              {internalTables.map(t => <Option key={t.value} value={t.value}>{t.label}</Option>)}
+            </Select>
           </Form.Item>
           <Form.Item name="filePath" label="文件路径">
-            <Input placeholder="Excel/CSV文件路径" />
+            <Input placeholder="Excel或CSV文件的完整路径" />
           </Form.Item>
           <Form.Item name="apiUrl" label="API地址">
-            <Input placeholder="API接口URL" />
+            <Input placeholder="外部API接口URL" />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 配置编辑弹窗 */}
+      {/* ========== 配置编辑弹窗 ========== */}
       <Modal
         title={editingConfig ? '编辑配置' : '新增配置'}
         open={configModal}
@@ -733,53 +707,57 @@ export default function StatisticsPage() {
       >
         <Form form={configForm} layout="vertical">
           <Form.Item name="name" label="配置名称" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="请输入配置名称" />
+            <Input placeholder="如：默认导出格式" />
           </Form.Item>
-          <Form.Item name="category" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
-            <Select placeholder="请选择分类">
+          <Form.Item name="category" label="分类" rules={[{ required: true }]}>
+            <Select>
               <Option value="export">导出设置</Option>
               <Option value="performance">性能设置</Option>
               <Option value="display">显示设置</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="value" label="配置值" rules={[{ required: true, message: '请输入配置值' }]}>
-            <Input placeholder="请输入配置值" />
+          <Form.Item name="configKey" label="配置键" rules={[{ required: true, message: '请输入配置键' }]}>
+            <Input placeholder="如：default_export_format" />
+          </Form.Item>
+          <Form.Item name="configValue" label="配置值" rules={[{ required: true, message: '请输入配置值' }]}>
+            <Input placeholder="如：xlsx" />
           </Form.Item>
           <Form.Item name="description" label="描述">
-            <Input.TextArea placeholder="请输入配置描述" rows={3} />
+            <Input.TextArea rows={2} placeholder="配置说明" />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 报表预览弹窗 */}
+      {/* ========== 报表预览弹窗 ========== */}
       <Modal
-        title={selectedReport?.name || '报表预览'}
+        title={previewData?.report?.name || '报表预览'}
         open={previewModal}
         onCancel={() => setPreviewModal(false)}
         footer={null}
         width={900}
       >
-        {selectedReport && (
+        {previewData && (
           <div className="space-y-4">
             <Descriptions column={3} size="small" bordered>
-              <Descriptions.Item label="报表名称">{selectedReport.name}</Descriptions.Item>
-              <Descriptions.Item label="分类">{categoryMap[selectedReport.category]?.label}</Descriptions.Item>
-              <Descriptions.Item label="图表类型">{selectedReport.chartType || '表格'}</Descriptions.Item>
-              <Descriptions.Item label="数据源">{selectedReport.dataSource === 'internal' ? '内部' : '外部'}</Descriptions.Item>
-              <Descriptions.Item label="创建人">{selectedReport.createdBy}</Descriptions.Item>
-              <Descriptions.Item label="更新时间">{selectedReport.updatedAt}</Descriptions.Item>
+              <Descriptions.Item label="报表名称">{previewData.report.name}</Descriptions.Item>
+              <Descriptions.Item label="分类">{previewData.report.category || '自定义'}</Descriptions.Item>
+              <Descriptions.Item label="图表类型">{previewData.report.chartType === 'pie' ? '饼图' : previewData.report.chartType === 'bar' ? '柱状图' : previewData.report.chartType === 'line' ? '折线图' : '表格'}</Descriptions.Item>
+              <Descriptions.Item label="数据源">{previewData.report.tableName}</Descriptions.Item>
+              <Descriptions.Item label="内置报表">{previewData.report.isBuiltIn ? '是' : '否'}</Descriptions.Item>
+              <Descriptions.Item label="更新时间">{previewData.report.updatedAt}</Descriptions.Item>
             </Descriptions>
             <Divider />
-            <Alert message="报表预览功能需要实际数据支持，当前显示模拟数据" type="warning" showIcon />
-            <Table
-              columns={selectedReport.fields.map(f => ({ title: f.label, dataIndex: f.name, key: f.name }))}
-              dataSource={[
-                { key: '1', employeeId: 'E001', name: '张三', department: '技术部', position: '工程师', hireDate: '2024-01-15' },
-                { key: '2', employeeId: 'E002', name: '李四', department: '产品部', position: '产品经理', hireDate: '2024-02-20' },
-              ]}
-              pagination={false}
-              size="small"
-            />
+            {Array.isArray(previewData.chartData) && previewData.chartData.length > 0 ? (
+              previewData.report.chartType === 'bar' ? (
+                <ReactECharts option={makeBarOption('', previewData.chartData.map((d: any) => d.name), previewData.chartData.map((d: any) => d.value))} style={{ height: 300 }} />
+              ) : previewData.report.chartType === 'line' ? (
+                <ReactECharts option={makeLineOption('', previewData.chartData.map((d: any) => d.name || d.month), [{ name: previewData.report.name, data: previewData.chartData.map((d: any) => d.value || 0) }])} style={{ height: 300 }} />
+              ) : (
+                <ReactECharts option={makePieOption('', previewData.chartData)} style={{ height: 300 }} />
+              )
+            ) : (
+              <Alert message="该报表暂无数据" type="warning" showIcon />
+            )}
           </div>
         )}
       </Modal>

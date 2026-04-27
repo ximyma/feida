@@ -61,9 +61,11 @@ function apiRouter() {
     'shift_types','schedules','attendance_records','leave_records','leave_balances',
     'overtime_records','shift_change_requests','attendance_rules','check_locations',
     'daily_attendance_reports','monthly_attendance_summary',
+    'report_definitions','data_sources','report_configs',
     // 薪资模块
     'salaries','salary_items','salary_item_templates','salary_adjustments',
     'location_allowances','company_contributions',
+    'insurance_schemes','insured_employees','insurance_changes','insurance_ledger',
     // 合同模块
     'contracts','contract_templates',
     // 招聘模块
@@ -83,12 +85,18 @@ function apiRouter() {
     'competency_items','competency_levels','competency_models','model_competencies',
     'talent_profiles','talent_reports',
     // 流程审批模块
-    'approval_flows','approval_requests','approval_records',
+    'approval_flows','approval_requests','approval_records','workflow_templates',
     // 人事管理模块
     'employee_changes','field_definitions','employee_subsets','subset_records',
     'print_templates','reminders','reminder_logs',
+    // 办公管理模块
+    'meeting_rooms','meetings','office_supplies','supply_requests',
+    // 招聘邮件模块
+    'talent_tags','email_templates','email_logs',
+    // 培训评估模块
+    'training_classes','assessment_templates',
     // 系统模块
-    'system_config','audit_logs','login_logs','data_backups'
+    'system_config','audit_logs','login_logs','data_backups','scheduled_tasks'
   ];
   
   // ============ 打卡功能 API ============
@@ -232,6 +240,81 @@ function apiRouter() {
     });
   });
 
+  // ============ 数据统计分析 API ============
+  router.get('/statistics', (_req, res) => {
+    try {
+      const stats = db.getStatistics();
+      res.json({ success: true, data: stats });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 报表定义 CRUD ============
+  router.get('/report_definitions', (_req, res) => {
+    try {
+      const reports = db.getReportDefinitions();
+      res.json(reports);
+    } catch (e: any) {
+      res.json({ error: e.message });
+    }
+  });
+
+  // ============ 数据源管理 ============
+  router.get('/data_sources', (_req, res) => {
+    try {
+      res.json(db.getDataSources());
+    } catch (e: any) {
+      res.json({ error: e.message });
+    }
+  });
+
+  router.post('/data_sources/test', (req, res) => {
+    try {
+      const result = db.testDataSourceConnection(req.body.id);
+      res.json(result);
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 报表配置管理 ============
+  router.get('/report_configs', (_req, res) => {
+    try {
+      res.json(db.getReportConfigs());
+    } catch (e: any) {
+      res.json({ error: e.message });
+    }
+  });
+
+  // ============ 薪资分析 API ============
+  router.get('/salary_analysis', (_req, res) => {
+    try {
+      const salaries = db.findAll('salaries');
+      const employees = db.findAll('employees');
+      const deptMap: Record<string, any> = {};
+      employees.forEach((e: any) => { deptMap[e.id] = e.department; });
+      // Group by department
+      const grouped: Record<string, { dept: string; total: number; count: number; highest: number; lowest: number }> = {};
+      salaries.forEach((s: any) => {
+        const dept = deptMap[s.employeeId] || '未知部门';
+        const gross = s.grossPay || s.baseSalary || 0;
+        if (!grouped[dept]) grouped[dept] = { dept, total: 0, count: 0, highest: 0, lowest: Infinity };
+        grouped[dept].total += gross;
+        grouped[dept].count++;
+        if (gross > grouped[dept].highest) grouped[dept].highest = gross;
+        if (gross < grouped[dept].lowest) grouped[dept].lowest = gross;
+      });
+      const results = Object.values(grouped).map(g => ({
+        ...g, avgSalary: g.count > 0 ? Math.round(g.total / g.count) : 0,
+        lowest: g.lowest === Infinity ? 0 : g.lowest,
+      }));
+      res.json({ results });
+    } catch (e: any) {
+      res.json({ results: [], error: e.message });
+    }
+  });
+
   // ============ 原有 CRUD API ============
   
   router.get('/:table', (req, res) => {
@@ -260,31 +343,33 @@ function apiRouter() {
   router.post('/:table', (req, res) => {
     const { table } = req.params;
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
-    const data = req.body;
-    if (!data.id) data.id = `${table.slice(0,3)}_${Date.now()}`;
-    // Don't force createdAt - let tables with timestamp handle their own field
-    if (!data.createdAt && !data.timestamp) data.createdAt = new Date().toISOString();
-    // Remove fields that may not exist in target table
-    const safeData = { ...data };
-    delete safeData.createdAt;
-    delete safeData.timestamp;
-    // Check if table has createdAt or timestamp column
+    const rawBody = req.body;
+    if (!rawBody.id) rawBody.id = `${table.slice(0,3)}_${Date.now()}`;
+    // Only include fields that exist in the target table
+    let data: Record<string, any> = { ...rawBody };
     try {
       const tableInfo = db.query(`PRAGMA table_info(${table})`);
       const cols = tableInfo.map((c: any) => c.name);
-      if (cols.includes('createdAt')) safeData.createdAt = data.createdAt || new Date().toISOString();
-      if (cols.includes('timestamp')) safeData.timestamp = data.timestamp || new Date().toISOString();
-      if (!cols.includes('createdAt')) delete safeData.createdAt;
-      if (!cols.includes('timestamp')) delete safeData.timestamp;
+      // Filter out fields not in table, add timestamps if columns exist
+      data = Object.fromEntries(Object.entries(data).filter(([k]) => cols.includes(k)));
+      if (cols.includes('createdAt') && !data.createdAt) data.createdAt = new Date().toISOString();
+      if (cols.includes('updatedAt')) data.updatedAt = new Date().toISOString();
     } catch {}
-    Object.assign(data, safeData);
     res.json(db.insert(table, data));
   });
 
   router.put('/:table/:id', (req, res) => {
     const { table, id } = req.params;
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
-    res.json(db.update(table, id, req.body));
+    // Only update fields that exist in the target table
+    let data: Record<string, any> = { ...req.body };
+    try {
+      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const cols = tableInfo.map((c: any) => c.name);
+      data = Object.fromEntries(Object.entries(data).filter(([k]) => cols.includes(k)));
+      if (cols.includes('updatedAt')) data.updatedAt = new Date().toISOString();
+    } catch {}
+    res.json(db.update(table, id, data));
   });
 
   router.delete('/:table/:id', (req, res) => {

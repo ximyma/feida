@@ -5,7 +5,7 @@ import { fieldToLabel } from '@/utils/fieldLabels';
 // 类型定义
 // ============================================================
 
-type DemandStatus = 'draft' | 'pending' | 'published' | 'paused' | 'completed';
+type DemandStatus = 'draft' | 'pending' | 'published' | 'paused' | 'completed' | 'active';
 type CandidateStatus = 'new' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
 type InterviewStatus = 'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 type TalentTagType = 'talent' | 'blacklist';
@@ -14,17 +14,24 @@ interface RecruitmentDemand {
   id: string;
   title: string;
   department: string;
-  count: number;
-  urgency: 'low' | 'medium' | 'high';
+  headcount: number;       // DB field (was: count)
+  filledCount?: number;    // DB field
+  priority: 'low' | 'normal' | 'high';  // DB field (was: urgency)
+  salaryRange?: string;    // DB field (was: salaryMin/salaryMax)
+  workLocation?: string;   // DB field (was: deadline)
+  description?: string;
+  requirements?: string;
+  employmentType?: string; // DB field
+  recruiterId?: string;    // DB field (was: manager)
+  status: DemandStatus;
+  createdAt: string;
+  // Computed/virtual fields for UI convenience
+  count?: number;          // alias for headcount
+  urgency?: 'low' | 'medium' | 'high';  // mapped from priority
   salaryMin?: number;
   salaryMax?: number;
   deadline?: string;
-  description?: string;
-  requirements?: string;
   manager?: string;
-  status: DemandStatus;
-  createdAt: string;
-  publishedAt?: string;
 }
 
 interface Candidate {
@@ -32,18 +39,31 @@ interface Candidate {
   name: string;
   phone: string;
   email: string;
+  gender?: string;
+  age?: number;
   positionId?: string;
-  positionName: string;
+  positionTitle: string;   // DB field (was: positionName)
   source: string;
   status: CandidateStatus;
   resumeUrl?: string;
   interviewDate?: string;
+  interviewResult?: string;
+  offerStatus?: string;
+  testScore?: number;
+  interviewFeedback?: string;
   education?: string;
-  workYears?: number;
+  major?: string;
   currentCompany?: string;
   currentPosition?: string;
-  skills?: string;
+  expectedSalary?: string;
+  tags?: string;           // DB: JSON string
+  blacklisted?: number;    // DB field
+  remark?: string;
   createdAt: string;
+  // UI convenience
+  positionName?: string;   // alias for positionTitle
+  workYears?: number;
+  skills?: string;
 }
 
 interface Talent {
@@ -51,13 +71,18 @@ interface Talent {
   name: string;
   phone: string;
   email: string;
+  gender?: string;
+  age?: number;
   education?: string;
-  workYears?: number;
+  major?: string;
   currentPosition?: string;
   currentCompany?: string;
+  expectedSalary?: string;
+  positionTitle?: string;
   tags: string[];
   isBlacklist: boolean;
   source?: string;
+  remark?: string;
   createdAt: string;
 }
 
@@ -72,16 +97,27 @@ interface Interview {
   id: string;
   candidateId: string;
   candidateName: string;
-  positionName: string;
-  interviewer?: string;
-  scheduledAt?: string;
-  method: 'onsite' | 'video';
+  positionId?: string;
+  positionTitle: string;     // DB field (was: positionName)
+  interviewRound?: number;   // DB field
+  interviewerId?: string;
+  interviewerName?: string;  // DB field (was: interviewer)
+  interviewDate?: string;    // DB field
+  interviewTime?: string;    // DB field
+  interviewType: 'onsite' | 'video' | 'phone';  // DB field (was: method)
   location?: string;
-  videoLink?: string;
   status: InterviewStatus;
-  evaluation?: string;
+  result?: string;           // DB field
   score?: number;
+  feedback?: string;         // DB field (was: evaluation)
   createdAt: string;
+  // UI convenience
+  positionName?: string;
+  interviewer?: string;      // alias for interviewerName
+  scheduledAt?: string;      // derived from interviewDate + interviewTime
+  method?: 'onsite' | 'video';  // alias for interviewType
+  evaluation?: string;       // alias for feedback
+  videoLink?: string;
 }
 
 interface EmailTemplate {
@@ -124,6 +160,7 @@ const DEMAND_STATUS_MAP: Record<DemandStatus, { label: string; color: string; bg
   published: { label: '已发布',   color: 'text-green-700',   bg: 'bg-green-100' },
   paused:    { label: '已暂停',   color: 'text-orange-700',  bg: 'bg-orange-100' },
   completed: { label: '已完成',   color: 'text-blue-700',   bg: 'bg-blue-100' },
+  active:    { label: '招聘中',   color: 'text-green-700',   bg: 'bg-green-100' },
 };
 
 const CANDIDATE_STATUS_MAP: Record<CandidateStatus, { label: string; color: string; bg: string }> = {
@@ -479,17 +516,17 @@ function TabDemand({
                 <tr key={d.id} className={`border-b last:border-0 hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
                   <td className="p-3 font-medium">{d.title}</td>
                   <td className="p-3 text-muted-foreground">{d.department || '-'}</td>
-                  <td className="p-3">{d.count}人</td>
+                  <td className="p-3">{d.count || d.headcount}人</td>
                   <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[d.urgency] || 'bg-gray-100 text-gray-600'}`}>
-                      {d.urgency === 'low' ? '普通' : d.urgency === 'medium' ? '紧急' : '非常紧急'}
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[d.urgency || (d.priority === 'normal' ? 'medium' : d.priority)] || 'bg-gray-100 text-gray-600'}`}>
+                      {(d.urgency || (d.priority === 'normal' ? 'medium' : d.priority)) === 'low' ? '普通' : (d.urgency || d.priority) === 'medium' ? '紧急' : '非常紧急'}
                     </span>
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {d.salaryMin && d.salaryMax ? `${d.salaryMin}k-${d.salaryMax}k` : '-'}
+                    {d.salaryRange || (d.salaryMin && d.salaryMax ? `${d.salaryMin}k-${d.salaryMax}k` : '-')}
                   </td>
-                  <td className="p-3 text-muted-foreground">{d.manager || '-'}</td>
-                  <td className="p-3 text-muted-foreground">{d.deadline || '-'}</td>
+                  <td className="p-3 text-muted-foreground">{d.manager || d.recruiterId || '-'}</td>
+                  <td className="p-3 text-muted-foreground">{d.deadline || d.workLocation || '-'}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${DEMAND_STATUS_MAP[d.status]?.bg} ${DEMAND_STATUS_MAP[d.status]?.color}`}>
                       {DEMAND_STATUS_MAP[d.status]?.label}
@@ -547,7 +584,7 @@ function TabDemand({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">招聘人数</span>
-                <span>{qrDemand.count}人</span>
+                <span>{qrDemand.count || qrDemand.headcount}人</span>
               </div>
             </div>
           </div>
@@ -2192,52 +2229,6 @@ const TABS = [
   { key: 'analytics',label: '数据分析', icon: '📊' },
 ];
 
-const MOCK_DEMANDS: RecruitmentDemand[] = [
-  { id: 'd1', title: '前端工程师', department: '技术部', count: 2, urgency: 'high', salaryMin: 20, salaryMax: 35, deadline: '2026-05-01', manager: '张明', status: 'published', description: '负责公司前端开发', requirements: '3年以上经验，熟练React/Vue', createdAt: '2026-04-01' },
-  { id: 'd2', title: '后端工程师', department: '技术部', count: 1, urgency: 'medium', salaryMin: 18, salaryMax: 30, deadline: '2026-05-15', manager: '李华', status: 'published', description: '负责公司后端服务开发', requirements: '熟悉Node.js/Python', createdAt: '2026-04-05' },
-  { id: 'd3', title: '产品经理', department: '产品部', count: 1, urgency: 'low', salaryMin: 15, salaryMax: 25, deadline: '2026-06-01', manager: '王芳', status: 'draft', description: '负责产品规划与设计', requirements: '3年以上产品经验', createdAt: '2026-04-10' },
-];
-
-const MOCK_CANDIDATES: Candidate[] = [
-  { id: 'c1', name: '张三', phone: '13800138001', email: 'zhangsan@example.com', positionName: '前端工程师', source: 'BOSS直聘', status: 'interview', education: '本科', workYears: 4, currentCompany: '字节跳动', currentPosition: '前端开发', skills: 'React,TypeScript,Vite', createdAt: '2026-04-10' },
-  { id: 'c2', name: '李四', phone: '13800138002', email: 'lisi@example.com', positionName: '前端工程师', source: '智联招聘', status: 'new', education: '硕士', workYears: 2, currentCompany: '腾讯', currentPosition: '前端开发', skills: 'Vue,JavaScript', createdAt: '2026-04-12' },
-  { id: 'c3', name: '王五', phone: '13800138003', email: 'wangwu@example.com', positionName: '后端工程师', source: '前程无忧', status: 'offer', education: '本科', workYears: 5, currentCompany: '阿里巴巴', currentPosition: '后端架构师', skills: 'Node.js,Python,Go', createdAt: '2026-04-08' },
-  { id: 'c4', name: '赵六', phone: '13800138004', email: 'zhaoliu@example.com', positionName: '产品经理', source: '内推', status: 'screening', education: '本科', workYears: 3, currentCompany: '美团', currentPosition: '产品经理', skills: 'PRD,Axure,数据分析', createdAt: '2026-04-14' },
-  { id: 'c5', name: '钱七', phone: '13800138005', email: 'qianqi@example.com', positionName: '前端工程师', source: '邮箱解析', status: 'hired', education: '本科', workYears: 6, currentCompany: '百度', currentPosition: '前端leader', skills: 'React,Vue,Angular', createdAt: '2026-04-01' },
-  { id: 'c6', name: '孙八', phone: '13800138006', email: 'sunba@example.com', positionName: '前端工程师', source: 'BOSS直聘', status: 'rejected', education: '大专', workYears: 1, currentCompany: '创业公司', currentPosition: '前端实习', skills: 'HTML,CSS', createdAt: '2026-04-15' },
-];
-
-const MOCK_TALENTS: Talent[] = [
-  { id: 't1', name: '陈九', phone: '13900139001', email: 'chenjiu@example.com', education: '硕士', workYears: 8, currentPosition: '技术总监', currentCompany: '华为', tags: ['技术人才', '管理人才'], isBlacklist: false, source: '猎聘', createdAt: '2026-03-01' },
-  { id: 't2', name: '周十', phone: '13900139002', email: 'zhoushi@example.com', education: '本科', workYears: 5, currentPosition: '资深前端', currentCompany: '京东', tags: ['技术人才'], isBlacklist: false, source: 'BOSS直聘', createdAt: '2026-03-10' },
-  { id: 't3', name: '吴十一', phone: '13900139003', email: 'wushiyi@example.com', education: '本科', workYears: 2, currentPosition: '全栈工程师', currentCompany: '创业公司', tags: ['储备干部'], isBlacklist: false, source: '内推', createdAt: '2026-04-01' },
-  { id: 't4', name: '郑十二', phone: '13900139004', email: 'zhengshier@example.com', education: '本科', workYears: 3, currentPosition: '前端开发', currentCompany: '小型公司', tags: ['不诚信'], isBlacklist: true, source: '其他', createdAt: '2026-03-15' },
-];
-
-const MOCK_TAGS: TalentTag[] = [
-  { id: 'tag1', name: '技术人才', color: 'blue', type: 'talent' },
-  { id: 'tag2', name: '管理人才', color: 'purple', type: 'talent' },
-  { id: 'tag3', name: '储备干部', color: 'green', type: 'talent' },
-  { id: 'tag4', name: '不诚信', color: 'red', type: 'blacklist' },
-  { id: 'tag5', name: '重复投递', color: 'orange', type: 'blacklist' },
-];
-
-const MOCK_INTERVIEWS: Interview[] = [
-  { id: 'i1', candidateId: 'c1', candidateName: '张三', positionName: '前端工程师', interviewer: '张经理', scheduledAt: '2026-04-25T10:00:00', method: 'video', videoLink: 'https://meeting.example.com/abc', status: 'scheduled', createdAt: '2026-04-20' },
-  { id: 'i2', candidateId: 'c2', candidateName: '李四', positionName: '前端工程师', interviewer: '李工', scheduledAt: '2026-04-26T14:00:00', method: 'onsite', location: '会议室A', status: 'scheduled', createdAt: '2026-04-21' },
-];
-
-const MOCK_TEMPLATES: EmailTemplate[] = [
-  { id: 'et1', name: '技术岗面试邀请', type: 'interview_invite', subject: '【飞达科技】前端工程师面试邀请', content: `<p>尊敬的 <strong>{{candidate_name}}</strong>，您好！</p><p>感谢您投递 <strong>{{company_name}}</strong> 的 <strong>{{position}}</strong> 岗位。</p><p><strong>面试时间：</strong>{{interview_time}}</p><p><strong>面试地点/链接：</strong>{{interview_location}}</p><p>请准时参加！</p>`, createdAt: '2026-04-01' },
-  { id: 'et2', name: '录用Offer模板', type: 'offer', subject: '【飞达科技】录用通知 - {{position}}', content: `<p>尊敬的 <strong>{{candidate_name}}</strong>：</p><p>恭喜您通过面试！</p><p><strong>职位：</strong>{{position}}</p><p><strong>薪资：</strong>{{salary}}</p><p><strong>入职日期：</strong>{{start_date}}</p>`, createdAt: '2026-04-05' },
-];
-
-const MOCK_LOGS: EmailLog[] = [
-  { id: 'log1', templateId: 'et1', templateName: '技术岗面试邀请', recipientName: '张三', recipientEmail: 'zhangsan@example.com', status: 'sent', sentAt: '2026-04-20T10:30:00' },
-  { id: 'log2', templateId: 'et1', templateName: '技术岗面试邀请', recipientName: '李四', recipientEmail: 'lisi@example.com', status: 'sent', sentAt: '2026-04-21T09:15:00' },
-  { id: 'log3', templateId: 'et2', templateName: '录用Offer模板', recipientName: '王五', recipientEmail: 'wangwu@example.com', status: 'sent', sentAt: '2026-04-22T11:00:00' },
-];
-
 export default function RecruitmentPage() {
   const [activeTab, setActiveTab] = useState('demand');
   const [loading, setLoading] = useState(true);
@@ -2254,43 +2245,131 @@ export default function RecruitmentPage() {
     loadAllData();
   }, []);
 
+  // Map DB record to UI-friendly RecruitmentDemand
+  const mapDemand = (r: any): RecruitmentDemand => ({
+    ...r,
+    count: r.headcount || r.count,
+    urgency: r.priority === 'normal' ? 'medium' : r.priority === 'low' ? 'low' : 'high',
+    manager: r.recruiterId || r.manager,
+    // Map DB status to UI status
+    status: r.status === 'active' ? 'published' : r.status === 'paused' ? 'paused' : (r.status || 'draft'),
+  });
+
+  // Map DB record to UI-friendly Candidate
+  const mapCandidate = (r: any): Candidate => ({
+    ...r,
+    positionName: r.positionTitle || r.positionName,
+    skills: typeof r.tags === 'string' ? JSON.parse(r.tags || '[]').join(',') : r.skills,
+    workYears: r.age ? r.age - 22 : r.workYears,  // approximate from age
+  });
+
+  // Map DB candidates to Talent (talent pool uses candidates table)
+  const mapTalent = (r: any): Talent => ({
+    id: r.id, name: r.name, phone: r.phone || '', email: r.email || '',
+    gender: r.gender, age: r.age, education: r.education, major: r.major,
+    currentPosition: r.currentPosition, currentCompany: r.currentCompany,
+    expectedSalary: r.expectedSalary, positionTitle: r.positionTitle,
+    tags: typeof r.tags === 'string' ? JSON.parse(r.tags || '[]') : (r.tags || []),
+    isBlacklist: !!r.blacklisted,
+    source: r.source, remark: r.remark, createdAt: r.createdAt,
+  });
+
+  // Map DB record to UI-friendly Interview
+  const mapInterview = (r: any): Interview => ({
+    ...r,
+    positionName: r.positionTitle || r.positionName,
+    interviewer: r.interviewerName || r.interviewer,
+    scheduledAt: r.interviewDate ? `${r.interviewDate}T${r.interviewTime || '00:00'}` : r.scheduledAt,
+    method: r.interviewType === 'phone' ? 'video' : (r.interviewType || r.method),
+    evaluation: r.feedback || r.evaluation,
+    videoLink: r.interviewType === 'video' ? r.location : r.videoLink,
+  });
+
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [dRes, cRes, tRes, tagRes, iRes, tmplRes, logRes] = await Promise.allSettled([
-        fetch('/api/recruitment_demands').then(r => r.json()).catch(() => []),
+      const [dRes, cRes, tagRes, iRes, tmplRes, logRes] = await Promise.allSettled([
+        fetch('/api/recruitment_positions').then(r => r.json()).catch(() => []),
         fetch('/api/candidates').then(r => r.json()).catch(() => []),
-        fetch('/api/talent_pool').then(r => r.json()).catch(() => []),
         fetch('/api/talent_tags').then(r => r.json()).catch(() => []),
         fetch('/api/interviews').then(r => r.json()).catch(() => []),
         fetch('/api/email_templates').then(r => r.json()).catch(() => []),
         fetch('/api/email_logs').then(r => r.json()).catch(() => []),
       ]);
-      setDemands(Array.isArray(dRes.value) && dRes.value.length > 0 ? dRes.value : MOCK_DEMANDS);
-      setCandidates(Array.isArray(cRes.value) && cRes.value.length > 0 ? cRes.value : MOCK_CANDIDATES);
-      setTalents(Array.isArray(tRes.value) && tRes.value.length > 0 ? tRes.value : MOCK_TALENTS);
-      setTags(Array.isArray(tagRes.value) && tagRes.value.length > 0 ? tagRes.value : MOCK_TAGS);
-      setInterviews(Array.isArray(iRes.value) && iRes.value.length > 0 ? iRes.value : MOCK_INTERVIEWS);
-      setTemplates(Array.isArray(tmplRes.value) && tmplRes.value.length > 0 ? tmplRes.value : MOCK_TEMPLATES);
-      setEmailLogs(Array.isArray(logRes.value) && logRes.value.length > 0 ? logRes.value : MOCK_LOGS);
-    } catch {
-      setDemands(MOCK_DEMANDS);
-      setCandidates(MOCK_CANDIDATES);
-      setTalents(MOCK_TALENTS);
-      setTags(MOCK_TAGS);
-      setInterviews(MOCK_INTERVIEWS);
-      setTemplates(MOCK_TEMPLATES);
-      setEmailLogs(MOCK_LOGS);
+      const rawData = (res: PromiseSettledResult<any>) => res.status === 'fulfilled' && Array.isArray(res.value) ? res.value : [];
+      const demandRows = rawData(dRes);
+      const candidateRows = rawData(cRes);
+      const tagRows = rawData(tagRes);
+      const interviewRows = rawData(iRes);
+      const templateRows = rawData(tmplRes);
+      const logRows = rawData(logRes);
+
+      setDemands(demandRows.map(mapDemand));
+      setCandidates(candidateRows.map(mapCandidate));
+      setTalents(candidateRows.map(mapTalent));  // talent pool = candidates
+      setTags(tagRows);
+      setInterviews(interviewRows.map(mapInterview));
+      setTemplates(templateRows);
+      setEmailLogs(logRows);
+    } catch (err) {
+      console.error('Failed to load recruitment data:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Reverse-map UI RecruitmentDemand to DB recruitment_positions fields
+  const unmapDemand = (d: Partial<RecruitmentDemand>): any => {
+    const db: any = { ...d };
+    if (d.count !== undefined) db.headcount = d.count;
+    if (d.urgency !== undefined) db.priority = d.urgency === 'medium' ? 'normal' : d.urgency;
+    if (d.salaryMin !== undefined || d.salaryMax !== undefined) db.salaryRange = `${d.salaryMin || 0}K-${d.salaryMax || 0}K`;
+    if (d.manager !== undefined) db.recruiterId = d.manager;
+    // Map UI status back to DB status
+    if (d.status === 'published') db.status = 'active';
+    else if (d.status === 'paused') db.status = 'paused';
+    // Remove virtual fields that don't exist in DB
+    delete db.count; delete db.urgency; delete db.salaryMin; delete db.salaryMax;
+    delete db.deadline; delete db.manager; delete db.publishedAt;
+    return db;
+  };
+
+  // Reverse-map UI Candidate to DB fields
+  const unmapCandidate = (c: Partial<Candidate>): any => {
+    const db: any = { ...c };
+    if (c.positionName !== undefined) db.positionTitle = c.positionName;
+    if (c.skills !== undefined) db.tags = JSON.stringify(c.skills.split(',').map((s: string) => s.trim()).filter(Boolean));
+    if (c.isBlacklist !== undefined) db.blacklisted = c.isBlacklist ? 1 : 0;
+    delete db.positionName; delete db.skills; delete db.workYears; delete db.isBlacklist;
+    return db;
+  };
+
+  // Reverse-map UI Interview to DB fields
+  const unmapInterview = (i: Partial<Interview>): any => {
+    const db: any = { ...i };
+    if (i.positionName !== undefined) db.positionTitle = i.positionName;
+    if (i.interviewer !== undefined) db.interviewerName = i.interviewer;
+    if (i.method !== undefined) db.interviewType = i.method;
+    if (i.evaluation !== undefined) db.feedback = i.evaluation;
+    if (i.scheduledAt) {
+      const dt = new Date(i.scheduledAt);
+      db.interviewDate = dt.toISOString().slice(0, 10);
+      db.interviewTime = dt.toISOString().slice(11, 16);
+    }
+    delete db.positionName; delete db.interviewer; delete db.method;
+    delete db.evaluation; delete db.scheduledAt; delete db.videoLink;
+    return db;
   };
 
   // API helpers
   const apiSave = async (table: string, data: any, id?: string) => {
     const method = id ? 'PUT' : 'POST';
     const url = id ? `/api/${table}/${id}` : `/api/${table}`;
-    await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`API save error [${table}]:`, err);
+    }
     loadAllData();
   };
 
@@ -2300,7 +2379,8 @@ export default function RecruitmentPage() {
   };
 
   const handlePublishDemand = async (d: RecruitmentDemand) => {
-    await apiSave('recruitment_demands', { ...d, status: 'published', publishedAt: new Date().toISOString() }, d.id);
+    const dbData = unmapDemand({ ...d, status: 'published' });
+    await apiSave('recruitment_positions', dbData, d.id);
   };
 
   const handleBatchStatus = async (ids: string[], status: CandidateStatus) => {
@@ -2308,7 +2388,7 @@ export default function RecruitmentPage() {
   };
 
   const handleInterviewEval = async (id: string, score: number, evaluation: string) => {
-    await apiSave('interviews', { score, evaluation }, id);
+    await apiSave('interviews', { score, feedback: evaluation }, id);
   };
 
   const handleInterviewStatus = async (id: string, status: InterviewStatus) => {
@@ -2316,7 +2396,7 @@ export default function RecruitmentPage() {
   };
 
   const handleMoveBlacklist = async (t: Talent) => {
-    await apiSave('talent_pool', { ...t, isBlacklist: true }, t.id);
+    await apiSave('candidates', { blacklisted: 1, id: t.id }, t.id);
   };
 
   return (
@@ -2378,8 +2458,8 @@ export default function RecruitmentPage() {
         {activeTab === 'demand' && (
           <TabDemand
             data={demands} loading={loading}
-            onSave={d => apiSave('recruitment_demands', d, (d as any).id)}
-            onDelete={id => apiDelete('recruitment_demands', id)}
+            onSave={d => apiSave('recruitment_positions', unmapDemand(d), (d as any).id)}
+            onDelete={id => apiDelete('recruitment_positions', id)}
             onPublish={handlePublishDemand}
             onRefresh={loadAllData}
           />
@@ -2387,7 +2467,7 @@ export default function RecruitmentPage() {
         {activeTab === 'resume' && (
           <TabResume
             data={candidates} loading={loading}
-            onSave={c => apiSave('candidates', c, (c as any).id)}
+            onSave={c => apiSave('candidates', unmapCandidate(c), (c as any).id)}
             onDelete={id => apiDelete('candidates', id)}
             onStatusChange={(id, status) => apiSave('candidates', { status }, id)}
             onBatchAction={handleBatchStatus}
@@ -2397,8 +2477,8 @@ export default function RecruitmentPage() {
         {activeTab === 'talent' && (
           <TabTalentPool
             talentData={talents} tagData={tags} loading={loading}
-            onSave={t => apiSave('talent_pool', t, (t as any).id)}
-            onDelete={id => apiDelete('talent_pool', id)}
+            onSave={t => apiSave('candidates', unmapCandidate({ ...t, positionTitle: t.positionTitle || '', tags: t.tags || [], isBlacklist: t.isBlacklist }), (t as any).id)}
+            onDelete={id => apiDelete('candidates', id)}
             onTagSave={tag => apiSave('talent_tags', tag, (tag as any).id)}
             onTagDelete={id => apiDelete('talent_tags', id)}
             onMoveBlacklist={handleMoveBlacklist}
@@ -2407,7 +2487,7 @@ export default function RecruitmentPage() {
         {activeTab === 'interview' && (
           <TabInterview
             data={interviews} candidateData={candidates} loading={loading}
-            onSave={i => apiSave('interviews', i, (i as any).id)}
+            onSave={i => apiSave('interviews', unmapInterview(i), (i as any).id)}
             onDelete={id => apiDelete('interviews', id)}
             onEvaluation={handleInterviewEval}
             onStatusChange={handleInterviewStatus}
@@ -2437,7 +2517,7 @@ export default function RecruitmentPage() {
           onConfirm={() => {
             const [type, id] = confirmDelete.type.split(':');
             const tableMap: Record<string, string> = {
-              demand: 'recruitment_demands', candidate: 'candidates', talent: 'talent_pool',
+              demand: 'recruitment_positions', candidate: 'candidates', talent: 'candidates',
               tag: 'talent_tags', interview: 'interviews', template: 'email_templates',
             };
             apiDelete(tableMap[type] || type, id);

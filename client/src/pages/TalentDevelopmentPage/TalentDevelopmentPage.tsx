@@ -104,49 +104,51 @@ const quadrantMap: Record<string, { label: string; color: string; desc: string }
   stable: { label: '稳定贡献', color: 'default', desc: '稳定完成工作' },
 };
 
-// ============ 模拟数据 ============
-const generateMockTools = (): AssessmentTool[] => [
-  { id: '1', name: '九型人格测试', type: 'enneagram', description: '了解你的核心性格类型，发现优势与盲点', questionCount: 108, duration: 20, status: 'active' },
-  { id: '2', name: 'MBTI职业性格测试', type: 'mbti', description: '测评你的性格类型，找到适合的职业方向', questionCount: 93, duration: 15, status: 'active' },
-  { id: '3', name: 'PDP性格测试', type: 'pdp', description: '了解你的行为风格：老虎、孔雀、考拉、猫头鹰', questionCount: 60, duration: 10, status: 'active' },
-  { id: '4', name: 'DISC行为风格测试', type: 'disc', description: '识别你的沟通与行为偏好', questionCount: 28, duration: 5, status: 'active' },
-  { id: '5', name: '霍兰德职业兴趣测试', type: 'holland', description: '发现你的职业兴趣类型', questionCount: 90, duration: 12, status: 'inactive' },
-];
+// ============ 数据映射 ============
+// Map DB assessment_tools to UI AssessmentTool
+const mapTool = (r: any): AssessmentTool => ({
+  id: r.id, name: r.name, type: r.type || 'custom',
+  description: r.description || '', questionCount: r.questionCount || 0,
+  duration: r.duration || 0, status: r.isActive ? 'active' : 'inactive',
+});
 
-const generateMockCompetencies = (): Competency[] => [
-  { id: '1', name: '专业知识', category: 'knowledge', level: 5, description: '掌握岗位所需的专业知识', behaviors: ['能独立解决专业问题', '具备行业知识', '持续学习新技术'], weight: 15, assessmentMethod: '笔试+面试' },
-  { id: '2', name: '沟通能力', category: 'skill', level: 5, description: '有效表达与倾听的能力', behaviors: ['表达清晰', '善于倾听', '跨部门沟通'], weight: 10, assessmentMethod: '360度评估' },
-  { id: '3', name: '团队协作', category: 'ability', level: 5, description: '与团队成员有效合作', behaviors: ['乐于分享', '支持队友', '冲突处理'], weight: 12, assessmentMethod: '360度评估' },
-  { id: '4', name: '责任心', category: 'value', level: 5, description: '对工作认真负责', behaviors: ['按时完成任务', '主动承担责任', '追求卓越'], weight: 10, assessmentMethod: '上级评价' },
-  { id: '5', name: '自我认知', category: 'self', level: 5, description: '了解自己的优劣势', behaviors: ['自我反思', '接受反馈', '持续改进'], weight: 8, assessmentMethod: '自评' },
-  { id: '6', name: '成就动机', category: 'motive', level: 5, description: '追求成功的内在动力', behaviors: ['设定目标', '主动挑战', '坚持不懈'], weight: 10, assessmentMethod: '行为观察' },
-];
+// Map DB competency_items to UI Competency (simplified - levels loaded separately)
+const mapCompetency = (r: any): Competency => ({
+  id: r.id, name: r.name, category: r.category || 'skill',
+  level: r.requiredLevel || 5, description: r.description || '',
+  behaviors: r.behavior ? (typeof r.behavior === 'string' ? JSON.parse(r.behavior) : r.behavior) : [],
+  weight: r.weight || 10, assessmentMethod: r.dimension || '评估',
+});
 
-const generateMockModels = (): JobCompetencyModel[] => [
-  { id: '1', positionId: 'pos1', positionName: '高级工程师', status: 'active', competencies: [
-    { competencyId: '1', weight: 20, required: true },
-    { competencyId: '2', weight: 15, required: true },
-    { competencyId: '3', weight: 15, required: true },
-  ]},
-  { id: '2', positionId: 'pos2', positionName: '部门经理', status: 'active', competencies: [
-    { competencyId: '2', weight: 20, required: true },
-    { competencyId: '3', weight: 20, required: true },
-    { competencyId: '4', weight: 15, required: true },
-  ]},
-];
+// Map DB competency_models to UI JobCompetencyModel (items loaded separately)
+const mapModel = (r: any): JobCompetencyModel => ({
+  id: r.id, positionId: r.positionId, positionName: r.positionName || '',
+  status: r.isActive ? 'active' : 'inactive',
+  competencies: [],  // will be populated from model_competencies
+});
 
-const generateMockAssessments = (): TalentAssessment[] => [
-  { id: '1', employeeId: 'EMP0001', employeeName: '张伟', assessmentType: 'mbti', status: 'completed', result: 'INTJ', score: 92, completedAt: '2025-04-20', qrCode: 'assess-001' },
-  { id: '2', employeeId: 'EMP0002', employeeName: '李娜', assessmentType: 'enneagram', status: 'in_progress', qrCode: 'assess-002' },
-  { id: '3', employeeId: 'EMP0003', employeeName: '王芳', assessmentType: 'pdp', status: 'pending', qrCode: 'assess-003' },
-];
+// Map DB assessment_results to UI TalentAssessment
+const mapAssessment = (r: any): TalentAssessment => ({
+  id: r.id, employeeId: r.employeeId, employeeName: r.employeeName || '',
+  assessmentType: r.toolName || r.toolId || '',
+  status: r.completedAt ? 'completed' : 'pending',
+  result: r.result, score: r.score, completedAt: r.completedAt,
+  qrCode: r.id,
+});
 
-const generateMockReviews = (): TalentReview[] => [
-  { id: '1', employeeId: 'EMP0001', employeeName: '张伟', department: '研发部', potential: 85, performance: 90, quadrant: 'star', competencyScores: { '1': 90, '2': 85, '3': 88, '4': 92 }, createdAt: '2025-04-15' },
-  { id: '2', employeeId: 'EMP0002', employeeName: '李娜', department: '市场部', potential: 70, performance: 85, quadrant: 'core', competencyScores: { '1': 80, '2': 88, '3': 82, '4': 85 }, createdAt: '2025-04-15' },
-  { id: '3', employeeId: 'EMP0003', employeeName: '王芳', department: '财务部', potential: 80, performance: 65, quadrant: 'potential', competencyScores: { '1': 75, '2': 70, '3': 72, '4': 68 }, createdAt: '2025-04-15' },
-  { id: '4', employeeId: 'EMP0004', employeeName: '刘洋', department: '人力资源部', potential: 60, performance: 75, quadrant: 'stable', competencyScores: { '1': 72, '2': 75, '3': 70, '4': 73 }, createdAt: '2025-04-15' },
-];
+// Map DB talent_profiles to UI TalentReview
+const mapReview = (r: any): TalentReview => {
+  let perfData: any = {};
+  let compData: any = {};
+  try { perfData = JSON.parse(r.performanceData || '{}'); } catch {}
+  try { compData = JSON.parse(r.competencyData || '{}'); } catch {}
+  return {
+    id: r.id, employeeId: r.employeeId, employeeName: r.employeeName || '',
+    department: r.department || '', potential: perfData.potential || 0,
+    performance: perfData.performance || 0, quadrant: r.talentGrid || 'stable',
+    competencyScores: compData, createdAt: r.updatedAt || r.id,
+  };
+};
 
 export default function TalentDevelopmentPage() {
   const [activeTab, setActiveTab] = useState<string>('tools');
@@ -171,26 +173,36 @@ export default function TalentDevelopmentPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [toolRes, compRes, modelRes, assessRes, reviewRes] = await Promise.allSettled([
-          fetch('/api/assessment_tools'), fetch('/api/competencies'),
-          fetch('/api/job_competency_models'), fetch('/api/talent_assessments'),
-          fetch('/api/talent_reviews'),
+        const [toolRes, compRes, modelRes, assessRes, reviewRes, mcRes] = await Promise.allSettled([
+          fetch('/api/assessment_tools').then(r => r.json()).catch(() => []),
+          fetch('/api/competency_items').then(r => r.json()).catch(() => []),
+          fetch('/api/competency_models').then(r => r.json()).catch(() => []),
+          fetch('/api/assessment_results').then(r => r.json()).catch(() => []),
+          fetch('/api/talent_profiles').then(r => r.json()).catch(() => []),
+          fetch('/api/model_competencies').then(r => r.json()).catch(() => []),
         ]);
-        let [t, c, m, a, r] = [[], [], [], [], []];
-        if (toolRes.status === 'fulfilled' && toolRes.value.ok) { const j = await toolRes.value.json(); if (Array.isArray(j)) t = j; }
-        if (compRes.status === 'fulfilled' && compRes.value.ok) { const j = await compRes.value.json(); if (Array.isArray(j)) c = j; }
-        if (modelRes.status === 'fulfilled' && modelRes.value.ok) { const j = await modelRes.value.json(); if (Array.isArray(j)) m = j; }
-        if (assessRes.status === 'fulfilled' && assessRes.value.ok) { const j = await assessRes.value.json(); if (Array.isArray(j)) a = j; }
-        if (reviewRes.status === 'fulfilled' && reviewRes.value.ok) { const j = await reviewRes.value.json(); if (Array.isArray(j)) r = j; }
-        if (t.length === 0) t = generateMockTools();
-        if (c.length === 0) c = generateMockCompetencies();
-        if (m.length === 0) m = generateMockModels();
-        if (a.length === 0) a = generateMockAssessments();
-        if (r.length === 0) r = generateMockReviews();
-        setTools(t); setCompetencies(c); setModels(m); setAssessments(a); setReviews(r);
-      } catch {
-        setTools(generateMockTools()); setCompetencies(generateMockCompetencies());
-        setModels(generateMockModels()); setAssessments(generateMockAssessments()); setReviews(generateMockReviews());
+        const getData = (res: PromiseSettledResult<any>) => res.status === 'fulfilled' && Array.isArray(res.value) ? res.value : [];
+        const toolRows = getData(toolRes);
+        const compRows = getData(compRes);
+        const modelRows = getData(modelRes);
+        const assessRows = getData(assessRes);
+        const reviewRows = getData(reviewRes);
+        const mcRows = getData(mcRes);
+
+        setTools(toolRows.map(mapTool));
+        setCompetencies(compRows.map(mapCompetency));
+        // Populate model competencies from model_competencies
+        const mappedModels = modelRows.map(mapModel);
+        mappedModels.forEach(m => {
+          m.competencies = mcRows.filter((mc: any) => mc.modelId === m.id).map((mc: any) => ({
+            competencyId: mc.itemId, weight: mc.weight || 0, required: mc.requiredLevel > 0,
+          }));
+        });
+        setModels(mappedModels);
+        setAssessments(assessRows.map(mapAssessment));
+        setReviews(reviewRows.map(mapReview));
+      } catch (err) {
+        console.error('Failed to load talent data:', err);
       }
       setLoading(false);
     };

@@ -297,12 +297,21 @@ export default function SalaryConfigPage() {
     const [results, setResults] = useState<any[]>([]);
     const departments = ['研发部', '销售部', '人事部', '财务部', '行政部'];
     
-    const handleAnalysis = () => {
-      // 模拟分析结果
-      const mockResults = [
-        { dept: analysisConfig.department || '全部', avgSalary: 12580, total: 125800, count: 10, highest: 25000, lowest: 6000 },
-      ];
-      setResults(mockResults);
+    const handleAnalysis = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (analysisConfig.department) params.set('department', analysisConfig.department);
+        if (analysisConfig.month) params.set('month', analysisConfig.month);
+        const res = await fetch(`/api/salary_analysis?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          setResults(Array.isArray(data) ? data : data.results || []);
+        } else {
+          setResults([]);
+        }
+      } catch {
+        setResults([]);
+      }
     };
     
     return (

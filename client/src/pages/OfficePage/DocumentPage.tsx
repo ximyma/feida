@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Popconfirm, message, InputNumber, Switch, Badge
@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   营业中: "green", 休息: "orange", 停用: "default",
   planned: "blue", in_progress: "processing", completed: "green", cancelled: "red",
   full: "red", submitted: "processing", reviewed: "success",
-  accepted: "green", expired: "default", pending: "gold",
+  accepted: "green", expired: "default",
 };
 
 interface IRecord { id: string; [k: string]: any }
@@ -60,95 +60,54 @@ export default function 文档管理Page() {
       const vals = await form.validateFields();
       const url = editing ? `/api/${TABLE}/${editing.id}` : `/api/${TABLE}`;
       const method = editing ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(vals)
-      });
-      if (res.ok) {
-        message.success(editing ? "修改成功" : "新增成功");
-        setModalOpen(false);
-        fetchData();
-      } else { message.error("保存失败"); }
-    } catch {}
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(vals) });
+      if (!res.ok) throw new Error("请求失败");
+      message.success(editing ? "更新成功" : "新增成功");
+      setModalOpen(false);
+      fetchData();
+    } catch { message.error("保存失败"); }
   };
 
   const handleDelete = async (id: string) => {
-    await fetch(`/api/${TABLE}/${id}`, { method: "DELETE" });
-    message.success("删除成功");
-    fetchData();
+    try {
+      const res = await fetch(`/api/${TABLE}/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      message.success("删除成功");
+      fetchData();
+    } catch { message.error("删除失败"); }
   };
 
   const columns = [
-      { title: "文档名称", dataIndex: "name", key: "name", ellipsis: true },
-      { title: "文件夹ID", dataIndex: "folderId", key: "folderId", ellipsis: true },
-      { title: "类型", dataIndex: "type", key: "type", ellipsis: true },
-      { title: "大小", dataIndex: "size", key: "size", ellipsis: true },
-      { title: "上传人", dataIndex: "uploaderName", key: "uploaderName", ellipsis: true },
-      { title: "链接", dataIndex: "url", key: "url", ellipsis: true },
-      { title: "上传时间", dataIndex: "createdAt", key: "createdAt", ellipsis: true },
-    {
-      title: "操作", key: "action", fixed: "right", width: 120,
-      render: (_: any, r: IRecord) => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>编辑</Button>
-          <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    { title: "文档名称", dataIndex: "name", width: 200 },
+    { title: "文档编号", dataIndex: "code", width: 120 },
+    { title: "文档类型", dataIndex: "type", width: 100, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
+    { title: "版本", dataIndex: "version", width: 70 },
+    { title: "状态", dataIndex: "status", width: 80, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
+    { title: "所属部门", dataIndex: "department", width: 120 },
+    { title: "创建人", dataIndex: "createdBy", width: 80 },
+    { title: "创建时间", dataIndex: "createdAt", width: 160 },
+    { title: "操作", width: 150, render: (_: any, r: IRecord) => (
+      <Space>
+        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>编辑</Button>
+        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+      </Space>
+    )}
   ];
 
   return (
     <div style={{ padding: 24 }}>
-      <Card
-        title={<span style={{ fontSize: 18, fontWeight: 600 }}>文档管理</span>}
-        extra={<Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>新增</Button>}
-        styles={{ body: { padding: 0 } }}
-      >
-        <div style={{ padding: "16px 16px 0" }}>
-          <Space>
-            <Input.Search
-              placeholder="搜索..." value={search}
-              onChange={e => setSearch(e.target.value)}
-              onSearch={() => setPagination(p => ({ ...p, current: 1 }))}
-              style={{ width: 240 }} allowClear
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => { setPagination(p => ({ ...p, current: 1 })); fetchData(); }}>
-              刷新
-            </Button>
-          </Space>
-        </div>
-
-        <Table
-          columns={columns} dataSource={data} rowKey="id"
-          loading={loading}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (t: number) => `共 ${t} 条`
-          }}
-          onChange={pag => setPagination(p => ({ ...p, current: pag.current || 1, pageSize: pag.pageSize || 20 }))}
-          scroll={{ x: "max-content" }}
-          size="middle"
-          style={{ marginTop: 8 }}
-        />
+      <Card title="文档管理" extra={<Space><Input placeholder="搜索文档名称" allowClear style={{width:200}} onChange={e=>setSearch(e.target.value)} onPressEnter={fetchData}/><Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>新增文档</Button></Space>}>
+        <Table columns={columns} dataSource={data} loading={loading} rowKey="id" pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, showTotal: t => `共 ${t} 条`, onChange: (p, ps) => setPagination(x => ({ ...x, current: p, pageSize: ps || 20 })) }} />
       </Card>
-
-      <Modal
-        title={(editing ? "编辑" : "新增") + "文档管理"}
-        open={modalOpen} onOk={handleSave} onCancel={() => setModalOpen(false)}
-        width={720} okText="保存" cancelText="取消"
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="文档名称" name="name"><Input placeholder="请输入文档名称" /></Form.Item>
-          <Form.Item label="文件夹ID" name="folderId"><Input placeholder="请输入文件夹ID" /></Form.Item>
-          <Form.Item label="类型" name="type"><Input placeholder="请输入类型" /></Form.Item>
-          <Form.Item label="大小" name="size"><Input placeholder="请输入大小" /></Form.Item>
-          <Form.Item label="上传人" name="uploaderName"><Input placeholder="请输入上传人" /></Form.Item>
-          <Form.Item label="链接" name="url"><Input placeholder="请输入链接" /></Form.Item>
-          <Form.Item label="上传时间" name="createdAt"><Input placeholder="请输入上传时间" /></Form.Item>
+      <Modal title={editing ? "编辑文档" : "新增文档"} open={modalOpen} onOk={handleSave} onCancel={() => setModalOpen(false)} width={600}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="name" label="文档名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="code" label="文档编号"><Input /></Form.Item>
+          <Form.Item name="type" label="文档类型"><Input /></Form.Item>
+          <Form.Item name="version" label="版本"><Input /></Form.Item>
+          <Form.Item name="status" label="状态" initialValue="draft"><Select><Select.Option value="draft">草稿</Select.Option><Select.Option value="active">启用</Select.Option><Select.Option value="paused">停用</Select.Option></Select></Form.Item>
+          <Form.Item name="department" label="所属部门"><Input /></Form.Item>
+          <Form.Item name="description" label="文档描述"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
     </div>

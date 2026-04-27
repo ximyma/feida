@@ -2,27 +2,46 @@ import React, { useState, useEffect } from 'react';
 
 const TITLE = 'APP设置';
 
+const DEFAULT_SETTINGS = {
+  appName: '飞达智能HR',
+  appVersion: '1.0.0',
+  logo: '',
+  theme: 'light',
+  primaryColor: '#3b82f6',
+  loginBg: '',
+  enableMobile: true,
+  enableWechat: false,
+  enableDingtalk: false,
+  sessionTimeout: 30,
+  maxLoginAttempts: 5,
+  passwordExpireDays: 90,
+  enableTwoFactor: false,
+  allowSelfRegister: false,
+  watermarkEnabled: true,
+  watermarkText: '飞达智能HR',
+};
+
 export default function AppSettingsPage() {
-  const [settings, setSettings] = useState<any>({
-    appName: '飞达智能HR',
-    appVersion: '1.0.0',
-    logo: '',
-    theme: 'light',
-    primaryColor: '#3b82f6',
-    loginBg: '',
-    enableMobile: true,
-    enableWechat: false,
-    enableDingtalk: false,
-    sessionTimeout: 30,
-    maxLoginAttempts: 5,
-    passwordExpireDays: 90,
-    enableTwoFactor: false,
-    allowSelfRegister: false,
-    watermarkEnabled: true,
-    watermarkText: '飞达智能HR',
-  });
-  const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<any>({ ...DEFAULT_SETTINGS });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // 加载已保存的配置
+  useEffect(() => {
+    fetch('/api/system_config/app_settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data && !data.error && data.value) {
+          try {
+            const saved = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+            setSettings(prev => ({ ...prev, ...saved }));
+          } catch (e) { console.error('Parse app_settings failed:', e); }
+        }
+      })
+      .catch(e => console.error('Load app_settings failed:', e))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleChange = (key: string, value: any) => {
     setSettings((prev: any) => ({ ...prev, [key]: value }));
@@ -30,18 +49,47 @@ export default function AppSettingsPage() {
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
-      await fetch('/api/system_config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: 'app_settings', category: 'app', ...settings, updatedAt: new Date().toISOString() }),
-      });
+      // 检查 app_settings 行是否已存在
+      const checkRes = await fetch('/api/system_config/app_settings');
+      const existing = await checkRes.json();
+      const payload = {
+        id: 'app_settings',
+        key: 'app_settings',
+        label: 'APP设置',
+        value: JSON.stringify(settings),
+        type: 'json',
+        category: 'app',
+        description: '移动端APP与系统全局设置',
+        visible: 0,
+        editable: 1,
+      };
+
+      if (existing && !existing.error) {
+        // 更新已有配置
+        await fetch('/api/system_config/app_settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // 首次创建
+        await fetch('/api/system_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) { console.error(e); }
-    setLoading(false);
+    setSaving(false);
   };
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64">加载中...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -50,8 +98,8 @@ export default function AppSettingsPage() {
           <h2 className="text-lg font-bold">{TITLE}</h2>
           <p className="text-sm text-gray-500">配置移动端APP与系统全局设置</p>
         </div>
-        <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50">
-          {loading ? '保存中...' : '保存设置'}
+        <button onClick={handleSave} disabled={saving || loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50">
+          {saving ? '保存中...' : '保存设置'}
         </button>
       </div>
 

@@ -194,6 +194,48 @@ export class DatabaseService {
         enterpriseAnnuity REAL DEFAULT 0, total REAL DEFAULT 0,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(employeeId, month)
       );
+      CREATE TABLE IF NOT EXISTS insurance_schemes (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, city TEXT NOT NULL,
+        pensionRate REAL DEFAULT 16, medicalRate REAL DEFAULT 10,
+        unemploymentRate REAL DEFAULT 0.5, injuryRate REAL DEFAULT 0.5,
+        maternityRate REAL DEFAULT 0.8, housingRateCompany REAL DEFAULT 7,
+        housingRatePersonal REAL DEFAULT 7, baseMin REAL DEFAULT 5975,
+        baseMax REAL DEFAULT 31014, isActive INTEGER DEFAULT 1,
+        remark TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS insured_employees (
+        id TEXT PRIMARY KEY, employeeId TEXT NOT NULL, employeeName TEXT,
+        department TEXT, idCard TEXT, schemeId TEXT, schemeName TEXT,
+        baseAmount REAL DEFAULT 0, pensionBase REAL DEFAULT 0,
+        medicalBase REAL DEFAULT 0, housingBase REAL DEFAULT 0,
+        startDate TEXT, endDate TEXT,
+        personalPension REAL DEFAULT 0, personalMedical REAL DEFAULT 0,
+        personalUnemployment REAL DEFAULT 0, personalInjury REAL DEFAULT 0,
+        personalMaternity REAL DEFAULT 0, personalHousing REAL DEFAULT 0,
+        companyPension REAL DEFAULT 0, companyMedical REAL DEFAULT 0,
+        companyUnemployment REAL DEFAULT 0, companyInjury REAL DEFAULT 0,
+        companyMaternity REAL DEFAULT 0, companyHousing REAL DEFAULT 0,
+        status TEXT DEFAULT 'insured', remark TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS insurance_changes (
+        id TEXT PRIMARY KEY, employeeId TEXT NOT NULL, employeeName TEXT,
+        department TEXT, changeType TEXT NOT NULL, changeReason TEXT,
+        schemeId TEXT, schemeName TEXT, baseAmount REAL DEFAULT 0,
+        effectiveDate TEXT, handledBy TEXT, handledAt TEXT,
+        status TEXT DEFAULT 'pending', remark TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS insurance_ledger (
+        id TEXT PRIMARY KEY, month TEXT NOT NULL, department TEXT,
+        employeeCount INTEGER DEFAULT 0,
+        pensionTotal REAL DEFAULT 0, medicalTotal REAL DEFAULT 0,
+        unemploymentTotal REAL DEFAULT 0, injuryTotal REAL DEFAULT 0,
+        maternityTotal REAL DEFAULT 0, housingTotal REAL DEFAULT 0,
+        totalPersonal REAL DEFAULT 0, totalCompany REAL DEFAULT 0,
+        grandTotal REAL DEFAULT 0,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
       CREATE TABLE IF NOT EXISTS contracts (
         id TEXT PRIMARY KEY, employeeId TEXT NOT NULL, employeeName TEXT,
         contractType TEXT DEFAULT 'fixed', startDate TEXT, endDate TEXT,
@@ -573,6 +615,93 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_visitors_date ON visitors(visitTime);
       CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status);
       CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+      -- 统计报表模块
+      CREATE TABLE IF NOT EXISTS report_definitions (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+        category TEXT DEFAULT 'custom',
+        tableName TEXT, chartType TEXT DEFAULT 'table',
+        xField TEXT, yFields TEXT DEFAULT '[]',
+        filters TEXT DEFAULT '[]',
+        fields TEXT DEFAULT '[]',
+        config TEXT DEFAULT '{}',
+        isBuiltIn INTEGER DEFAULT 0,
+        createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS data_sources (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+        type TEXT DEFAULT 'internal',
+        tableName TEXT, filePath TEXT, apiUrl TEXT, apiHeaders TEXT DEFAULT '{}',
+        fields TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'connected',
+        lastTestedAt TEXT, config TEXT DEFAULT '{}',
+        createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS report_configs (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
+        configKey TEXT UNIQUE NOT NULL, configValue TEXT,
+        description TEXT, sortOrder INTEGER DEFAULT 0,
+        updatedBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_report_cat ON report_definitions(category);
+      CREATE INDEX IF NOT EXISTS idx_ds_type ON data_sources(type);
+            CREATE INDEX IF NOT EXISTS idx_cfg_cat ON report_configs(category);
+      CREATE TABLE IF NOT EXISTS workflow_templates (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
+        description TEXT, steps TEXT DEFAULT '[]', isActive INTEGER DEFAULT 1,
+        createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS meeting_rooms (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, capacity INTEGER DEFAULT 10,
+        location TEXT, equipment TEXT DEFAULT '[]', status TEXT DEFAULT 'available',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS meetings (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, roomId TEXT NOT NULL,
+        organizer TEXT, organizerId TEXT, startTime TEXT, endTime TEXT,
+        participants TEXT DEFAULT '[]', description TEXT, status TEXT DEFAULT 'scheduled',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS office_supplies (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT,
+        stock INTEGER DEFAULT 0, unit TEXT, price REAL DEFAULT 0,
+        safetyStock INTEGER DEFAULT 10, supplier TEXT, location TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS supply_requests (
+        id TEXT PRIMARY KEY, supplyId TEXT NOT NULL, supplyName TEXT,
+        quantity INTEGER DEFAULT 1, requesterId TEXT, requesterName TEXT,
+        purpose TEXT, pickupTime TEXT, status TEXT DEFAULT 'pending',
+        approver TEXT, approvedAt TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS talent_tags (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT DEFAULT 'blue',
+        type TEXT DEFAULT 'talent', description TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
+        subject TEXT, content TEXT, variables TEXT DEFAULT '[]',
+        isActive INTEGER DEFAULT 1, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id TEXT PRIMARY KEY, templateId TEXT, templateName TEXT,
+        recipientName TEXT, recipientEmail TEXT, subject TEXT,
+        status TEXT DEFAULT 'pending', sentAt TEXT, error TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS training_classes (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, planId TEXT,
+        instructor TEXT, startDate TEXT, endDate TEXT,
+        location TEXT, capacity INTEGER DEFAULT 30, enrolledCount INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'upcoming', qrCode TEXT, description TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS assessment_templates (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, applicableCourse TEXT,
+        questionTypes TEXT DEFAULT '[]', totalScore INTEGER DEFAULT 100,
+        passingScore INTEGER DEFAULT 60, isActive INTEGER DEFAULT 1,
+        questions TEXT DEFAULT '[]', createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   }
 
@@ -989,6 +1118,219 @@ export class DatabaseService {
       log.targetType || null, log.targetId || null, log.detail || null, log.ip || null, log.userAgent || null,
       new Date().toISOString()
     );
+  }
+
+  // ============ 统计分析数据 ============
+  getStatistics(): any {
+    const now = new Date();
+    const currentYear = now.getFullYear().toString();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const today = now.toISOString().slice(0, 10);
+
+    // 1. 员工相关统计
+    const totalEmployees = (this.db.prepare('SELECT COUNT(*) as c FROM employees').get() as any).c;
+    const activeEmployees = (this.db.prepare("SELECT COUNT(*) as c FROM employees WHERE status = 'active'").get() as any).c;
+
+    // 部门人员分布
+    const deptDistribution = this.db.prepare(
+      "SELECT department as name, COUNT(*) as value FROM employees WHERE status='active' GROUP BY department ORDER BY value DESC"
+    ).all() as { name: string; value: number }[];
+
+    // 学历分布
+    const eduDistribution = this.db.prepare(
+      "SELECT education as name, COUNT(*) as value FROM employees WHERE status='active' AND education IS NOT NULL AND education!='' GROUP BY education ORDER BY value DESC"
+    ).all() as { name: string; value: number }[];
+
+    // 性别分布
+    const genderDistribution = this.db.prepare(
+      "SELECT gender as name, COUNT(*) as value FROM employees WHERE status='active' AND gender IS NOT NULL AND gender!='' GROUP BY gender"
+    ).all() as { name: string; value: number }[];
+
+    // 司龄分布
+    const tenureDist = this.db.prepare("SELECT hireDate FROM employees WHERE status='active' AND hireDate IS NOT NULL").all() as { hireDate: string }[];
+    const tenureDistribution = [
+      { name: '1年以下', value: tenureDist.filter(e => {
+        const years = (now.getTime() - new Date(e.hireDate).getTime()) / (365.25 * 86400000);
+        return years < 1;
+      }).length },
+      { name: '1-3年', value: tenureDist.filter(e => {
+        const years = (now.getTime() - new Date(e.hireDate).getTime()) / (365.25 * 86400000);
+        return years >= 1 && years < 3;
+      }).length },
+      { name: '3-5年', value: tenureDist.filter(e => {
+        const years = (now.getTime() - new Date(e.hireDate).getTime()) / (365.25 * 86400000);
+        return years >= 3 && years < 5;
+      }).length },
+      { name: '5-10年', value: tenureDist.filter(e => {
+        const years = (now.getTime() - new Date(e.hireDate).getTime()) / (365.25 * 86400000);
+        return years >= 5 && years < 10;
+      }).length },
+      { name: '10年以上', value: tenureDist.filter(e => {
+        const years = (now.getTime() - new Date(e.hireDate).getTime()) / (365.25 * 86400000);
+        return years >= 10;
+      }).length },
+    ].filter(d => d.value > 0);
+
+    // 入职趋势（月度）
+    const hireTrendData = this.db.prepare(
+      `SELECT strftime('%Y-%m', hireDate) as month, COUNT(*) as value
+       FROM employees WHERE hireDate IS NOT NULL
+       GROUP BY month ORDER BY month DESC LIMIT 12`
+    ).all() as { month: string; value: number }[];
+
+    // 2. 考勤统计
+    const monthAttendance = this.db.prepare(
+      'SELECT status as name, COUNT(*) as value FROM attendance_records WHERE date LIKE ? GROUP BY status'
+    ).all(currentMonth + '%') as { name: string; value: number }[];
+
+    // 月度考勤趋势（近6月）
+    const attendanceTrendData = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = d.toISOString().slice(0, 7);
+      const normal = (this.db.prepare("SELECT COUNT(*) as c FROM attendance_records WHERE date LIKE ? AND (status='正常' OR status='normal')").get(m + '%') as any).c;
+      const late = (this.db.prepare("SELECT COUNT(*) as c FROM attendance_records WHERE date LIKE ? AND (status='迟到' OR status='late' OR status LIKE '%迟到%')").get(m + '%') as any).c;
+      const absent = (this.db.prepare("SELECT COUNT(*) as c FROM attendance_records WHERE date LIKE ? AND (status='缺勤' OR status='absent' OR isRestDay=1)").get(m + '%') as any).c;
+      attendanceTrendData.push({ month: m, normal, late, absent });
+    }
+
+    // 今日考勤
+    const todayAttendanceCount = (this.db.prepare('SELECT COUNT(*) as c FROM attendance_records WHERE date = ?').get(today) as any).c;
+    const todayLateCount = (this.db.prepare("SELECT COUNT(*) as c FROM attendance_records WHERE date = ? AND lateCount > 0").get(today) as any).c;
+
+    // 3. 薪资统计
+    const salaries = this.db.prepare('SELECT * FROM salaries WHERE month = ?').all(currentMonth) as any[];
+    const salaryStats = {
+      totalGross: salaries.reduce((sum, s) => sum + (s.grossSalary || s.totalSalary || 0), 0),
+      totalNet: salaries.reduce((sum, s) => sum + (s.netSalary || 0), 0),
+      avgGross: salaries.length > 0 ? Math.round(salaries.reduce((sum, s) => sum + (s.grossSalary || s.totalSalary || 0), 0) / salaries.length) : 0,
+      avgNet: salaries.length > 0 ? Math.round(salaries.reduce((sum, s) => sum + (s.netSalary || 0), 0) / salaries.length) : 0,
+      count: salaries.length,
+    };
+
+    // 薪资分布（按档）
+    const allSalaries = this.db.prepare('SELECT netSalary FROM salaries WHERE netSalary > 0').all() as { netSalary: number }[];
+    const salaryDistribution = [
+      { name: '5k以下', value: allSalaries.filter(s => s.netSalary < 5000).length },
+      { name: '5k-10k', value: allSalaries.filter(s => s.netSalary >= 5000 && s.netSalary < 10000).length },
+      { name: '10k-20k', value: allSalaries.filter(s => s.netSalary >= 10000 && s.netSalary < 20000).length },
+      { name: '20k-30k', value: allSalaries.filter(s => s.netSalary >= 20000 && s.netSalary < 30000).length },
+      { name: '30k以上', value: allSalaries.filter(s => s.netSalary >= 30000).length },
+    ].filter(d => d.value > 0);
+
+    // 月度薪资趋势
+    const salaryTrendData = this.db.prepare(
+      'SELECT month as name, SUM(netSalary) as value FROM salaries GROUP BY month ORDER BY month DESC LIMIT 12'
+    ).all() as { name: string; value: number }[];
+
+    // 4. 招聘统计
+    const recruitmentStats = {
+      total: (this.db.prepare('SELECT COUNT(*) as c FROM candidates').get() as any).c,
+      interviewing: (this.db.prepare("SELECT COUNT(*) as c FROM candidates WHERE status = 'interviewing'").get() as any).c,
+      offerExtended: (this.db.prepare("SELECT COUNT(*) as c FROM candidates WHERE status = 'offer_extended'").get() as any).c,
+      offerAccepted: (this.db.prepare("SELECT COUNT(*) as c FROM candidates WHERE status = 'offer_accepted'").get() as any).c,
+    };
+
+    // 招聘来源分布
+    const sourceDistribution = this.db.prepare(
+      "SELECT source as name, COUNT(*) as value FROM candidates WHERE source IS NOT NULL AND source!='' GROUP BY source"
+    ).all() as { name: string; value: number }[];
+
+    // 5. 绩效统计
+    const currentCycle = this.db.prepare("SELECT * FROM performance_cycles WHERE status = 'active' LIMIT 1").get() as any;
+    const performanceStats = {
+      totalCycles: (this.db.prepare('SELECT COUNT(*) as c FROM performance_cycles').get() as any).c,
+      activeCycle: currentCycle?.name || '暂无',
+      totalRecords: (this.db.prepare('SELECT COUNT(*) as c FROM performance_records').get() as any).c,
+      avgScore: 0,
+    };
+    const scores = this.db.prepare('SELECT totalScore FROM performance_records WHERE totalScore > 0').all() as { totalScore: number }[];
+    if (scores.length > 0) {
+      performanceStats.avgScore = Math.round(scores.reduce((sum, s) => sum + s.totalScore, 0) / scores.length * 10) / 10;
+    }
+
+    // 绩效等级分布
+    const gradeDistribution = this.db.prepare(
+      "SELECT grade as name, COUNT(*) as value FROM performance_records WHERE grade IS NOT NULL AND grade!='' GROUP BY grade ORDER BY value DESC"
+    ).all() as { name: string; value: number }[];
+
+    // 6. 请假统计（本年度）
+    const leaveStats = {
+      total: (this.db.prepare('SELECT COUNT(*) as c FROM leave_records WHERE startDate LIKE ?').get(currentYear + '%') as any).c,
+      pending: (this.db.prepare("SELECT COUNT(*) as c FROM leave_records WHERE status = 'pending'").get() as any).c,
+      approved: (this.db.prepare("SELECT COUNT(*) as c FROM leave_records WHERE status = 'approved'").get() as any).c,
+    };
+
+    // 请假类型分布
+    const leaveTypeDistribution = this.db.prepare(
+      'SELECT leaveType as name, COUNT(*) as value FROM leave_records GROUP BY leaveType ORDER BY value DESC'
+    ).all() as { name: string; value: number }[];
+
+    // 7. 合同统计
+    const contractStats = {
+      total: (this.db.prepare('SELECT COUNT(*) as c FROM contracts').get() as any).c,
+      active: (this.db.prepare("SELECT COUNT(*) as c FROM contracts WHERE status = 'active'").get() as any).c,
+      expiringSoon: (this.db.prepare("SELECT COUNT(*) as c FROM contracts WHERE status = 'active' AND date(endDate, '-30 days') <= date('now')").get() as any).c,
+    };
+
+    // 合同类型分布
+    const contractTypeDistribution = this.db.prepare(
+      'SELECT contractType as name, COUNT(*) as value FROM contracts GROUP BY contractType ORDER BY value DESC'
+    ).all() as { name: string; value: number }[];
+
+    // 8. 培训统计
+    const trainingStats = {
+      totalPlans: (this.db.prepare('SELECT COUNT(*) as c FROM training_plans').get() as any).c,
+      totalCourses: (this.db.prepare('SELECT COUNT(*) as c FROM training_courses').get() as any).c,
+      totalRecords: (this.db.prepare('SELECT COUNT(*) as c FROM training_records').get() as any).c,
+      activePlans: (this.db.prepare("SELECT COUNT(*) as c FROM training_plans WHERE status = 'active'").get() as any).c,
+    };
+
+    return {
+      overview: {
+        totalEmployees, activeEmployees,
+        todayAttendanceCount, todayLateCount,
+        salaryStats, recruitmentStats, performanceStats, leaveStats, contractStats, trainingStats,
+      },
+      deptDistribution, eduDistribution, genderDistribution, tenureDistribution,
+      hireTrendData: hireTrendData.reverse(),
+      monthAttendance, attendanceTrendData,
+      salaryDistribution, salaryTrendData: salaryTrendData.reverse(),
+      sourceDistribution, gradeDistribution,
+      leaveTypeDistribution, contractTypeDistribution,
+    };
+  }
+
+  // 报表配置 CRUD
+  getReportConfigs(): any[] {
+    return this.db.prepare('SELECT * FROM report_configs ORDER BY category, sortOrder').all();
+  }
+
+  getDataSources(): any[] {
+    return this.db.prepare('SELECT * FROM data_sources ORDER BY createdAt DESC').all();
+  }
+
+  getReportDefinitions(): any[] {
+    return this.db.prepare('SELECT * FROM report_definitions ORDER BY isBuiltIn DESC, updatedAt DESC').all();
+  }
+
+  testDataSourceConnection(id: string): any {
+    const ds = this.db.prepare('SELECT * FROM data_sources WHERE id = ?').get(id) as any;
+    if (!ds) return { success: false, message: '数据源不存在' };
+    if (ds.type === 'internal') {
+      // 测试内部数据库连接
+      try {
+        const tableInfo = this.db.prepare(`PRAGMA table_info(${ds.tableName})`).all();
+        if (tableInfo && tableInfo.length > 0) {
+          this.db.prepare('UPDATE data_sources SET status=?, lastTestedAt=? WHERE id=?').run('connected', new Date().toISOString(), id);
+          return { success: true, message: '连接成功，字段数：' + tableInfo.length, fields: tableInfo };
+        }
+      } catch (e: any) {
+        this.db.prepare('UPDATE data_sources SET status=? WHERE id=?').run('error', id);
+        return { success: false, message: '连接失败：' + e.message };
+      }
+    }
+    return { success: true, message: '数据源配置已保存' };
   }
 
   getDashboardStats(): any {

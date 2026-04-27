@@ -1,37 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Table, Button, Modal, Form, Input, Select, DatePicker,
-  InputNumber, Tag, Space, Popconfirm, message, Tabs, Statistic,
-  Row, Col, Divider, Upload, Checkbox, Descriptions, Alert, Typography
+  Card, Table, Button, Modal, Form, Input, Select, InputNumber,
+  Tag, Space, Popconfirm, message, Tabs, Statistic,
+  Row, Col, Divider, Alert, Descriptions, Checkbox
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined,
-  DownloadOutlined, SearchOutlined, ExclamationCircleOutlined,
-  SafetyCertificateOutlined, TeamOutlined, BankOutlined, FileTextOutlined,
-  BarChartOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined
+  PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined,
+  SafetyCertificateOutlined, TeamOutlined, BankOutlined,
+  SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
-import type { UploadProps } from 'antd';
 
-const { Text, Title } = Typography;
-const { RangePicker } = DatePicker;
-const { TextArea } = Input;
 const { Option } = Select;
+const { TextArea } = Input;
 const { confirm } = Modal;
+const { Text } = { Text: (props: any) => <span {...props} /> };
 
-// ============ 类型定义 ============
+// ============ 与 DB 表字段完全对应 ============
 interface InsuranceScheme {
   id: string;
   name: string;
   city: string;
-  socialRatePersonal: number;
-  socialRateCompany: number;
-  housingRatePersonal: number;
-  housingRateCompany: number;
   pensionRate: number;
   medicalRate: number;
   unemploymentRate: number;
   injuryRate: number;
   maternityRate: number;
+  housingRateCompany: number;
+  housingRatePersonal: number;
   baseMin: number;
   baseMax: number;
   isActive: number;
@@ -43,7 +38,7 @@ interface InsuredEmployee {
   employeeId: string;
   employeeName: string;
   department: string;
-  idCard: string;
+  idCard?: string;
   schemeId: string;
   schemeName: string;
   baseAmount: number;
@@ -79,8 +74,8 @@ interface ChangeRecord {
   schemeName: string;
   baseAmount: number;
   effectiveDate: string;
-  handledBy: string;
-  handledAt: string;
+  handledBy?: string;
+  handledAt?: string;
   status: 'pending' | 'approved' | 'rejected';
   remark?: string;
 }
@@ -90,14 +85,14 @@ interface LedgerEntry {
   month: string;
   department: string;
   employeeCount: number;
-  totalPersonal: number;
-  totalCompany: number;
   pensionTotal: number;
   medicalTotal: number;
   unemploymentTotal: number;
   injuryTotal: number;
   maternityTotal: number;
   housingTotal: number;
+  totalPersonal: number;
+  totalCompany: number;
   grandTotal: number;
 }
 
@@ -114,8 +109,7 @@ const changeTypeMap: Record<string, { label: string; color: string }> = {
 
 const changeReasonOptions = [
   '新入职参保', '转正参保', '实习转正', '跨部门调动',
-  '离职减员', '退休减员', '试用期内离职', '停薪留职',
-  '住院生育', '其他'
+  '离职减员', '退休减员', '试用期内离职', '停薪留职', '其他'
 ];
 
 const changeStatusMap: Record<string, { label: string; color: string }> = {
@@ -124,71 +118,16 @@ const changeStatusMap: Record<string, { label: string; color: string }> = {
   rejected: { label: '已驳回', color: 'red' },
 };
 
-// ============ 模拟数据 ============
-const generateMockSchemes = (): InsuranceScheme[] => [
-  { id: '1', name: '上海市标准社保方案', city: '上海市', socialRatePersonal: 10.5, socialRateCompany: 26.0, housingRatePersonal: 7.0, housingRateCompany: 7.0, pensionRate: 16, medicalRate: 10, unemploymentRate: 0.5, injuryRate: 0.5, maternityRate: 0.8, baseMin: 5975, baseMax: 31014, isActive: 1, remark: '上海市城镇职工社保标准' },
-  { id: '2', name: '深圳市标准社保方案', city: '深圳市', socialRatePersonal: 9.64, socialRateCompany: 21.36, housingRatePersonal: 5.0, housingRateCompany: 5.0, pensionRate: 14, medicalRate: 5.5, unemploymentRate: 0.5, injuryRate: 0.56, maternityRate: 0.0, baseMin: 2360, baseMax: 26421, isActive: 1, remark: '深圳市五险一金标准' },
-  { id: '3', name: '广州市标准社保方案', city: '广州市', socialRatePersonal: 9.45, socialRateCompany: 23.85, housingRatePersonal: 8.0, housingRateCompany: 8.0, pensionRate: 14, medicalRate: 5.5, unemploymentRate: 0.2, injuryRate: 0.2, maternityRate: 0.85, baseMin: 2300, baseMax: 26421, isActive: 0, remark: '广州市城镇职工社保标准' },
-];
-
-const generateMockInsured = (): InsuredEmployee[] => {
-  const names = ['张伟', '李娜', '王芳', '刘洋', '陈明', '杨丽', '赵强', '黄敏', '周杰', '吴婷', '徐磊', '孙燕', '马超', '朱琳', '胡鹏', '郭倩', '林峰', '何雪', '高建', '罗颖'];
-  const depts = ['研发部', '市场部', '财务部', '人力资源部', '行政部', '产品部'];
-  const schemes = generateMockSchemes();
-  const statuses: InsuredEmployee['status'][] = ['insured', 'insured', 'insured', 'suspended', 'cancelled'];
-  return names.map((name, i) => {
-    const scheme = schemes[i % 3];
-    const base = 8000 + Math.floor(Math.random() * 15000);
-    const companyRates = { pension: scheme.pensionRate, medical: scheme.medicalRate, unemployment: scheme.unemploymentRate, injury: scheme.injuryRate, maternity: scheme.maternityRate, housing: scheme.housingRateCompany };
-    const personalRates = { pension: scheme.pensionRate, medical: scheme.medicalRate, unemployment: scheme.unemploymentRate, injury: 0, maternity: 0, housing: scheme.housingRatePersonal };
-    const toFixed2 = (v: number) => +(v).toFixed(2);
-    return {
-      id: String(i + 1), employeeId: `EMP${String(1001 + i).padStart(4, '0')}`, employeeName: name,
-      department: depts[i % depts.length], idCard: `310101199${String(80 + i % 20)}XXXX${String(1000 + i).padStart(4, '0')}`,
-      schemeId: scheme.id, schemeName: scheme.name, baseAmount: base, pensionBase: base, medicalBase: base, housingBase: base,
-      startDate: new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1).toISOString().slice(0, 10),
-      status: statuses[i % statuses.length],
-      personalPension: toFixed2(base * personalRates.pension / 100), personalMedical: toFixed2(base * personalRates.medical / 100),
-      personalUnemployment: toFixed2(base * personalRates.unemployment / 100), personalInjury: 0, personalMaternity: 0,
-      personalHousing: toFixed2(base * personalRates.housing / 100),
-      companyPension: toFixed2(base * companyRates.pension / 100), companyMedical: toFixed2(base * companyRates.medical / 100),
-      companyUnemployment: toFixed2(base * companyRates.unemployment / 100), companyInjury: toFixed2(base * companyRates.injury / 100),
-      companyMaternity: toFixed2(base * companyRates.maternity / 100), companyHousing: toFixed2(base * companyRates.housing / 100),
-    };
-  });
-};
-
-const generateMockLedger = (): LedgerEntry[] => {
-  const months = ['2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06'];
-  return months.map((month, mi) => {
-    const count = 35 + Math.floor(Math.random() * 20);
-    const pension = Math.round(count * 8000 * 0.16);
-    const medical = Math.round(count * 8000 * 0.10);
-    const unemployment = Math.round(count * 8000 * 0.005);
-    const injury = Math.round(count * 8000 * 0.005);
-    const maternity = Math.round(count * 8000 * 0.008);
-    const housing = Math.round(count * 8000 * 0.12);
-    const total = pension + medical + unemployment + injury + maternity + housing;
-    return { id: String(mi + 1), month, department: '全公司汇总', employeeCount: count, totalPersonal: Math.round(total * 0.4), totalCompany: Math.round(total * 0.6), pensionTotal: pension, medicalTotal: medical, unemploymentTotal: unemployment, injuryTotal: injury, maternityTotal: maternity, housingTotal: housing, grandTotal: total };
-  });
-};
-
-const generateMockChanges = (): ChangeRecord[] => [
-  { id: '1', employeeId: 'EMP1012', employeeName: '周新', department: '研发部', changeType: 'add', changeReason: '新入职参保', schemeId: '1', schemeName: '上海市标准社保方案', baseAmount: 12000, effectiveDate: '2025-01-15', handledBy: '李婷', handledAt: '2025-01-14', status: 'approved' },
-  { id: '2', employeeId: 'EMP1013', employeeName: '吴晓', department: '市场部', changeType: 'add', changeReason: '转正参保', schemeId: '1', schemeName: '上海市标准社保方案', baseAmount: 10000, effectiveDate: '2025-02-01', handledBy: '李婷', handledAt: '2025-01-30', status: 'approved' },
-  { id: '3', employeeId: 'EMP1001', employeeName: '张伟', department: '研发部', changeType: 'reduce', changeReason: '离职减员', schemeId: '1', schemeName: '上海市标准社保方案', baseAmount: 15000, effectiveDate: '2025-03-01', handledBy: '李婷', handledAt: '2025-02-28', status: 'pending' },
-  { id: '4', employeeId: 'EMP1014', employeeName: '孙静', department: '财务部', changeType: 'add', changeReason: '新入职参保', schemeId: '2', schemeName: '深圳市标准社保方案', baseAmount: 11000, effectiveDate: '2025-03-15', handledBy: '王芳', handledAt: '2025-03-12', status: 'approved' },
-  { id: '5', employeeId: 'EMP1015', employeeName: '刘强', department: '行政部', changeType: 'reduce', changeReason: '退休减员', schemeId: '1', schemeName: '上海市标准社保方案', baseAmount: 20000, effectiveDate: '2025-02-15', handledBy: '李婷', handledAt: '2025-02-14', status: 'approved' },
-  { id: '6', employeeId: 'EMP1016', employeeName: '王磊', department: '产品部', changeType: 'add', changeReason: '跨部门调动', schemeId: '1', schemeName: '上海市标准社保方案', baseAmount: 9000, effectiveDate: '2025-03-20', handledBy: '王芳', handledAt: '2025-03-18', status: 'pending' },
-];
+const fmt = (n: number) => (n || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
 
 export default function InsurancePage() {
-  const [activeTab, setActiveTab] = useState<string>('scheme');
+  const [activeTab, setActiveTab] = useState('scheme');
   const [schemes, setSchemes] = useState<InsuranceScheme[]>([]);
   const [insuredList, setInsuredList] = useState<InsuredEmployee[]>([]);
   const [changeList, setChangeList] = useState<ChangeRecord[]>([]);
   const [ledgerList, setLedgerList] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [schemeModal, setSchemeModal] = useState(false);
   const [insuredModal, setInsuredModal] = useState(false);
   const [changeModal, setChangeModal] = useState(false);
@@ -196,43 +135,41 @@ export default function InsurancePage() {
   const [selectedEmployee, setSelectedEmployee] = useState<InsuredEmployee | null>(null);
   const [editingScheme, setEditingScheme] = useState<InsuranceScheme | null>(null);
   const [editingInsured, setEditingInsured] = useState<InsuredEmployee | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [changeType, setChangeType] = useState<'add' | 'reduce'>('add');
+
   const [searchText, setSearchText] = useState('');
-  const [schemeFilterCity, setSchemeFilterCity] = useState('');
-  const [changeFilterType, setChangeFilterType] = useState<string>('');
-  const [changeFilterStatus, setChangeFilterStatus] = useState<string>('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [changeFilterType, setChangeFilterType] = useState('');
+  const [changeFilterStatus, setChangeFilterStatus] = useState('');
+
   const [form] = Form.useForm();
   const [insuredForm] = Form.useForm();
   const [changeForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const results = await Promise.allSettled([
-          fetch('/api/insurance_schemes'), fetch('/api/insured_employees'),
-          fetch('/api/insurance_changes'), fetch('/api/insurance_ledger'),
-        ]);
-        let [s, i, c, l] = [[], [], [], []];
-        if (results[0].status === 'fulfilled' && results[0].value.ok) { const j = await results[0].value.json(); if (Array.isArray(j)) s = j; }
-        if (results[1].status === 'fulfilled' && results[1].value.ok) { const j = await results[1].value.json(); if (Array.isArray(j)) i = j; }
-        if (results[2].status === 'fulfilled' && results[2].value.ok) { const j = await results[2].value.json(); if (Array.isArray(j)) c = j; }
-        if (results[3].status === 'fulfilled' && results[3].value.ok) { const j = await results[3].value.json(); if (Array.isArray(j)) l = j; }
-        if (s.length === 0) s = generateMockSchemes();
-        if (i.length === 0) i = generateMockInsured();
-        if (c.length === 0) c = generateMockChanges();
-        if (l.length === 0) l = generateMockLedger();
-        setSchemes(s); setInsuredList(i); setChangeList(c); setLedgerList(l);
-      } catch {
-        setSchemes(generateMockSchemes()); setInsuredList(generateMockInsured());
-        setChangeList(generateMockChanges()); setLedgerList(generateMockLedger());
-      }
-      setLoading(false);
-    };
-    loadData();
-  }, []);
+  // ===== 数据加载 =====
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [s, i, c, l] = await Promise.all([
+        fetch('/api/insurance_schemes').then(r => r.json()).catch(() => []),
+        fetch('/api/insured_employees').then(r => r.json()).catch(() => []),
+        fetch('/api/insurance_changes').then(r => r.json()).catch(() => []),
+        fetch('/api/insurance_ledger').then(r => r.json()).catch(() => []),
+      ]);
+      setSchemes(Array.isArray(s) ? s : []);
+      setInsuredList(Array.isArray(i) ? i : []);
+      setChangeList(Array.isArray(c) ? c : []);
+      setLedgerList(Array.isArray(l) ? l : []);
+    } catch {
+      messageApi.error('加载保险数据失败');
+    }
+    setLoading(false);
+  }, [messageApi]);
 
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // ===== 统计 =====
   const stats = {
     schemeCount: schemes.filter(s => s.isActive).length,
     insuredCount: insuredList.filter(e => e.status === 'insured').length,
@@ -241,36 +178,55 @@ export default function InsurancePage() {
     monthTotal: ledgerList.length > 0 ? ledgerList[ledgerList.length - 1].grandTotal : 0,
   };
 
-  // 方案管理
+  // ===== 方案管理 =====
   const openSchemeModal = (scheme?: InsuranceScheme) => {
     setEditingScheme(scheme || null);
-    if (scheme) form.setFieldsValue(scheme); else form.resetFields();
+    if (scheme) {
+      form.setFieldsValue({ ...scheme, isActive: scheme.isActive === 1 });
+    } else {
+      form.resetFields();
+      form.setFieldsValue({ pensionRate: 8, medicalRate: 2, unemploymentRate: 0.5, injuryRate: 0.26, maternityRate: 0.8, housingRateCompany: 7, housingRatePersonal: 7, baseMin: 5975, baseMax: 31014, isActive: true });
+    }
     setSchemeModal(true);
   };
 
   const saveScheme = async () => {
     try {
       const values = await form.validateFields();
-      if (editingScheme) {
-        setSchemes(prev => prev.map(s => s.id === editingScheme.id ? { ...s, ...values } : s));
-        messageApi.success('方案更新成功');
+      const payload = {
+        ...values,
+        isActive: values.isActive ? 1 : 0,
+        id: editingScheme?.id || `sch_${Date.now()}`,
+      };
+      const url = editingScheme ? `/api/insurance_schemes/${editingScheme.id}` : '/api/insurance_schemes';
+      const method = editingScheme ? 'PUT' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok || res.status === 200) {
+        messageApi.success(editingScheme ? '方案已更新' : '方案已创建');
+        setSchemeModal(false);
+        loadAll();
       } else {
-        setSchemes(prev => [...prev, { ...values, id: String(Date.now()), isActive: 1 } as InsuranceScheme]);
-        messageApi.success('方案创建成功');
+        const e = await res.json();
+        messageApi.error('保存失败: ' + (e.error || ''));
       }
-      setSchemeModal(false);
-    } catch { /* 验证失败 */ }
+    } catch {}
   };
 
-  const deleteScheme = (id: string) => {
-    setSchemes(prev => prev.filter(s => s.id !== id));
+  const deleteScheme = async (id: string) => {
+    await fetch(`/api/insurance_schemes/${id}`, { method: 'DELETE' });
     messageApi.success('方案已删除');
+    loadAll();
   };
 
-  // 参保人员
+  // ===== 参保人员 =====
   const openInsuredModal = (emp?: InsuredEmployee) => {
     setEditingInsured(emp || null);
-    if (emp) insuredForm.setFieldsValue(emp); else insuredForm.resetFields();
+    if (emp) {
+      insuredForm.setFieldsValue(emp);
+    } else {
+      insuredForm.resetFields();
+      insuredForm.setFieldsValue({ startDate: new Date().toISOString().slice(0, 10), baseAmount: 10000 });
+    }
     setInsuredModal(true);
   };
 
@@ -279,47 +235,87 @@ export default function InsurancePage() {
       const values = await insuredForm.validateFields();
       const scheme = schemes.find(s => s.id === values.schemeId);
       if (!scheme) { messageApi.error('请先选择参保方案'); return; }
-      const base = values.baseAmount || 8000;
-      const toFixed2 = (v: number) => +(v).toFixed(2);
-      const record: InsuredEmployee = {
-        ...values, id: editingInsured?.id || String(Date.now()),
-        personalPension: toFixed2(base * scheme.pensionRate / 100),
-        personalMedical: toFixed2(base * scheme.medicalRate / 100),
-        personalUnemployment: toFixed2(base * scheme.unemploymentRate / 100),
-        personalInjury: 0, personalMaternity: 0,
-        personalHousing: toFixed2(base * scheme.housingRatePersonal / 100),
-        companyPension: toFixed2(base * scheme.pensionRate / 100),
-        companyMedical: toFixed2(base * scheme.medicalRate / 100),
-        companyUnemployment: toFixed2(base * scheme.unemploymentRate / 100),
-        companyInjury: toFixed2(base * scheme.injuryRate / 100),
-        companyMaternity: toFixed2(base * scheme.maternityRate / 100),
-        companyHousing: toFixed2(base * scheme.housingRateCompany / 100),
-        status: 'insured', schemeName: scheme.name,
+
+      const base = Number(values.baseAmount) || 10000;
+      const t2 = (v: number) => +(v).toFixed(2);
+
+      const payload = {
+        id: editingInsured?.id || `ie_${Date.now()}`,
+        employeeId: values.employeeId,
+        employeeName: values.employeeName,
+        department: values.department || '',
+        idCard: values.idCard || '',
+        schemeId: values.schemeId,
+        schemeName: scheme.name,
+        baseAmount: base,
+        pensionBase: Number(values.pensionBase) || base,
+        medicalBase: Number(values.medicalBase) || base,
+        housingBase: Number(values.housingBase) || base,
+        startDate: values.startDate,
+        endDate: values.endDate || '',
+        personalPension: t2(base * scheme.pensionRate / 100),
+        personalMedical: t2(base * scheme.medicalRate / 100),
+        personalUnemployment: t2(base * scheme.unemploymentRate / 100),
+        personalInjury: 0,
+        personalMaternity: 0,
+        personalHousing: t2(base * scheme.housingRatePersonal / 100),
+        companyPension: t2(base * scheme.pensionRate / 100),
+        companyMedical: t2(base * scheme.medicalRate / 100),
+        companyUnemployment: t2(base * scheme.unemploymentRate / 100),
+        companyInjury: t2(base * scheme.injuryRate / 100),
+        companyMaternity: t2(base * scheme.maternityRate / 100),
+        companyHousing: t2(base * scheme.housingRateCompany / 100),
+        status: 'insured',
+        remark: values.remark || '',
       };
-      if (editingInsured) setInsuredList(prev => prev.map(e => e.id === editingInsured.id ? record : e));
-      else setInsuredList(prev => [...prev, record]);
-      messageApi.success(editingInsured ? '参保信息已更新' : '参保登记成功');
-      setInsuredModal(false);
-    } catch { /* 验证失败 */ }
+
+      const url = editingInsured ? `/api/insured_employees/${editingInsured.id}` : '/api/insured_employees';
+      const method = editingInsured ? 'PUT' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok || res.status === 200) {
+        messageApi.success(editingInsured ? '参保信息已更新' : '参保登记成功');
+        setInsuredModal(false);
+        loadAll();
+      } else {
+        const e = await res.json();
+        messageApi.error('保存失败: ' + (e.error || ''));
+      }
+    } catch {}
   };
 
-  const handleSuspend = (emp: InsuredEmployee) => {
-    setInsuredList(prev => prev.map(e => e.id === emp.id ? { ...e, status: 'suspended' as const, endDate: new Date().toISOString().slice(0, 10) } : e));
-    messageApi.success(`已暂停 ${emp.employeeName} 的社保`);
+  const handleSuspend = async (emp: InsuredEmployee) => {
+    const res = await fetch(`/api/insured_employees/${emp.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'suspended', endDate: new Date().toISOString().slice(0, 10) }),
+    });
+    if (res.ok) { messageApi.success(`已暂停 ${emp.employeeName} 的社保`); loadAll(); }
+    else { const e = await res.json(); messageApi.error('操作失败: ' + (e.error || '')); }
   };
 
   const handleCancel = (emp: InsuredEmployee) => {
-    confirm({ title: '确认停保', icon: <ExclamationCircleOutlined />, content: `确定要为 ${emp.employeeName} 办理停保吗？`,
-      onOk() {
-        setInsuredList(prev => prev.map(e => e.id === emp.id ? { ...e, status: 'cancelled' as const, endDate: new Date().toISOString().slice(0, 10) } : e));
-        messageApi.success(`已办理 ${emp.employeeName} 停保`);
+    confirm({
+      title: '确认停保', icon: <ExclamationCircleOutlined />,
+      content: `确定要为 ${emp.employeeName} 办理停保吗？`,
+      onOk: async () => {
+        const res = await fetch(`/api/insured_employees/${emp.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'cancelled', endDate: new Date().toISOString().slice(0, 10) }),
+        });
+        if (res.ok) { messageApi.success(`已办理 ${emp.employeeName} 停保`); loadAll(); }
+        else { const e = await res.json(); messageApi.error('操作失败: ' + (e.error || '')); }
       },
     });
   };
 
-  // 增减员
+  // ===== 增减员 =====
   const openChangeModal = (type: 'add' | 'reduce') => {
-    changeForm.setFieldsValue({ changeType: type, handledBy: '当前用户', effectiveDate: new Date().toISOString().slice(0, 10) });
+    setChangeType(type);
+    changeForm.resetFields();
+    changeForm.setFieldsValue({
+      changeType: type,
+      handledBy: '系统管理员',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+    });
     setChangeModal(true);
   };
 
@@ -327,90 +323,84 @@ export default function InsurancePage() {
     try {
       const values = await changeForm.validateFields();
       const scheme = schemes.find(s => s.id === values.schemeId);
-      setChangeList(prev => [...prev, { ...values, id: String(Date.now()), schemeName: scheme?.name || '', handledAt: new Date().toISOString().slice(0, 10), handledBy: '当前用户', status: 'pending' as const }]);
-      messageApi.success('增减员申请已提交');
-      setChangeModal(false);
-    } catch { /* 验证失败 */ }
-  };
-
-  const approveChange = (record: ChangeRecord) => {
-    setChangeList(prev => prev.map(c => c.id === record.id ? { ...c, status: 'approved' as const } : c));
-    if (record.changeType === 'add') {
-      const scheme = schemes.find(s => s.id === record.schemeId);
-      if (scheme) {
-        const base = record.baseAmount;
-        const toFixed2 = (v: number) => +(v).toFixed(2);
-        setInsuredList(prev => [...prev, {
-          id: String(Date.now()), employeeId: record.employeeId, employeeName: record.employeeName, department: record.department,
-          idCard: '', schemeId: record.schemeId, schemeName: record.schemeName, baseAmount: base,
-          pensionBase: base, medicalBase: base, housingBase: base, startDate: record.effectiveDate,
-          personalPension: toFixed2(base * scheme.pensionRate / 100), personalMedical: toFixed2(base * scheme.medicalRate / 100),
-          personalUnemployment: toFixed2(base * scheme.unemploymentRate / 100), personalInjury: 0, personalMaternity: 0,
-          personalHousing: toFixed2(base * scheme.housingRatePersonal / 100),
-          companyPension: toFixed2(base * scheme.pensionRate / 100), companyMedical: toFixed2(base * scheme.medicalRate / 100),
-          companyUnemployment: toFixed2(base * scheme.unemploymentRate / 100), companyInjury: toFixed2(base * scheme.injuryRate / 100),
-          companyMaternity: toFixed2(base * scheme.maternityRate / 100), companyHousing: toFixed2(base * scheme.housingRateCompany / 100),
-          status: 'insured' as const,
-        }]);
+      const payload = {
+        id: `ic_${Date.now()}`,
+        employeeId: values.employeeId,
+        employeeName: values.employeeName,
+        department: values.department || '',
+        changeType: values.changeType,
+        changeReason: values.changeReason,
+        schemeId: values.schemeId,
+        schemeName: scheme?.name || '',
+        baseAmount: Number(values.baseAmount) || 0,
+        effectiveDate: values.effectiveDate,
+        handledBy: values.handledBy || '系统管理员',
+        handledAt: new Date().toISOString().slice(0, 10),
+        status: 'pending',
+        remark: values.remark || '',
+      };
+      const res = await fetch('/api/insurance_changes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok || res.status === 200) {
+        messageApi.success('增减员申请已提交');
+        setChangeModal(false);
+        loadAll();
+      } else {
+        const e = await res.json();
+        messageApi.error('提交失败: ' + (e.error || ''));
       }
-    } else {
-      setInsuredList(prev => prev.map(e => e.employeeId === record.employeeId ? { ...e, status: 'cancelled' as const, endDate: record.effectiveDate } : e));
-    }
-    messageApi.success('增减员申请已批准');
+    } catch {}
   };
 
-  const rejectChange = (id: string) => {
-    setChangeList(prev => prev.map(c => c.id === id ? { ...c, status: 'rejected' as const } : c));
-    messageApi.info('已驳回该申请');
-  };
-
-  const handleBatchAdd = () => {
-    if (selectedRowKeys.length === 0) { messageApi.warning('请先选择参保人员'); return; }
-    const selected = insuredList.filter(e => selectedRowKeys.includes(e.id) && e.status === 'suspended');
-    if (selected.length === 0) { messageApi.warning('选中的记录无可恢复参保'); return; }
-    setInsuredList(prev => prev.map(e => selectedRowKeys.includes(e.id) ? { ...e, status: 'insured' as const } : e));
-    messageApi.success(`已批量恢复 ${selected.length} 人参保`);
-    setSelectedRowKeys([]);
-  };
-
-  const handleBatchReduce = () => {
-    if (selectedRowKeys.length === 0) { messageApi.warning('请先选择参保人员'); return; }
-    confirm({ title: '批量减员确认', icon: <ExclamationCircleOutlined />, content: `确定要为选中的 ${selectedRowKeys.length} 人办理减员吗？`,
-      onOk() {
-        setInsuredList(prev => prev.map(e => selectedRowKeys.includes(e.id) ? { ...e, status: 'cancelled' as const, endDate: new Date().toISOString().slice(0, 10) } : e));
-        messageApi.success(`已批量减员 ${selectedRowKeys.length} 人`);
-        setSelectedRowKeys([]);
-      },
+  const approveChange = async (record: ChangeRecord) => {
+    const res = await fetch(`/api/insurance_changes/${record.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'approved' }),
     });
+    if (res.ok) { messageApi.success('增减员申请已批准'); loadAll(); }
+    else { const e = await res.json(); messageApi.error('操作失败: ' + (e.error || '')); }
   };
 
+  const rejectChange = async (id: string) => {
+    const res = await fetch(`/api/insurance_changes/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'rejected' }),
+    });
+    if (res.ok) { messageApi.info('已驳回该申请'); loadAll(); }
+    else { const e = await res.json(); messageApi.error('操作失败: ' + (e.error || '')); }
+  };
+
+  // ===== 导出 =====
   const exportLedger = () => {
-    const csv = [
-      ['月份', '部门', '参保人数', '个人合计', '单位合计', '养老保险', '医疗保险', '失业保险', '工伤保险', '生育保险', '公积金', '总金额'].join(','),
-      ...ledgerList.map(r => [r.month, r.department, r.employeeCount, r.totalPersonal, r.totalCompany, r.pensionTotal, r.medicalTotal, r.unemploymentTotal, r.injuryTotal, r.maternityTotal, r.housingTotal, r.grandTotal].join(',')),
+    const csv = ['月份,部门,人数,个人合计,单位合计,养老,医疗,失业,工伤,生育,公积金,总金额',
+      ...ledgerList.map(r => `${r.month},${r.department},${r.employeeCount},${r.totalPersonal},${r.totalCompany},${r.pensionTotal},${r.medicalTotal},${r.unemploymentTotal},${r.injuryTotal},${r.maternityTotal},${r.housingTotal},${r.grandTotal}`)
     ].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `社保公积金台账_${new Date().toISOString().slice(0, 7)}.csv`; a.click();
-    URL.revokeObjectURL(url); messageApi.success('台账已导出');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `社保公积金台账_${new Date().toISOString().slice(0, 7)}.csv`; a.click();
+    messageApi.success('台账已导出');
   };
 
-  const exportChangeDetail = () => {
-    const filtered = changeList.filter(c => (!changeFilterType || c.changeType === changeFilterType) && (!changeFilterStatus || c.status === changeFilterStatus));
-    const csv = [
-      ['姓名', '工号', '部门', '类型', '原因', '方案', '基数', '生效日期', '办理人', '办理日期', '状态'].join(','),
-      ...filtered.map(c => [c.employeeName, c.employeeId, c.department, c.changeType === 'add' ? '增员' : '减员', c.changeReason, c.schemeName, c.baseAmount, c.effectiveDate, c.handledBy || '', c.handledAt || '', c.status].join(',')),
+  const exportChanges = () => {
+    const filtered = changeList.filter(c =>
+      (!changeFilterType || c.changeType === changeFilterType) &&
+      (!changeFilterStatus || c.status === changeFilterStatus)
+    );
+    const csv = ['姓名,工号,部门,类型,原因,方案,基数,生效日期,办理人,办理日期,状态',
+      ...filtered.map(c => `${c.employeeName},${c.employeeId},${c.department},${c.changeType==='add'?'增员':'减员'},${c.changeReason},${c.schemeName},${c.baseAmount},${c.effectiveDate},${c.handledBy||''},${c.handledAt||''},${changeStatusMap[c.status]?.label}`)
     ].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `增减员明细_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-    URL.revokeObjectURL(url); messageApi.success('增减员明细已导出');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `增减员明细_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    messageApi.success('增减员明细已导出');
   };
 
+  // ===== 筛选 =====
   const filteredInsured = insuredList.filter(e => {
     if (!searchText) return true;
     const t = searchText.toLowerCase();
-    return e.employeeName.toLowerCase().includes(t) || e.employeeId.toLowerCase().includes(t) || e.department.toLowerCase().includes(t);
+    return (e.employeeName || '').toLowerCase().includes(t) ||
+      (e.employeeId || '').toLowerCase().includes(t) ||
+      (e.department || '').toLowerCase().includes(t);
   });
 
   const filteredChanges = changeList.filter(c => {
@@ -419,28 +409,25 @@ export default function InsurancePage() {
     return true;
   });
 
-  const tabs = [
-    { key: 'scheme', label: '社保公积金方案', icon: <SafetyCertificateOutlined /> },
-    { key: 'insured', label: '参保人员管理', icon: <TeamOutlined /> },
-    { key: 'changes', label: '增减员明细', icon: <SyncOutlined /> },
-    { key: 'ledger', label: '缴纳台账', icon: <BankOutlined /> },
-    { key: 'analysis', label: '数据分析', icon: <BarChartOutlined /> },
-  ];
+  const filteredSchemes = schemes.filter(s =>
+    (!cityFilter || s.city === cityFilter) &&
+    (!searchText || s.name.includes(searchText))
+  );
 
+  // ===== 列定义 =====
   const schemeColumns = [
-    { title: '方案名称', dataIndex: 'name', key: 'name', width: 180 },
+    { title: '方案名称', dataIndex: 'name', key: 'name', width: 200 },
     { title: '城市', dataIndex: 'city', key: 'city', width: 100 },
-    { title: '养老(公司)', dataIndex: 'pensionRate', key: 'pension', width: 90, render: (v: number) => `${v}%` },
-    { title: '医疗(公司)', dataIndex: 'medicalRate', key: 'medical', width: 90, render: (v: number) => `${v}%` },
-    { title: '失业(公司)', dataIndex: 'unemploymentRate', key: 'unemp', width: 90, render: (v: number) => `${v}%` },
-    { title: '公积金个人/公司', key: 'housing', width: 160, render: (_: any, r: InsuranceScheme) => `${r.housingRatePersonal}% / ${r.housingRateCompany}%` },
-    { title: '基数范围', key: 'base', width: 160, render: (_: any, r: InsuranceScheme) => `${r.baseMin.toLocaleString()} ~ ${r.baseMax.toLocaleString()}` },
-    { title: '状态', dataIndex: 'isActive', key: 'isActive', width: 70, render: (v: number) => <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag> },
-    { title: '操作', key: 'action', width: 120, render: (_: any, r: InsuranceScheme) => (
+    { title: '养老(个人)', dataIndex: 'pensionRate', key: 'p', width: 100, render: (v: number) => `${v}%` },
+    { title: '医疗(个人)', dataIndex: 'medicalRate', key: 'm', width: 100, render: (v: number) => `${v}%` },
+    { title: '公积金个人/公司', key: 'housing', width: 150, render: (_: any, r: InsuranceScheme) => `${r.housingRatePersonal}% / ${r.housingRateCompany}%` },
+    { title: '基数范围', key: 'base', width: 180, render: (_: any, r: InsuranceScheme) => `${r.baseMin?.toLocaleString()} ~ ${r.baseMax?.toLocaleString()}` },
+    { title: '状态', dataIndex: 'isActive', key: 'isActive', width: 80, render: (v: number) => <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag> },
+    { title: '操作', key: 'action', width: 130, render: (_: any, r: InsuranceScheme) => (
       <Space size="small">
-        <Button size="small" type="link" onClick={() => openSchemeModal(r)}>编辑</Button>
+        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openSchemeModal(r)}>编辑</Button>
         <Popconfirm title="确认删除？" onConfirm={() => deleteScheme(r.id)}>
-          <Button size="small" danger type="link">删除</Button>
+          <Button size="small" danger type="link" icon={<DeleteOutlined />} />
         </Popconfirm>
       </Space>
     )},
@@ -451,23 +438,25 @@ export default function InsurancePage() {
     { title: '工号', dataIndex: 'employeeId', key: 'id', width: 100 },
     { title: '部门', dataIndex: 'department', key: 'dept', width: 110 },
     { title: '参保方案', dataIndex: 'schemeName', key: 'scheme', width: 180 },
-    { title: '基数', dataIndex: 'baseAmount', key: 'base', width: 90, render: (v: number) => `¥${v?.toLocaleString()}` },
-    { title: '个人合计', key: 'personal', width: 90, render: (_: any, r: InsuredEmployee) => {
-      const t = r.personalPension + r.personalMedical + r.personalUnemployment + r.personalInjury + r.personalMaternity + r.personalHousing;
+    { title: '基数', dataIndex: 'baseAmount', key: 'base', width: 90, render: (v: number) => `¥${fmt(v)}` },
+    { title: '个人合计', key: 'personal', width: 95, render: (_: any, r: InsuredEmployee) => {
+      const t = (r.personalPension||0)+(r.personalMedical||0)+(r.personalUnemployment||0)+(r.personalInjury||0)+(r.personalMaternity||0)+(r.personalHousing||0);
       return <Text strong>¥{t.toFixed(2)}</Text>;
     }},
-    { title: '单位合计', key: 'company', width: 90, render: (_: any, r: InsuredEmployee) => {
-      const t = r.companyPension + r.companyMedical + r.companyUnemployment + r.companyInjury + r.companyMaternity + r.companyHousing;
-      return <Text strong type="primary">¥{t.toFixed(2)}</Text>;
+    { title: '单位合计', key: 'company', width: 95, render: (_: any, r: InsuredEmployee) => {
+      const t = (r.companyPension||0)+(r.companyMedical||0)+(r.companyUnemployment||0)+(r.companyInjury||0)+(r.companyMaternity||0)+(r.companyHousing||0);
+      return <Text strong style={{color:'#1677ff'}}>¥{t.toFixed(2)}</Text>;
     }},
-    { title: '参保日期', dataIndex: 'startDate', key: 'start', width: 110, render: (v: string) => v?.slice(0, 10) },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag color={statusMap[v]?.color || 'default'}>{statusMap[v]?.label || v}</Tag> },
-    { title: '操作', key: 'action', width: 180, render: (_: any, r: InsuredEmployee) => (
-      <Space size="small">
+    { title: '参保日期', dataIndex: 'startDate', key: 'start', width: 110, render: (v: string) => v?.slice(0, 10) || '-' },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag color={statusMap[v]?.color}>{statusMap[v]?.label || v}</Tag> },
+    { title: '操作', key: 'action', width: 200, render: (_: any, r: InsuredEmployee) => (
+      <Space size="small" wrap>
         <Button size="small" type="link" onClick={() => { setSelectedEmployee(r); setDetailModal(true); }}>详情</Button>
-        <Button size="small" type="link" onClick={() => openInsuredModal(r)}>编辑</Button>
+        <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openInsuredModal(r)} />
         {r.status === 'insured' && <Button size="small" type="link" onClick={() => handleSuspend(r)}>暂停</Button>}
-        {(r.status === 'insured' || r.status === 'suspended') && <Button size="small" danger type="link" onClick={() => handleCancel(r)}>停保</Button>}
+        {(r.status === 'insured' || r.status === 'suspended') && (
+          <Button size="small" danger type="link" onClick={() => handleCancel(r)}>停保</Button>
+        )}
       </Space>
     )},
   ];
@@ -479,42 +468,53 @@ export default function InsurancePage() {
     { title: '类型', dataIndex: 'changeType', key: 'type', width: 70, render: (v: string) => <Tag color={changeTypeMap[v]?.color}>{changeTypeMap[v]?.label}</Tag> },
     { title: '变更原因', dataIndex: 'changeReason', key: 'reason', width: 130 },
     { title: '参保方案', dataIndex: 'schemeName', key: 'scheme', width: 180 },
-    { title: '基数', dataIndex: 'baseAmount', key: 'base', width: 90, render: (v: number) => `¥${v?.toLocaleString()}` },
+    { title: '基数', dataIndex: 'baseAmount', key: 'base', width: 90, render: (v: number) => `¥${fmt(v)}` },
     { title: '生效日期', dataIndex: 'effectiveDate', key: 'date', width: 110 },
-    { title: '办理人', dataIndex: 'handledBy', key: 'handler', width: 90 },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag color={changeStatusMap[v]?.color || 'default'}>{changeStatusMap[v]?.label || v}</Tag> },
-    { title: '操作', key: 'action', width: 120, render: (_: any, r: ChangeRecord) => (
+    { title: '办理人', dataIndex: 'handledBy', key: 'handler', width: 100 },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag color={changeStatusMap[v]?.color}>{changeStatusMap[v]?.label}</Tag> },
+    { title: '操作', key: 'action', width: 130, render: (_: any, r: ChangeRecord) => (
       r.status === 'pending' ? (
         <Space size="small">
-          <Button size="small" type="link" className="text-green-600" onClick={() => approveChange(r)}>批准</Button>
+          <Button size="small" type="link" style={{color:'#52c41a'}} icon={<CheckCircleOutlined />} onClick={() => approveChange(r)}>批准</Button>
           <Button size="small" danger type="link" onClick={() => rejectChange(r.id)}>驳回</Button>
         </Space>
-      ) : <Text type="secondary" className="text-xs">已处理</Text>
+      ) : <Text type="secondary" style={{fontSize:12}}>已处理</Text>
     )},
   ];
 
   const ledgerColumns = [
     { title: '月份', dataIndex: 'month', key: 'month', width: 100 },
-    { title: '部门', dataIndex: 'department', key: 'dept', width: 120 },
-    { title: '人数', dataIndex: 'employeeCount', key: 'count', width: 70 },
-    { title: '个人合计', dataIndex: 'totalPersonal', key: 'personal', width: 100, render: (v: number) => `¥${v?.toLocaleString()}` },
-    { title: '单位合计', dataIndex: 'totalCompany', key: 'company', width: 100, render: (v: number) => <Text type="warning">¥{v?.toLocaleString()}</Text> },
-    { title: '养老保险', dataIndex: 'pensionTotal', key: 'pension', width: 100, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '医疗保险', dataIndex: 'medicalTotal', key: 'medical', width: 100, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '失业保险', dataIndex: 'unemploymentTotal', key: 'unemp', width: 90, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '工伤保险', dataIndex: 'injuryTotal', key: 'injury', width: 90, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '生育保险', dataIndex: 'maternityTotal', key: 'mater', width: 90, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '公积金', dataIndex: 'housingTotal', key: 'housing', width: 90, render: (v: number) => <Text type="secondary">¥{v?.toLocaleString()}</Text> },
-    { title: '总金额', dataIndex: 'grandTotal', key: 'total', width: 110, render: (v: number) => <Text strong type="danger">¥{v?.toLocaleString()}</Text> },
+    { title: '部门', dataIndex: 'department', key: 'dept', width: 130 },
+    { title: '人数', dataIndex: 'employeeCount', key: 'cnt', width: 70 },
+    { title: '个人合计', dataIndex: 'totalPersonal', key: 'per', width: 110, render: (v: number) => `¥${fmt(v)}` },
+    { title: '单位合计', dataIndex: 'totalCompany', key: 'com', width: 110, render: (v: number) => <Text style={{color:'#fa8c16'}}>¥{fmt(v)}</Text> },
+    { title: '养老', dataIndex: 'pensionTotal', key: 'pen', width: 100, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '医疗', dataIndex: 'medicalTotal', key: 'med', width: 100, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '失业', dataIndex: 'unemploymentTotal', key: 'unemp', width: 90, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '工伤', dataIndex: 'injuryTotal', key: 'inj', width: 90, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '生育', dataIndex: 'maternityTotal', key: 'mater', width: 90, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '公积金', dataIndex: 'housingTotal', key: 'hous', width: 90, render: (v: number) => <Text type="secondary">¥{fmt(v)}</Text> },
+    { title: '总金额', dataIndex: 'grandTotal', key: 'total', width: 110, render: (v: number) => <Text strong style={{color:'#cf1322'}}>¥{fmt(v)}</Text> },
   ];
 
-  const rowSelection = { selectedRowKeys, onChange: (keys: React.Key[]) => setSelectedRowKeys(keys) };
+  const cities = [...new Set(schemes.map(s => s.city).filter(Boolean))];
+
+  const tabs = [
+    { key: 'scheme', label: '📋 社保公积金方案' },
+    { key: 'insured', label: '👥 参保人员管理' },
+    { key: 'changes', label: '🔄 增减员明细' },
+    { key: 'ledger', label: '🏦 缴纳台账' },
+    { key: 'analysis', label: '📊 数据分析' },
+  ];
 
   return (
     <div className="p-6 space-y-4">
       {contextHolder}
       <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold">保险福利管理</h2><p className="text-sm text-muted-foreground">社保公积金方案配置 · 增减员管理 · 缴纳台账</p></div>
+        <div>
+          <h2 className="text-xl font-bold">🏥 保险福利管理</h2>
+          <p className="text-sm text-muted-foreground mt-1">社保公积金方案配置 · 增减员管理 · 缴纳台账</p>
+        </div>
       </div>
 
       <Row gutter={16}>
@@ -522,27 +522,29 @@ export default function InsurancePage() {
         <Col span={4}><Card size="small"><Statistic title="参保人数" value={stats.insuredCount} suffix="人" valueStyle={{ color: '#52c41a' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="已暂停" value={stats.suspendedCount} suffix="人" valueStyle={{ color: '#faad14' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="待处理" value={stats.pendingChanges} suffix="条" valueStyle={{ color: '#1677ff' }} /></Card></Col>
-        <Col span={8}><Card size="small"><Statistic title="本月社保公积金总额" value={stats.monthTotal} precision={2} prefix="¥" valueStyle={{ color: '#f5222d', fontSize: 20 }} /></Card></Col>
+        <Col span={8}><Card size="small"><Statistic title="最近月份社保公积金总额" value={stats.monthTotal} precision={0} prefix="¥" valueStyle={{ color: '#f5222d', fontSize: 20 }} /></Card></Col>
       </Row>
 
       <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} tabBarStyle={{ marginBottom: 16 }} items={tabs} />
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
 
+        {/* 方案 */}
         {activeTab === 'scheme' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Space>
                 <Input placeholder="搜索方案名称" prefix={<SearchOutlined />} allowClear style={{ width: 200 }} onChange={e => setSearchText(e.target.value)} />
-                <Select placeholder="按城市筛选" allowClear style={{ width: 140 }} value={schemeFilterCity || undefined} onChange={v => setSchemeFilterCity(v)}>
-                  {[...new Set(schemes.map(s => s.city))].map(city => <Option key={city} value={city}>{city}</Option>)}
+                <Select placeholder="按城市筛选" allowClear style={{ width: 140 }} value={cityFilter || undefined} onChange={v => setCityFilter(v || '')}>
+                  {cities.map(c => <Option key={c} value={c}>{c}</Option>)}
                 </Select>
               </Space>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openSchemeModal()}>新建方案</Button>
             </div>
-            <Table columns={schemeColumns} dataSource={schemes.filter(s => (!schemeFilterCity || s.city === schemeFilterCity) && (!searchText || s.name.includes(searchText)))} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
+            <Table columns={schemeColumns} dataSource={filteredSchemes} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
           </div>
         )}
 
+        {/* 参保人员 */}
         {activeTab === 'insured' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -551,42 +553,42 @@ export default function InsurancePage() {
                 <Button onClick={() => openChangeModal('add')} icon={<PlusOutlined />} type="primary">增员</Button>
                 <Button onClick={() => openChangeModal('reduce')} danger icon={<SyncOutlined />}>减员</Button>
               </Space>
-              <Space>
-                <Button size="small" onClick={handleBatchAdd} disabled={selectedRowKeys.length === 0}>批量恢复</Button>
-                <Button size="small" danger onClick={handleBatchReduce} disabled={selectedRowKeys.length === 0}>批量减员 ({selectedRowKeys.length})</Button>
-              </Space>
+              <Button icon={<PlusOutlined />} onClick={() => openInsuredModal()}>新增参保人</Button>
             </div>
-            <Alert message="缴费说明：个人缴纳 = 基数 × 各险种比例之和；单位缴纳 = 基数 × 各险种公司比例之和。公积金个人与单位同比例。" type="info" showIcon style={{ marginBottom: 8 }} />
-            <Table columns={insuredColumns} dataSource={filteredInsured} rowKey="id" loading={loading} rowSelection={rowSelection} pagination={{ pageSize: 10, showSizeChanger: true, showTotal: t => `共 ${t} 条` }} size="small" scroll={{ x: 1200 }} />
+            <Alert message="缴费说明：个人缴纳 = 基数 × 各险种比例；单位缴纳 = 基数 × 各险种公司比例。" type="info" showIcon style={{ marginBottom: 8 }} />
+            <Table columns={insuredColumns} dataSource={filteredInsured} rowKey="id" loading={loading}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: t => `共 ${t} 条` }} size="small" scroll={{ x: 1400 }} />
           </div>
         )}
 
+        {/* 增减员 */}
         {activeTab === 'changes' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <Space wrap>
-                <Select placeholder="变更类型" allowClear style={{ width: 120 }} value={changeFilterType || undefined} onChange={v => setChangeFilterType(v)}>
+                <Select placeholder="变更类型" allowClear style={{ width: 120 }} value={changeFilterType || undefined} onChange={v => setChangeFilterType(v || '')}>
                   <Option value="add">增员</Option> <Option value="reduce">减员</Option>
                 </Select>
-                <Select placeholder="处理状态" allowClear style={{ width: 120 }} value={changeFilterStatus || undefined} onChange={v => setChangeFilterStatus(v)}>
+                <Select placeholder="处理状态" allowClear style={{ width: 120 }} value={changeFilterStatus || undefined} onChange={v => setChangeFilterStatus(v || '')}>
                   <Option value="pending">待处理</Option> <Option value="approved">已办理</Option> <Option value="rejected">已驳回</Option>
                 </Select>
-                <Button icon={<DownloadOutlined />} onClick={exportChangeDetail}>导出明细</Button>
+                <Button icon={<span>📥</span>} onClick={exportChanges}>导出明细</Button>
               </Space>
               <Space>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openChangeModal('add')}>新增增员</Button>
                 <Button danger icon={<SyncOutlined />} onClick={() => openChangeModal('reduce')}>新增减员</Button>
               </Space>
             </div>
-            <Table columns={changeColumns} dataSource={filteredChanges} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} size="small" scroll={{ x: 1200 }} />
+            <Table columns={changeColumns} dataSource={filteredChanges} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} size="small" scroll={{ x: 1300 }} />
           </div>
         )}
 
+        {/* 台账 */}
         {activeTab === 'ledger' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Text type="secondary">每月自动汇总各单位社保公积金缴纳明细</Text>
-              <Button icon={<DownloadOutlined />} onClick={exportLedger}>导出台账</Button>
+              <Button icon={<span>📥</span>} onClick={exportLedger}>导出台账</Button>
             </div>
             <Table columns={ledgerColumns} dataSource={ledgerList} rowKey="id" loading={loading} pagination={{ pageSize: 6 }} size="small" scroll={{ x: 1300 }}
               summary={() => (
@@ -594,61 +596,28 @@ export default function InsurancePage() {
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={2}><Text strong>合计</Text></Table.Summary.Cell>
                     <Table.Summary.Cell index={1}><Text strong>{ledgerList.reduce((s, r) => s + r.employeeCount, 0)}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={2}><Text strong>¥{ledgerList.reduce((s, r) => s + r.totalPersonal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={3}><Text strong type="warning">¥{ledgerList.reduce((s, r) => s + r.totalCompany, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={4}><Text strong>¥{ledgerList.reduce((s, r) => s + r.pensionTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={5}><Text strong>¥{ledgerList.reduce((s, r) => s + r.medicalTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={6}><Text strong>¥{ledgerList.reduce((s, r) => s + r.unemploymentTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={7}><Text strong>¥{ledgerList.reduce((s, r) => s + r.injuryTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={8}><Text strong>¥{ledgerList.reduce((s, r) => s + r.maternityTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={9}><Text strong>¥{ledgerList.reduce((s, r) => s + r.housingTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={10}><Text strong type="danger">¥{ledgerList.reduce((s, r) => s + r.grandTotal, 0).toLocaleString()}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={2}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.totalPersonal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={3}><Text strong style={{color:'#fa8c16'}}>¥{fmt(ledgerList.reduce((s, r) => s + r.totalCompany, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={4}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.pensionTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={5}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.medicalTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={6}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.unemploymentTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={7}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.injuryTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={8}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.maternityTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={9}><Text strong>¥{fmt(ledgerList.reduce((s, r) => s + r.housingTotal, 0))}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={10}><Text strong style={{color:'#cf1322'}}>¥{fmt(ledgerList.reduce((s, r) => s + r.grandTotal, 0))}</Text></Table.Summary.Cell>
                   </Table.Summary.Row>
                 </Table.Summary>
               )}
             />
-            <Alert message="增减员明细表：点击上方「增减员明细」Tab查看每月增员减员详细记录，并可导出Excel。" type="info" showIcon />
           </div>
         )}
 
+        {/* 分析 */}
         {activeTab === 'analysis' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <Row gutter={16}>
               <Col span={12}>
-                <Card title="各险种月度缴纳占比（最近月份）">
-                  {(() => {
-                    const last = ledgerList[ledgerList.length - 1];
-                    if (!last) return <Text>暂无数据</Text>;
-                    const items = [
-                      { name: '养老保险', value: last.pensionTotal, color: '#1677ff' },
-                      { name: '医疗保险', value: last.medicalTotal, color: '#52c41a' },
-                      { name: '失业保险', value: last.unemploymentTotal, color: '#faad14' },
-                      { name: '工伤保险', value: last.injuryTotal, color: '#f5222d' },
-                      { name: '生育保险', value: last.maternityTotal, color: '#722ed1' },
-                      { name: '住房公积金', value: last.housingTotal, color: '#13c2c2' },
-                    ];
-                    const total = last.grandTotal;
-                    return (
-                      <div className="space-y-3">
-                        {items.map(item => (
-                          <div key={item.name} className="flex items-center gap-3">
-                            <Text style={{ width: 80 }}>{item.name}</Text>
-                            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                              <div className="h-full rounded-full" style={{ width: `${(item.value / total * 100).toFixed(1)}%`, backgroundColor: item.color }} />
-                            </div>
-                            <Text style={{ width: 70, textAlign: 'right' }}>¥{item.value.toLocaleString()}</Text>
-                            <Text type="secondary" style={{ width: 50 }}>{(item.value / total * 100).toFixed(1)}%</Text>
-                          </div>
-                        ))}
-                        <Divider style={{ margin: '8px 0' }} />
-                        <div className="flex items-center justify-between"><Text strong>合计</Text><Text strong type="danger">¥{total.toLocaleString()}</Text></div>
-                      </div>
-                    );
-                  })()}
-                </Card>
-              </Col>
-              <Col span={12}>
-                <Card title="参保人员状态分布">
+                <Card title="参保状态分布" size="small">
                   {(() => {
                     const counts = { insured: insuredList.filter(e => e.status === 'insured').length, suspended: insuredList.filter(e => e.status === 'suspended').length, cancelled: insuredList.filter(e => e.status === 'cancelled').length };
                     const total = insuredList.length || 1;
@@ -666,7 +635,29 @@ export default function InsurancePage() {
                               <div className="h-full rounded-full" style={{ width: `${(item.value / total * 100).toFixed(1)}%`, backgroundColor: item.color }} />
                             </div>
                             <Text style={{ width: 40, textAlign: 'right' }}>{item.value}</Text>
-                            <Text type="secondary" style={{ width: 50 }}>人 ({(item.value / total * 100).toFixed(1)}%)</Text>
+                            <Text type="secondary" style={{ width: 50 }}>人</Text>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card title="各方案参保人数" size="small">
+                  {(() => {
+                    const schemeCounts = schemes.map(s => ({ name: s.name, count: insuredList.filter(e => e.schemeId === s.id).length }));
+                    const maxCount = Math.max(...schemeCounts.map(s => s.count), 1);
+                    return (
+                      <div className="space-y-3">
+                        {schemeCounts.map(item => (
+                          <div key={item.name} className="flex items-center gap-3">
+                            <Text style={{ width: 120 }} ellipsis>{item.name}</Text>
+                            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                              <div className="h-full rounded-full bg-blue-500" style={{ width: `${(item.count / maxCount * 100).toFixed(1)}%` }} />
+                            </div>
+                            <Text style={{ width: 40, textAlign: 'right' }}>{item.count}</Text>
+                            <Text type="secondary">人</Text>
                           </div>
                         ))}
                       </div>
@@ -675,100 +666,84 @@ export default function InsurancePage() {
                 </Card>
               </Col>
             </Row>
-            <Row gutter={16}>
-              <Col span={24}>
-                <Card title="月度社保公积金缴纳趋势">
-                  <Table
-                    dataSource={ledgerList.map(r => ({ ...r, key: r.id }))}
-                    columns={[
-                      { title: '月份', dataIndex: 'month', key: 'month', width: 100 },
-                      { title: '参保人数', dataIndex: 'employeeCount', key: 'count', width: 100 },
-                      { title: '个人缴纳', dataIndex: 'totalPersonal', key: 'personal', width: 120, render: (v: number) => `¥${v.toLocaleString()}` },
-                      { title: '单位缴纳', dataIndex: 'totalCompany', key: 'company', width: 120, render: (v: number) => `¥${v.toLocaleString()}` },
-                      { title: '总金额', dataIndex: 'grandTotal', key: 'total', width: 130, render: (v: number) => `¥${v.toLocaleString()}` },
-                      { title: '趋势', key: 'bar', width: 200, render: (_: any, r: any) => {
-                        const max = Math.max(...ledgerList.map(l => l.totalCompany));
-                        return (
-                          <div className="flex items-center gap-1">
-                            <div className="bg-blue-100 rounded-sm" style={{ height: 12, width: Math.max(4, r.totalCompany / max * 180) }} />
-                            <Text type="secondary" className="text-xs">{r.totalCompany.toLocaleString()}</Text>
-                          </div>
-                        );
-                      }},
-                    ]}
-                    pagination={false} size="small"
-                  />
-                </Card>
-              </Col>
-            </Row>
           </div>
         )}
       </Card>
 
-      {/* 方案编辑弹窗 */}
+      {/* 方案弹窗 */}
       <Modal title={editingScheme ? '编辑社保公积金方案' : '新建社保公积金方案'} open={schemeModal} onOk={saveScheme} onCancel={() => setSchemeModal(false)} width={680} okText="保存" cancelText="取消">
         <Form form={form} layout="vertical" size="small">
           <Row gutter={16}>
             <Col span={12}><Form.Item name="name" label="方案名称" rules={[{ required: true }]}><Input placeholder="如：上海市标准社保方案" /></Form.Item></Col>
             <Col span={12}><Form.Item name="city" label="适用城市" rules={[{ required: true }]}><Input placeholder="如：上海市" /></Form.Item></Col>
           </Row>
-          <Divider orientation="left">各险种缴纳比例（单位：%）</Divider>
+          <Divider orientation="left">个人缴纳比例（%）</Divider>
           <Row gutter={16}>
-            <Col span={8}><Form.Item name="pensionRate" label="养老保险（公司）" initialValue={16}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="medicalRate" label="医疗保险（公司）" initialValue={10}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="unemploymentRate" label="失业保险（公司）" initialValue={0.5}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="injuryRate" label="工伤保险（公司）" initialValue={0.5}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="maternityRate" label="生育保险（公司）" initialValue={0.8}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="housingRateCompany" label="公积金（公司）" initialValue={12}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="pensionRate" label="养老保险"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="medicalRate" label="医疗保险"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="unemploymentRate" label="失业保险"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
           </Row>
-          <Divider orientation="left">个人缴纳比例（单位：%）</Divider>
+          <Divider orientation="left">公积金比例（%）</Divider>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="housingRatePersonal" label="公积金个人比例" initialValue={7}><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="housingRatePersonal" label="公积金（个人）"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="housingRateCompany" label="公积金（公司）"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
           </Row>
-          <Divider orientation="left">基数设置</Divider>
+          <Divider orientation="left">基数范围</Divider>
           <Row gutter={16}>
-            <Col span={12}><Form.Item label="缴费基数下限" name="baseMin" rules={[{ required: true }]} initialValue={5975}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item label="缴费基数上限" name="baseMax" rules={[{ required: true }]} initialValue={31014}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="baseMin" label="基数下限"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="baseMax" label="基数上限"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}><Form.Item name="remark" label="备注"><TextArea rows={2} placeholder="可选备注信息" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="isActive" label="状态" valuePropName="checked" initialValue={true}><Checkbox>启用此方案</Checkbox></Form.Item></Col>
+            <Col span={12}><Form.Item name="isActive" label="状态" valuePropName="checked"><Checkbox>启用此方案</Checkbox></Form.Item></Col>
           </Row>
         </Form>
       </Modal>
 
-      {/* 参保人员编辑弹窗 */}
+      {/* 参保人员弹窗 */}
       <Modal title={editingInsured ? '编辑参保信息' : '新增参保人员'} open={insuredModal} onOk={saveInsured} onCancel={() => setInsuredModal(false)} width={560} okText="保存" cancelText="取消">
         <Form form={insuredForm} layout="vertical" size="small">
           <Row gutter={16}>
             <Col span={12}><Form.Item name="employeeId" label="工号" rules={[{ required: true }]}><Input placeholder="如：EMP1001" /></Form.Item></Col>
             <Col span={12}><Form.Item name="employeeName" label="姓名" rules={[{ required: true }]}><Input placeholder="员工姓名" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="department" label="部门" rules={[{ required: true }]}><Input placeholder="所属部门" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="department" label="部门"><Input placeholder="所属部门" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="idCard" label="身份证号"><Input placeholder="18位身份证号" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}><Form.Item name="schemeId" label="参保方案" rules={[{ required: true }]}><Select placeholder="选择参保方案">{schemes.filter(s => s.isActive).map(s => <Option key={s.id} value={s.id}>{s.name}（{s.city}）</Option>)}</Select></Form.Item></Col>
-            <Col span={12}><Form.Item name="baseAmount" label="缴费基数" rules={[{ required: true }]} initialValue={8000}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="baseAmount" label="缴费基数" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}><Form.Item name="startDate" label="参保日期" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
           </Row>
-          <Alert message="系统将根据选择的参保方案和缴费基数，自动核算个人和单位各险种缴纳金额。" type="info" showIcon />
         </Form>
       </Modal>
 
       {/* 增减员弹窗 */}
-      <Modal title={changeForm.getFieldValue('changeType') === 'reduce' ? '新增减员' : '新增增员'} open={changeModal} onOk={saveChange} onCancel={() => setChangeModal(false)} width={560} okText="提交" cancelText="取消">
+      <Modal title={changeType === 'reduce' ? '新增减员' : '新增增员'} open={changeModal} onOk={saveChange} onCancel={() => setChangeModal(false)} width={560} okText="提交" cancelText="取消">
         <Form form={changeForm} layout="vertical" size="small">
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="changeType" label="变更类型" rules={[{ required: true }]}><Select><Option value="add">增员</Option><Option value="reduce">减员</Option></Select></Form.Item></Col>
+            <Col span={12}><Form.Item name="changeType" label="变更类型"><Select disabled><Option value="add">增员</Option><Option value="reduce">减员</Option></Select></Form.Item></Col>
             <Col span={12}><Form.Item name="changeReason" label="变更原因" rules={[{ required: true }]}><Select placeholder="选择变更原因">{changeReasonOptions.map(r => <Option key={r} value={r}>{r}</Option>)}</Select></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}><Form.Item name="employeeId" label="工号" rules={[{ required: true }]}><Input placeholder="员工工号" /></Form.Item></Col>
             <Col span={12}><Form.Item name="employeeName" label="姓名" rules={[{ required: true }]}><Input placeholder="员工姓名" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="department" label="部门" rules={[{ required: true }]}><Input placeholder="所属部门" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="department" label="部门"><Input placeholder="所属部门" /></Form.Item></Col>
             <Col span={12}><Form.Item name="schemeId" label="参保方案" rules={[{ required: true }]}><Select placeholder="选择参保方案">{schemes.filter(s => s.isActive).map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}</Select></Form.Item></Col>
-            <Col span={12}><Form.Item name="baseAmount" label="缴费基数" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="baseAmount" label="缴费基数"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={12}><Form.Item name="effectiveDate" label="生效日期" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
           </Row>
         </Form>
       </Modal>
 
-      {/* 参保详情弹窗 */}
+      {/* 详情弹窗 */}
       <Modal title={selectedEmployee ? `参保详情 - ${selectedEmployee.employeeName}` : ''} open={detailModal} onCancel={() => setDetailModal(false)} footer={null} width={680}>
         {selectedEmployee && (
           <div className="space-y-4">
@@ -776,7 +751,7 @@ export default function InsurancePage() {
               <Descriptions.Item label="工号">{selectedEmployee.employeeId}</Descriptions.Item>
               <Descriptions.Item label="部门">{selectedEmployee.department}</Descriptions.Item>
               <Descriptions.Item label="参保方案">{selectedEmployee.schemeName}</Descriptions.Item>
-              <Descriptions.Item label="缴费基数">¥{selectedEmployee.baseAmount?.toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item label="缴费基数">¥{fmt(selectedEmployee.baseAmount)}</Descriptions.Item>
               <Descriptions.Item label="参保日期">{selectedEmployee.startDate?.slice(0, 10)}</Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={statusMap[selectedEmployee.status]?.color}>{statusMap[selectedEmployee.status]?.label}</Tag></Descriptions.Item>
             </Descriptions>
@@ -786,10 +761,10 @@ export default function InsurancePage() {
                 <Card title="个人缴纳" size="small">
                   <div className="space-y-2">
                     {[{ label: '养老保险', v: selectedEmployee.personalPension }, { label: '医疗保险', v: selectedEmployee.personalMedical }, { label: '失业保险', v: selectedEmployee.personalUnemployment }, { label: '工伤保险', v: selectedEmployee.personalInjury }, { label: '生育保险', v: selectedEmployee.personalMaternity }, { label: '住房公积金', v: selectedEmployee.personalHousing }].map(item => (
-                      <div key={item.label} className="flex justify-between text-sm"><Text type="secondary">{item.label}</Text><Text>¥{item.v?.toFixed(2)}</Text></div>
+                      <div key={item.label} className="flex justify-between text-sm"><Text type="secondary">{item.label}</Text><Text>¥{(item.v || 0).toFixed(2)}</Text></div>
                     ))}
                     <Divider style={{ margin: '8px 0' }} />
-                    <div className="flex justify-between font-medium"><Text strong>个人合计</Text><Text strong type="danger">¥{(selectedEmployee.personalPension + selectedEmployee.personalMedical + selectedEmployee.personalUnemployment + selectedEmployee.personalInjury + selectedEmployee.personalMaternity + selectedEmployee.personalHousing).toFixed(2)}</Text></div>
+                    <div className="flex justify-between font-medium"><Text strong>个人合计</Text><Text strong style={{color:'#cf1322'}}>¥{((selectedEmployee.personalPension||0)+(selectedEmployee.personalMedical||0)+(selectedEmployee.personalUnemployment||0)+(selectedEmployee.personalInjury||0)+(selectedEmployee.personalMaternity||0)+(selectedEmployee.personalHousing||0)).toFixed(2)}</Text></div>
                   </div>
                 </Card>
               </Col>
@@ -797,10 +772,10 @@ export default function InsurancePage() {
                 <Card title="单位缴纳" size="small">
                   <div className="space-y-2">
                     {[{ label: '养老保险', v: selectedEmployee.companyPension }, { label: '医疗保险', v: selectedEmployee.companyMedical }, { label: '失业保险', v: selectedEmployee.companyUnemployment }, { label: '工伤保险', v: selectedEmployee.companyInjury }, { label: '生育保险', v: selectedEmployee.companyMaternity }, { label: '住房公积金', v: selectedEmployee.companyHousing }].map(item => (
-                      <div key={item.label} className="flex justify-between text-sm"><Text type="secondary">{item.label}</Text><Text type="warning">¥{item.v?.toFixed(2)}</Text></div>
+                      <div key={item.label} className="flex justify-between text-sm"><Text type="secondary">{item.label}</Text><Text style={{color:'#fa8c16'}}>¥{(item.v || 0).toFixed(2)}</Text></div>
                     ))}
                     <Divider style={{ margin: '8px 0' }} />
-                    <div className="flex justify-between font-medium"><Text strong>单位合计</Text><Text strong type="danger">¥{(selectedEmployee.companyPension + selectedEmployee.companyMedical + selectedEmployee.companyUnemployment + selectedEmployee.companyInjury + selectedEmployee.companyMaternity + selectedEmployee.companyHousing).toFixed(2)}</Text></div>
+                    <div className="flex justify-between font-medium"><Text strong>单位合计</Text><Text strong style={{color:'#cf1322'}}>¥{((selectedEmployee.companyPension||0)+(selectedEmployee.companyMedical||0)+(selectedEmployee.companyUnemployment||0)+(selectedEmployee.companyInjury||0)+(selectedEmployee.companyMaternity||0)+(selectedEmployee.companyHousing||0)).toFixed(2)}</Text></div>
                   </div>
                 </Card>
               </Col>

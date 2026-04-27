@@ -1,0 +1,15 @@
+const sqlite3 = require('better-sqlite3');
+const db = sqlite3('D:/feida/data/ehr.db');
+console.log('=== recruitment_positions ===');
+db.prepare('SELECT * FROM recruitment_positions').all().forEach(r => console.log(JSON.stringify(r)));
+console.log('\n=== candidates ===');
+db.prepare('SELECT * FROM candidates').all().forEach(r => console.log(JSON.stringify(r)));
+console.log('\n=== interviews ===');
+db.prepare('SELECT * FROM interviews').all().forEach(r => console.log(JSON.stringify(r)));
+console.log('\n=== talent_tags ===');
+db.prepare('SELECT * FROM talent_tags').all().forEach(r => console.log(JSON.stringify(r)));
+console.log('\n=== email_templates ===');
+db.prepare('SELECT * FROM email_templates').all().forEach(r => console.log(JSON.stringify(r)));
+console.log('\n=== email_logs ===');
+db.prepare('SELECT * FROM email_logs').all().forEach(r => console.log(JSON.stringify(r)));
+db.close();

@@ -26,22 +26,23 @@ export default function TaskManagePage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'sync', schedule: '', config: '' });
-
-  useEffect(() => { fetchTasks(); }, []);
 
   const fetchTasks = async () => {
     setLoading(true);
-    // Mock data
-    setTasks([
-      { id: 't1', name: '每日考勤同步', type: 'sync', status: 'completed', lastRun: '2026-04-22T08:00:00', nextRun: '2026-04-23T08:00:00', schedule: '0 8 * * *', progress: 100 },
-      { id: 't2', name: '薪资月度备份', type: 'backup', status: 'completed', lastRun: '2026-04-01T00:00:00', nextRun: '2026-05-01T00:00:00', schedule: '0 0 1 * *', progress: 100 },
-      { id: 't3', name: '员工生日提醒', type: 'notification', status: 'running', lastRun: '2026-04-22T09:00:00', nextRun: '2026-04-22T09:00:00', schedule: '0 9 * * *', progress: 45 },
-      { id: 't4', name: '过期数据清理', type: 'cleanup', status: 'pending', lastRun: '2026-04-21T02:00:00', nextRun: '2026-04-23T02:00:00', schedule: '0 2 * * *', progress: 0 },
-      { id: 't5', name: '月度考勤报表', type: 'report', status: 'failed', lastRun: '2026-04-20T10:00:00', nextRun: '2026-04-20T10:00:00', schedule: '0 10 20 * *', progress: 30, error: '数据库连接超时' },
-    ]);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/scheduled_tasks');
+      const data = await res.json();
+      setTasks(Array.isArray(data) ? data : []);
+    } catch {
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => { fetchTasks(); }, []);
 
   const filtered = tasks.filter(t => {
     const q = search.toLowerCase();
@@ -52,16 +53,65 @@ export default function TaskManagePage() {
   });
 
   const handleCreate = async () => {
-    setDialogOpen(false);
-    fetchTasks();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      await fetch('/api/scheduled_tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          schedule: form.schedule || '0 8 * * *',
+          status: 'pending',
+          progress: 0,
+          config: form.config || '{}',
+        }),
+      });
+      setDialogOpen(false);
+      setForm({ name: '', type: 'sync', schedule: '', config: '' });
+      fetchTasks();
+    } catch {
+      alert('创建失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRun = async (taskId: string) => {
-    alert('任务已触发: ' + taskId);
+    try {
+      await fetch(`/api/scheduled_tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'running', progress: 0 }),
+      });
+      fetchTasks();
+    } catch {
+      alert('操作失败');
+    }
   };
 
   const handleStop = async (taskId: string) => {
-    alert('任务已停止: ' + taskId);
+    try {
+      await fetch(`/api/scheduled_tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', progress: 0 }),
+      });
+      fetchTasks();
+    } catch {
+      alert('操作失败');
+    }
+  };
+
+  const handleDelete = async (taskId: string) => {
+    if (!confirm('确定删除此任务？')) return;
+    try {
+      await fetch(`/api/scheduled_tasks/${taskId}`, { method: 'DELETE' });
+      fetchTasks();
+    } catch {
+      alert('删除失败');
+    }
   };
 
   return (
@@ -143,9 +193,9 @@ export default function TaskManagePage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[80px]">
-                          <div className={`h-full ${task.status === 'failed' ? 'bg-red-500' : task.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${task.progress}%` }} />
+                          <div className={`h-full ${task.status === 'failed' ? 'bg-red-500' : task.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${task.progress || 0}%` }} />
                         </div>
-                        <span className="text-xs text-gray-500">{task.progress}%</span>
+                        <span className="text-xs text-gray-500">{task.progress || 0}%</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -153,6 +203,7 @@ export default function TaskManagePage() {
                         {task.status === 'pending' && <button onClick={() => handleRun(task.id)} className="text-green-600 hover:text-green-800 text-xs">执行</button>}
                         {task.status === 'running' && <button onClick={() => handleStop(task.id)} className="text-red-600 hover:text-red-800 text-xs">停止</button>}
                         <button className="text-blue-600 hover:text-blue-800 text-xs">日志</button>
+                        <button onClick={() => handleDelete(task.id)} className="text-red-400 hover:text-red-600 text-xs">删除</button>
                       </div>
                     </td>
                   </tr>
@@ -190,7 +241,7 @@ export default function TaskManagePage() {
             </div>
             <div className="px-6 pb-6 flex justify-end gap-2">
               <button onClick={() => setDialogOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleCreate} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">创建</button>
+              <button onClick={handleCreate} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">{saving ? '创建中...' : '创建'}</button>
             </div>
           </div>
         </div>
