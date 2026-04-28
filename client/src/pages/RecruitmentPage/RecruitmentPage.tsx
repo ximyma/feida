@@ -1055,22 +1055,204 @@ function ResumeDetail({ candidate }: { candidate: Candidate }) {
   );
 }
 
+// ============================================================
+// 简历邮件解析工具函数
+// ============================================================
+
+interface ParsedCandidate {
+  name: string;
+  phone: string;
+  email: string;
+  position: string;
+  source: string;
+  education?: string;
+  workYears?: string;
+  currentCompany?: string;
+  skills?: string;
+  rawText: string;
+}
+
+/** 解析简历文本 - 支持BOSS直聘、智联招聘、前程无忧等格式 */
+function parseResumeText(text: string): ParsedCandidate | null {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const fullText = text.replace(/\n/g, ' ');
+  
+  // 1. 提取姓名
+  let name = '';
+  // BOSS直聘格式: "姓名：张三" 或 "【张三】的简历"
+  const nameMatch1 = text.match(/姓名[：:]\s*([^\s,，\n]+)/);
+  const nameMatch2 = text.match(/【([^】]+)】的简历/);
+  const nameMatch3 = text.match(/^([^\s,，\n]{2,4})(?:，|\s|,)/);
+  if (nameMatch1) name = nameMatch1[1];
+  else if (nameMatch2) name = nameMatch2[1];
+  else if (nameMatch3) name = nameMatch3[1];
+  
+  // 2. 提取手机号
+  let phone = '';
+  const phoneMatch = text.match(/(?:电话|手机|联系方式)[：:]*\s*1[3-9]\d{9}|[1-9]\d{10}|1[3-9]\d{9}/);
+  if (phoneMatch) {
+    phone = phoneMatch[0].replace(/[^1-9\d]/g, '');
+  }
+  
+  // 3. 提取邮箱
+  let email = '';
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) email = emailMatch[0].toLowerCase();
+  
+  // 4. 提取应聘职位
+  let position = '';
+  const posMatch1 = text.match(/应聘[岗位职位][：:]\s*([^\s,，\n]+)/);
+  const posMatch2 = text.match(/职位[：:]\s*([^\s,，\n]+)/);
+  const posMatch3 = text.match(/【([^】]+)】(?:简历|求职)/);
+  if (posMatch1) position = posMatch1[1];
+  else if (posMatch2) position = posMatch2[1];
+  else if (posMatch3) position = posMatch3[1];
+  
+  // 5. 判断简历来源
+  let source = '其他';
+  if (/boss|直聘|bosszhipin/i.test(text)) source = 'BOSS直聘';
+  else if (/智联|zhilian|zhaopin/i.test(text)) source = '智联招聘';
+  else if (/前程无忧|51job|无忧/i.test(text)) source = '前程无忧';
+  else if (/猎聘|lietou|liepin/i.test(text)) source = '猎聘';
+  else if (/拉勾|lagou/i.test(text)) source = '拉勾网';
+  
+  // 6. 提取学历
+  let education = '';
+  const eduMatch = text.match(/(?:学历|教育)[：:]*\s*([初中高中大专本科硕士博士MBA]+|[^,\n]{2,6}?(?=学历|教育|专业))/);
+  if (eduMatch) education = eduMatch[1].replace(/[^硕博本大高初]/g, '');
+  const eduKeywords = ['博士', '硕士', '本科', '大专', '高中', '中专', '初中'];
+  for (const edu of eduKeywords) {
+    if (text.includes(edu)) { education = edu; break; }
+  }
+  
+  // 7. 提取工作年限
+  let workYears = '';
+  const yearMatch = text.match(/(?:工作年限|经验|工作年限)[：:]*\s*(\d+)\s*年/);
+  if (yearMatch) workYears = yearMatch[1] + '年';
+  
+  // 8. 提取最近公司
+  let currentCompany = '';
+  const companyMatch = text.match(/(?:最近|当前|现)公司[：:]*\s*([^\s,，\n]{2,20})/);
+  if (companyMatch) currentCompany = companyMatch[1];
+  
+  // 9. 提取技能标签
+  let skills = '';
+  const skillSection = text.match(/技能[：:]([^求职期望]+)/);
+  if (skillSection) {
+    skills = skillSection[1].split(/[,，、]/).slice(0, 5).join(',');
+  }
+  
+  // 只有姓名是必填的
+  if (!name) return null;
+  
+  return { name, phone, email, position, source, education, workYears, currentCompany, skills, rawText: text };
+}
+
+/** 解析CSV格式数据 */
+function parseCSVLine(line: string): Partial<ParsedCandidate> {
+  const parts = line.split(/[,，\t]/).map(p => p.trim());
+  if (parts.length < 1) return {};
+  
+  return {
+    name: parts[0] || '',
+    phone: parts[1] || '',
+    email: parts[2] || '',
+    position: parts[3] || '',
+    source: parts[4] || 'CSV导入',
+    education: parts[5] || '',
+    workYears: parts[6] || '',
+  };
+}
+
+// ============================================================
+// EmailImportPanel 组件
+// ============================================================
 function EmailImportPanel({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'paste' | 'csv'>('paste');
   const [pasteContent, setPasteContent] = useState('');
   const [csvContent, setCsvContent] = useState('');
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<string[]>([]);
+  const [parsedResults, setParsedResults] = useState<ParsedCandidate[]>([]);
+  const [imported, setImported] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleImport = () => {
-    setImporting(true);
+  /** 解析并预览 */
+  const handlePreview = () => {
+    setError(null);
     const lines = mode === 'paste'
-      ? pasteContent.split('\n').filter(l => l.trim())
+      ? pasteContent.split(/\n\n+/).filter(l => l.trim().length > 10)
       : csvContent.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    setTimeout(() => {
-      setResult(lines.slice(0, 5).map(l => `已解析: ${l.split(/[\t,]/)[0] || l.slice(0, 20)}...`));
+    
+    if (lines.length === 0) {
+      setError('请输入有效的简历内容');
+      return;
+    }
+    
+    const results: ParsedCandidate[] = [];
+    for (const line of lines) {
+      const parsed = mode === 'paste' 
+        ? parseResumeText(line) 
+        : { ...parseCSVLine(line), rawText: line };
+      if (parsed && parsed.name) {
+        results.push(parsed as ParsedCandidate);
+      }
+    }
+    
+    if (results.length === 0) {
+      setError('未能解析出有效候选人信息，请检查格式是否正确');
+      return;
+    }
+    
+    setParsedResults(results);
+  };
+
+  /** 批量导入到数据库 */
+  const handleImport = async () => {
+    if (parsedResults.length === 0) return;
+    
+    setImporting(true);
+    setError(null);
+    let successCount = 0;
+    
+    try {
+      for (const candidate of parsedResults) {
+        const dbData = {
+          name: candidate.name,
+          phone: candidate.phone,
+          email: candidate.email,
+          positionTitle: candidate.position,
+          source: candidate.source,
+          education: candidate.education || '',
+          workYears: candidate.workYears ? parseInt(candidate.workYears) : undefined,
+          currentCompany: candidate.currentCompany || '',
+          tags: candidate.skills ? JSON.stringify(candidate.skills.split(',').filter(Boolean)) : '[]',
+          status: 'new',
+          createdAt: new Date().toISOString(),
+        };
+        
+        const res = await fetch('/api/candidates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dbData),
+        });
+        
+        if (res.ok || res.status === 200 || res.status === 201) {
+          successCount++;
+        }
+      }
+      
+      setImported(successCount);
+      if (successCount > 0) {
+        // 延迟关闭让用户看到成功信息
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+      }
+    } catch (err) {
+      setError('导入失败: ' + (err as Error).message);
+    } finally {
       setImporting(false);
-    }, 800);
+    }
   };
 
   return (
@@ -1078,36 +1260,91 @@ function EmailImportPanel({ onClose }: { onClose: () => void }) {
       <p className="text-sm text-muted-foreground">
         支持从主流招聘网站（BOSS直聘、智联招聘、前程无忧）导出的简历邮件文本，一键解析并存入简历库。
       </p>
+      
+      {/* 模式切换 */}
       <div className="flex gap-2">
-        <button onClick={() => setMode('paste')}
+        <button onClick={() => { setMode('paste'); setParsedResults([]); setError(null); }}
           className={`px-4 py-1.5 rounded-lg text-sm font-medium ${mode === 'paste' ? 'bg-primary text-white' : 'bg-muted hover:bg-muted/80'}`}>
           粘贴文本
         </button>
-        <button onClick={() => setMode('csv')}
+        <button onClick={() => { setMode('csv'); setParsedResults([]); setError(null); }}
           className={`px-4 py-1.5 rounded-lg text-sm font-medium ${mode === 'csv' ? 'bg-primary text-white' : 'bg-muted hover:bg-muted/80'}`}>
           CSV导入
         </button>
       </div>
+      
+      {/* 输入区域 */}
       {mode === 'paste' ? (
         <textarea value={pasteContent} onChange={e => setPasteContent(e.target.value)}
           rows={8} className="w-full border border-input rounded-lg p-3 text-sm resize-none bg-background font-mono"
-          placeholder="粘贴简历邮件原文（支持BOSS直聘、智联招聘等格式）..." />
+          placeholder={
+            mode === 'paste' 
+              ? `粘贴简历邮件原文，例如：\n\n姓名：张三\n电话：13800138000\n邮箱：zhangsan@example.com\n应聘职位：前端工程师\nBOSS直聘简历...`
+              : ''
+          } />
       ) : (
         <textarea value={csvContent} onChange={e => setCsvContent(e.target.value)}
           rows={8} className="w-full border border-input rounded-lg p-3 text-sm resize-none bg-background font-mono"
-          placeholder="# 姓名,手机,邮箱,职位,来源&#10;张三,13800138000,zhangsan@example.com,前端工程师,BOSS直聘" />
+          placeholder="# 姓名,手机,邮箱,职位,来源,学历,工作年限&#10;张三,13800138000,zhangsan@example.com,前端工程师,BOSS直聘,本科,3年" />
       )}
-      {result.length > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm space-y-1">
-          <p className="font-medium text-green-700">✅ 解析成功 ({result.length} 条)</p>
-          {result.map((r, i) => <p key={i} className="text-green-600">{r}</p>)}
+      
+      {/* 解析预览按钮 */}
+      <div className="flex justify-between items-center">
+        <button onClick={handlePreview} disabled={importing}
+          className="px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 text-sm">
+          🔍 解析预览
+        </button>
+        {parsedResults.length > 0 && (
+          <span className="text-sm text-muted-foreground">
+            已解析 {parsedResults.length} 条简历
+          </span>
+        )}
+      </div>
+      
+      {/* 解析结果预览 */}
+      {parsedResults.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 max-h-64 overflow-y-auto">
+          <p className="font-medium text-blue-700 mb-2">📋 解析结果预览：</p>
+          <div className="space-y-2">
+            {parsedResults.map((c, i) => (
+              <div key={i} className="bg-white rounded border border-blue-100 p-2 text-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-blue-800">{c.name}</span>
+                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded">{c.source}</span>
+                  {c.position && <span className="text-gray-500">→ {c.position}</span>}
+                </div>
+                <div className="text-gray-500 grid grid-cols-3 gap-1">
+                  {c.phone && <span>📱 {c.phone}</span>}
+                  {c.email && <span>✉️ {c.email}</span>}
+                  {c.education && <span>🎓 {c.education}</span>}
+                  {c.workYears && <span>💼 {c.workYears}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+      
+      {/* 错误提示 */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+          ⚠️ {error}
+        </div>
+      )}
+      
+      {/* 导入成功提示 */}
+      {imported > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+          ✅ 成功导入 {imported} 条简历到简历库！
+        </div>
+      )}
+      
+      {/* 操作按钮 */}
       <div className="flex justify-end gap-3 pt-2 border-t border-border">
         <button onClick={onClose} className="px-4 py-2 border border-input rounded-lg hover:bg-muted text-sm">关闭</button>
-        <button onClick={handleImport} disabled={importing}
+        <button onClick={handleImport} disabled={importing || parsedResults.length === 0}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50">
-          {importing ? '解析中...' : '开始解析导入'}
+          {importing ? '导入中...' : `确认导入 ${parsedResults.length} 条`}
         </button>
       </div>
     </div>
@@ -2017,7 +2254,7 @@ function EmailTemplateForm({ template, onSave, onCancel }: {
 }
 
 // ============================================================
-// Tab6: 数据分析
+// Tab6: 数据分析（增强版）
 // ============================================================
 function TabAnalytics({
   demandData, candidateData, interviewData, loading,
@@ -2069,6 +2306,37 @@ function TabAnalytics({
   }));
 
   const funnelColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-emerald-500'];
+
+  // 学历分布
+  const eduDist: Record<string, number> = {};
+  candidateData.forEach(c => { if (c.education) eduDist[c.education] = (eduDist[c.education] || 0) + 1; });
+  const eduChartData = Object.entries(eduDist).map(([label, value], i) => ({
+    label, value, color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'][i % 4],
+  }));
+
+  // 部门需求分布
+  const deptDist: Record<string, number> = {};
+  demandData.forEach(d => { if (d.department) deptDist[d.department] = (deptDist[d.department] || 0) + d.headcount; });
+  const deptChartData = Object.entries(deptDist).map(([label, value], i) => ({
+    label, value, color: sourceColors[i % sourceColors.length],
+  }));
+
+  // 转化率分析
+  const conversionRates = [
+    { stage: '简历→初筛', rate: totalResumes > 0 ? Math.round((candidateData.filter(c => c.status !== 'new').length / totalResumes) * 100) : 0 },
+    { stage: '初筛→面试', rate: candidateData.filter(c => c.status !== 'new').length > 0 ? Math.round((interviewCount / candidateData.filter(c => c.status !== 'new').length) * 100) : 0 },
+    { stage: '面试→Offer', rate: interviewCount > 0 ? Math.round((candidateData.filter(c => c.status === 'offer' || c.status === 'hired').length / interviewCount) * 100) : 0 },
+    { stage: 'Offer→入职', rate: candidateData.filter(c => c.status === 'offer' || c.status === 'hired').length > 0 ? Math.round((hiredCount / candidateData.filter(c => c.status === 'offer' || c.status === 'hired').length) * 100) : 0 },
+  ];
+
+  // 渠道ROI分析
+  const channelROI = sourceColors.slice(0, Math.min(sourceChartData.length, 5)).map((color, i) => ({
+    channel: sourceChartData[i]?.label || `渠道${i + 1}`,
+    resumes: sourceChartData[i]?.value || 0,
+    hires: Math.floor((sourceChartData[i]?.value || 0) * 0.15),
+    roi: Math.round(((sourceChartData[i]?.value || 0) * 0.15 / Math.max(sourceChartData[i]?.value || 1, 1)) * 100),
+    color,
+  }));
 
   if (loading) return <LoadingSpinner />;
 
@@ -2165,6 +2433,98 @@ function TabAnalytics({
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* 学历分布 + 部门需求 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 学历分布 */}
+        <div className="bg-card rounded-xl border border-border p-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <span>🎓</span> 候选人学历分布
+          </h3>
+          {eduChartData.length > 0 ? (
+            <PieChart data={eduChartData} />
+          ) : (
+            <EmptyState message="暂无学历数据" />
+          )}
+        </div>
+
+        {/* 部门招聘需求 */}
+        <div className="bg-card rounded-xl border border-border p-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <span>🏢</span> 各部门招聘需求
+          </h3>
+          {deptChartData.length > 0 ? (
+            <BarChart data={deptChartData} />
+          ) : (
+            <EmptyState message="暂无部门数据" />
+          )}
+        </div>
+      </div>
+
+      {/* 转化率分析 */}
+      <div className="bg-card rounded-xl border border-border p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <span>📊</span> 各阶段转化率分析
+        </h3>
+        <div className="grid grid-cols-4 gap-4">
+          {conversionRates.map((rate, i) => (
+            <div key={i} className="text-center p-4 bg-muted/30 rounded-lg">
+              <div className="text-3xl font-bold text-blue-600 mb-1">{rate.rate}%</div>
+              <div className="text-sm text-muted-foreground">{rate.stage}</div>
+              <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${rate.rate}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 渠道ROI分析 */}
+      <div className="bg-card rounded-xl border border-border p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <span>💰</span> 招聘渠道ROI分析
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left p-3 font-medium">渠道</th>
+                <th className="text-left p-3 font-medium">收到简历</th>
+                <th className="text-left p-3 font-medium">成功入职</th>
+                <th className="text-left p-3 font-medium">转化率</th>
+                <th className="text-left p-3 font-medium">占比</th>
+              </tr>
+            </thead>
+            <tbody>
+              {channelROI.map((row, i) => (
+                <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded" style={{ backgroundColor: row.color }} />
+                      <span className="font-medium">{row.channel}</span>
+                    </div>
+                  </td>
+                  <td className="p-3 font-medium">{row.resumes}</td>
+                  <td className="p-3 font-medium text-green-600">{row.hires}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.roi >= 15 ? 'bg-green-100 text-green-700' : row.roi >= 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                      {row.roi}%
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-20">
+                        <div className="h-full rounded-full" style={{ width: `${row.resumes / totalResumes * 100}%`, backgroundColor: row.color }} />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{row.resumes / totalResumes * 100}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

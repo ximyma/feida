@@ -4,13 +4,45 @@ import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import multer from 'multer';
-import { 
-  createApprovalFlow, 
-  createApprovalRequest, 
-  processApproval, 
-  getPendingApprovals, 
-  getApprovalHistory 
-} from './approval-engine';
+import {
+  initWorkflowEngine,
+  getWorkflowDefinitions,
+  startWorkflow,
+  processNodeAction,
+  getWorkflowInstances,
+  getPendingApprovalsForUser,
+  getWorkflowHistory,
+  getAllUsers,
+  getRoles,
+  createFormConfig,
+  getFormConfigs,
+  cancelWorkflow,
+  addWorkflowComment,
+  getWorkflowComments,
+} from './workflow-engine';
+import {
+  generateDailyAttendanceReport,
+  generateHistoricalReports,
+} from './attendance-report-engine';
+import {
+  calculateSalary,
+  batchCalculateSalary,
+  validateFormula,
+  getDefaultSalaryItems,
+  calculateTax,
+  calculateInsurance,
+} from './salary-formula-engine';
+import {
+  batchGenerateSchedules,
+  batchSwapSchedules,
+  copySchedules,
+  batchUpdateLeaveBalances,
+  getEmployeeLeaveInfo,
+  getAnnualLeaveRule,
+  getShiftTypes,
+  createShiftType,
+  createDefaultShiftTypes,
+} from './schedule-engine';
 
 const dataDir = path.join(process.cwd(), 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -21,6 +53,9 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 const app = express();
 const db = new DatabaseService();
 db.onModuleInit();
+
+// 初始化增强版工作流引擎
+initWorkflowEngine(db);
 
 app.use(express.json());
 
@@ -81,6 +116,7 @@ function apiRouter() {
     'kpis','performance_cycles','performance_records','performance_grades',
     // 培训模块
     'training_plans','training_courses','training_records','training_evaluations',
+    'training_learning_progress','training_notifications',
     // 后勤模块
     'dormitories','dormitory_assignments','dormitory_bills','canteens','meal_records',
     'vehicles','vehicle_usage','visitors',
@@ -93,6 +129,8 @@ function apiRouter() {
     'talent_profiles','talent_reports',
     // 流程审批模块
     'approval_flows','approval_requests','approval_records','workflow_templates',
+    'workflow_definitions','workflow_form_configs','workflow_instances',
+    'workflow_instance_nodes','workflow_node_assignees','workflow_comments',
     // 人事管理模块
     'employee_changes','field_definitions','employee_subsets','subset_records',
     'print_templates','reminders','reminder_logs',
@@ -527,6 +565,462 @@ function apiRouter() {
         db.insert('leave_rule_configs', { id, ...data });
       }
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 考勤日报自动化 API ============
+  
+  // 生成指定日期的考勤日报
+  router.post('/attendance/daily-report', async (req, res) => {
+    try {
+      const { date, department } = req.body;
+      if (!date) {
+        res.status(400).json({ success: false, message: '请指定日期 (date)' });
+        return;
+      }
+      const result = await generateDailyAttendanceReport(db, date, department);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取考勤日报列表
+  router.get('/attendance/daily-reports', (req, res) => {
+    try {
+      const { startDate, endDate, department } = req.query;
+      let sql = `SELECT * FROM daily_attendance_reports WHERE 1=1`;
+      const params: any[] = [];
+      if (startDate) { sql += ` AND date >= ?`; params.push(startDate); }
+      if (endDate) { sql += ` AND date <= ?`; params.push(endDate); }
+      if (department) { sql += ` AND department = ?`; params.push(department); }
+      sql += ` ORDER BY date DESC, department`;
+      const rows = db.query(sql, params) as any[];
+      // 解析 data JSON 字段
+      const reports = rows.map(r => ({
+        ...r,
+        details: r.data ? JSON.parse(r.data) : null,
+      }));
+      res.json(reports);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取指定日报详情
+  router.get('/attendance/daily-report/:id', (req, res) => {
+    try {
+      const report = db.findById('daily_attendance_reports', req.params.id);
+      if (!report) {
+        res.status(404).json({ success: false, message: '日报不存在' });
+        return;
+      }
+      const r = report as any;
+      res.json({
+        ...r,
+        details: r.data ? JSON.parse(r.data) : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 批量生成历史日报
+  router.post('/attendance/daily-report/batch', async (req, res) => {
+    try {
+      const { startDate, endDate } = req.body;
+      if (!startDate || !endDate) {
+        res.status(400).json({ success: false, message: '请指定起始和结束日期' });
+        return;
+      }
+      const result = await generateHistoricalReports(db, startDate, endDate);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 今日考勤概况（快速统计）
+  router.get('/attendance/today-summary', async (req, res) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      // 先尝试获取已生成的日报
+      let report = db.query(
+        `SELECT * FROM daily_attendance_reports WHERE date = ? AND department = '全公司' LIMIT 1`,
+        [today]
+      ) as any[];
+      
+      if (report.length === 0) {
+        // 没有日报，实时生成
+        const result = await generateDailyAttendanceReport(db, today);
+        res.json({
+          date: today,
+          generated: false,
+          ...result,
+        });
+      } else {
+        const r = report[0];
+        res.json({
+          date: today,
+          generated: true,
+          totalEmployees: r.totalEmployees,
+          normalCount: r.normalCount,
+          lateCount: r.lateCount,
+          earlyLeaveCount: r.earlyLeaveCount,
+          absentCount: r.absentCount,
+          leaveCount: r.leaveCount,
+          overtimeCount: r.overtimeCount,
+          restDayCount: r.restDayCount,
+          holidayCount: r.holidayCount,
+        });
+      }
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 薪资公式引擎 API ============
+
+  // 计算单个员工薪资
+  router.post('/salary/calculate', async (req, res) => {
+    try {
+      const { employeeId, month } = req.body;
+      if (!employeeId || !month) {
+        res.status(400).json({ success: false, message: '缺少员工ID或月份' });
+        return;
+      }
+      const result = await calculateSalary(db, employeeId, month);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 批量计算薪资
+  router.post('/salary/batch-calculate', async (req, res) => {
+    try {
+      const { month, employeeIds } = req.body;
+      if (!month) {
+        res.status(400).json({ success: false, message: '缺少月份参数' });
+        return;
+      }
+      const result = await batchCalculateSalary(db, month, employeeIds);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 验证公式语法
+  router.post('/salary/validate-formula', (req, res) => {
+    try {
+      const { formula } = req.body;
+      const result = validateFormula(formula);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取默认薪资项配置
+  router.get('/salary/default-items', (_req, res) => {
+    res.json(getDefaultSalaryItems());
+  });
+
+  // 计算个税
+  router.post('/salary/calculate-tax', (req, res) => {
+    try {
+      const { taxableIncome, socialSecurity, housingFund } = req.body;
+      const tax = calculateTax(taxableIncome || 0, socialSecurity || 0, housingFund || 0);
+      res.json({ success: true, tax });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 计算社保
+  router.post('/salary/calculate-insurance', (req, res) => {
+    try {
+      const { baseSalary, city } = req.body;
+      const result = calculateInsurance({ baseSalary: baseSalary || 0, city: city || '深圳' });
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 预览公式计算结果（使用测试数据）
+  router.post('/salary/preview-formula', (req, res) => {
+    try {
+      const { formula, testData } = req.body;
+      if (!formula) {
+        res.status(400).json({ success: false, message: '缺少公式' });
+        return;
+      }
+      const testContext = {
+        employee: { id: 'test', name: '测试员工', department: '技术部' },
+        month: testData?.month || '2024-01',
+        baseSalary: testData?.baseSalary || 10000,
+        positionSalary: testData?.positionSalary || 2000,
+        performance: testData?.performance || 0,
+        overtimeHours: testData?.overtimeHours || 0,
+        lateCount: testData?.lateCount || 0,
+        absentCount: testData?.absentCount || 0,
+        leaveDays: testData?.leaveDays || 0,
+      };
+      const result = evaluateFormula(formula, testContext);
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 保存薪资项配置（支持公式）
+  router.post('/salary/items', (req, res) => {
+    try {
+      const { id, name, code, type, formula, defaultValue, isTaxable, sortOrder, isActive } = req.body;
+      
+      // 验证公式
+      if (formula) {
+        const valid = validateFormula(formula);
+        if (!valid.valid) {
+          res.status(400).json({ success: false, message: `公式语法错误: ${valid.error}` });
+          return;
+        }
+      }
+      
+      const item = {
+        id: id || `si_${Date.now()}`,
+        name,
+        code,
+        type: type || 'earnings',
+        formula: formula || null,
+        defaultValue: defaultValue || 0,
+        isTaxable: isTaxable !== undefined ? isTaxable : 1,
+        sortOrder: sortOrder || 0,
+        isActive: isActive !== undefined ? isActive : 1,
+        createdAt: new Date().toISOString(),
+      };
+      
+      db.insert('salary_items', item);
+      res.json({ success: true, item });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 更新薪资项配置
+  router.put('/salary/items/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      // 验证公式
+      if (updates.formula) {
+        const valid = validateFormula(updates.formula);
+        if (!valid.valid) {
+          res.status(400).json({ success: false, message: `公式语法错误: ${valid.error}` });
+          return;
+        }
+      }
+      
+      const existing = db.findById('salary_items', id);
+      if (!existing) {
+        res.status(404).json({ success: false, message: '薪资项不存在' });
+        return;
+      }
+      
+      db.update('salary_items', id, { ...updates, createdAt: undefined });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 生成薪资条记录
+  router.post('/salary/generate', async (req, res) => {
+    try {
+      const { month, employeeId } = req.body;
+      if (!month) {
+        res.status(400).json({ success: false, message: '缺少月份' });
+        return;
+      }
+      
+      // 计算薪资
+      let results: any[] = [];
+      
+      if (employeeId) {
+        // 单个员工
+        const result = await calculateSalary(db, employeeId, month);
+        results.push(result);
+      } else {
+        // 全员
+        const batchResult = await batchCalculateSalary(db, month);
+        results = batchResult.results;
+      }
+      
+      // 保存到数据库
+      for (const r of results) {
+        if (r.success) {
+          const record = {
+            id: `salary_${r.employeeId}_${month.replace('-', '')}`,
+            employeeId: r.employeeId,
+            employeeName: r.employeeName,
+            month,
+            ...r.items,
+            grossSalary: r.grossSalary,
+            netSalary: r.netSalary,
+            tax: r.tax,
+            companyTotal: Object.values(r.companyContributions).reduce((a: number, b: number) => a + b, 0) as number,
+            status: 'draft',
+            createdAt: new Date().toISOString(),
+          };
+          
+          const existing = db.findById('salaries', record.id);
+          if (existing) {
+            db.update('salaries', record.id, record);
+          } else {
+            db.insert('salaries', record);
+          }
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `成功生成 ${results.filter(r => r.success).length} 条薪资记录`,
+        results,
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 批量排班与年假规则 API ============
+
+  // 批量生成排班
+  router.post('/schedule/batch-generate', async (req, res) => {
+    try {
+      const { employeeIds, startDate, endDate, shiftTypeId, shiftTypeName, pattern, restDays, overwrite } = req.body;
+      if (!employeeIds || !startDate || !endDate || !shiftTypeId) {
+        res.status(400).json({ success: false, message: '缺少必要参数' });
+        return;
+      }
+      const result = await batchGenerateSchedules(db, {
+        employeeIds, startDate, endDate, shiftTypeId,
+        shiftTypeName: shiftTypeName || '标准班',
+        pattern, restDays, overwrite,
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 批量调班
+  router.post('/schedule/batch-swap', async (req, res) => {
+    try {
+      const { swaps } = req.body;
+      if (!swaps || !Array.isArray(swaps)) {
+        res.status(400).json({ success: false, message: '缺少调班数据' });
+        return;
+      }
+      const result = await batchSwapSchedules(db, swaps);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 复制排班
+  router.post('/schedule/copy', async (req, res) => {
+    try {
+      const { sourceStartDate, sourceEndDate, targetStartDate, employeeIds } = req.body;
+      if (!sourceStartDate || !sourceEndDate || !targetStartDate) {
+        res.status(400).json({ success: false, message: '缺少日期参数' });
+        return;
+      }
+      const result = await copySchedules(db, sourceStartDate, sourceEndDate, targetStartDate, employeeIds);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取班次列表
+  router.get('/shift-types', (_req, res) => {
+    try {
+      let shifts = getShiftTypes(db);
+      if (shifts.length === 0) {
+        createDefaultShiftTypes(db);
+        shifts = getShiftTypes(db);
+      }
+      res.json(shifts);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 创建班次
+  router.post('/shift-types', (req, res) => {
+    try {
+      const result = createShiftType(db, req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取年假规则配置
+  router.get('/leave/annual-rules', (_req, res) => {
+    try {
+      const rule = getAnnualLeaveRule(db);
+      res.json(rule);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 批量更新年假余额
+  router.post('/leave/batch-accrual', async (req, res) => {
+    try {
+      const { year, employeeIds } = req.body;
+      const targetYear = year || new Date().getFullYear().toString();
+      const result = await batchUpdateLeaveBalances(db, targetYear, employeeIds);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取员工年假信息
+  router.get('/leave/employee-info/:employeeId', async (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      const year = req.query.year || new Date().getFullYear().toString();
+      const info = await getEmployeeLeaveInfo(db, employeeId, year as string);
+      res.json(info);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取员工年假余额列表
+  router.get('/leave/balances', (req, res) => {
+    try {
+      const { year, employeeId, leaveType } = req.query;
+      let sql = `SELECT lb.*, e.name as employeeName, e.department 
+                 FROM leave_balances lb
+                 LEFT JOIN employees e ON lb.employeeId = e.id
+                 WHERE 1=1`;
+      const params: any[] = [];
+      if (year) { sql += ` AND lb.year = ?`; params.push(year); }
+      if (employeeId) { sql += ` AND lb.employeeId = ?`; params.push(employeeId); }
+      if (leaveType) { sql += ` AND lb.leaveType = ?`; params.push(leaveType); }
+      sql += ` ORDER BY lb.year DESC, lb.leaveType, e.department`;
+      const rows = db.query(sql, params);
+      res.json(rows);
     } catch (e: any) {
       res.status(500).json({ success: false, message: e.message });
     }
@@ -1063,6 +1557,369 @@ function apiRouter() {
     try {
       const flow = createApprovalFlow(req.body);
       res.json({ success: true, data: flow });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 增强版工作流引擎 API (v2.0) ============
+
+  // 获取工作流定义列表
+  router.get('/workflows', (req, res) => {
+    try {
+      const { status } = req.query as any;
+      const defs = getWorkflowDefinitions({ status });
+      res.json({ success: true, data: defs });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取单个工作流定义（含节点和连线）
+  router.get('/workflows/:id', (req, res) => {
+    try {
+      const defs = getWorkflowDefinitions();
+      const def = defs.find((d: any) => d.id === req.params.id);
+      if (!def) { res.json({ success: false, message: '未找到' }); return; }
+      res.json({ success: true, data: def });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取工作流实例列表
+  router.get('/workflow/instances', (req, res) => {
+    try {
+      const { applicantId, assigneeId, status, businessType } = req.query as any;
+      const instances = getWorkflowInstances({ applicantId, status, businessType });
+      res.json({ success: true, data: instances });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 启动工作流
+  router.post('/workflow/start', (req, res) => {
+    try {
+      const instance = startWorkflow(req.body);
+      res.json({ success: true, data: instance });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取待审批列表（新版）
+  router.get('/workflow/pending', (req, res) => {
+    try {
+      const { userId } = req.query;
+      const rows = getPendingApprovalsForUser(userId as string || '');
+      res.json({ success: true, data: rows });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 处理节点审批
+  router.post('/workflow/process', (req, res) => {
+    try {
+      const result = processNodeAction(req.body);
+      res.json({ success: true, result });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取流程历史
+  router.get('/workflow/history/:instanceId', (req, res) => {
+    try {
+      const history = getWorkflowHistory(req.params.instanceId);
+      res.json({ success: true, data: history });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 撤回流程
+  router.post('/workflow/cancel/:instanceId', (req, res) => {
+    try {
+      const { userId } = req.body;
+      const result = cancelWorkflow(req.params.instanceId, userId);
+      res.json(result);
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 添加审批意见
+  router.post('/workflow/comments', (req, res) => {
+    try {
+      const { instanceId, userId, userName, content, nodeId } = req.body;
+      const result = addWorkflowComment(instanceId, userId, userName, content, nodeId);
+      res.json(result);
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取审批意见
+  router.get('/workflow/comments/:instanceId', (req, res) => {
+    try {
+      const comments = getWorkflowComments(req.params.instanceId);
+      res.json({ success: true, data: comments });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取所有用户（用于审批人选择）
+  router.get('/workflow/users', (req, res) => {
+    try {
+      res.json({ success: true, data: getAllUsers() });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取角色列表
+  router.get('/workflow/roles', (req, res) => {
+    try {
+      res.json({ success: true, data: getRoles() });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 表单配置 CRUD
+  router.get('/workflow/forms', (req, res) => {
+    try {
+      const { module } = req.query as any;
+      res.json({ success: true, data: getFormConfigs(module) });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  router.post('/workflow/forms', (req, res) => {
+    try {
+      const form = createFormConfig(req.body);
+      res.json({ success: true, data: form });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 培训学习进度 API（视频断点） ============
+
+  // 获取员工学习进度列表
+  router.get('/training/progress/:employeeId', (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      const { courseId, status } = req.query as any;
+      let progress = (db as any).db.prepare(
+        'SELECT * FROM training_learning_progress WHERE employeeId = ? ORDER BY lastAccessAt DESC'
+      ).all(employeeId) as any[];
+      
+      if (courseId) progress = progress.filter(p => p.courseId === courseId);
+      if (status) progress = progress.filter(p => p.status === status);
+      
+      res.json({ success: true, data: progress });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 保存视频播放位置（断点续看）
+  router.post('/training/progress/video-position', (req, res) => {
+    try {
+      const { employeeId, employeeName, courseId, courseName, position, duration } = req.body;
+      const now = new Date().toISOString();
+      
+      // 查找或创建学习记录
+      const existing = (db as any).db.prepare(
+        'SELECT * FROM training_learning_progress WHERE employeeId = ? AND courseId = ?'
+      ).get(employeeId, courseId) as any;
+      
+      const progressPercent = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
+      const newStatus = progressPercent >= 95 ? 'completed' : progressPercent > 0 ? 'in_progress' : 'not_started';
+      
+      if (existing) {
+        // 更新进度
+        (db as any).db.prepare(`
+          UPDATE training_learning_progress SET 
+            videoPosition = ?, videoDuration = ?, progressPercent = ?,
+            lastPosition = ?, status = ?,
+            totalWatchTime = totalWatchTime + ?,
+            watchCount = watchCount + 1,
+            lastAccessAt = ?, updatedAt = ?
+          WHERE employeeId = ? AND courseId = ?
+        `).run(
+          position, duration, progressPercent, position, newStatus,
+          existing.lastPosition ? Math.max(0, position - existing.lastPosition) : 0,
+          now, now, employeeId, courseId
+        );
+      } else {
+        // 创建新记录
+        (db as any).db.prepare(`
+          INSERT INTO training_learning_progress (
+            id, employeeId, employeeName, courseId, courseName,
+            videoPosition, videoDuration, progressPercent, lastPosition,
+            status, totalWatchTime, watchCount,
+            firstAccessAt, lastAccessAt, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `lp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          employeeId, employeeName || '', courseId, courseName || '',
+          position, duration, progressPercent, position,
+          newStatus, 0, 1, now, now, now, now
+        );
+      }
+      
+      res.json({ success: true, data: { position, progressPercent, status: newStatus } });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取课程学习进度（员工端使用）
+  router.get('/training/progress/video/:courseId', (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const { employeeId } = req.query as any;
+      
+      if (!employeeId) { res.json({ success: false, message: '缺少员工ID' }); return; }
+      
+      const progress = (db as any).db.prepare(
+        'SELECT * FROM training_learning_progress WHERE employeeId = ? AND courseId = ?'
+      ).get(employeeId, courseId);
+      
+      res.json({ success: true, data: progress || { videoPosition: 0, progressPercent: 0, status: 'not_started' } });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 培训推送通知 API ============
+
+  // 获取员工的通知列表
+  router.get('/training/notifications/:employeeId', (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      const { isRead, type } = req.query as any;
+      
+      let sql = 'SELECT * FROM training_notifications WHERE employeeId = ?';
+      const params: any[] = [employeeId];
+      
+      if (isRead !== undefined) {
+        sql += ' AND isRead = ?';
+        params.push(isRead === 'true' || isRead === '1' ? 1 : 0);
+      }
+      if (type) {
+        sql += ' AND type = ?';
+        params.push(type);
+      }
+      
+      sql += ' ORDER BY createdAt DESC';
+      
+      const notifications = (db as any).db.prepare(sql).all(...params);
+      res.json({ success: true, data: notifications });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 推送培训给员工（管理员操作）
+  router.post('/training/push', (req, res) => {
+    try {
+      const { planId, planTitle, courseId, courseName, employeeIds, deadline, content } = req.body;
+      const now = new Date().toISOString();
+      const results: string[] = [];
+      
+      for (const empId of employeeIds) {
+        const emp = (db as any).db.prepare('SELECT * FROM employees WHERE id = ?').get(empId) as any;
+        if (!emp) continue;
+        
+        // 检查是否已推送
+        const existing = (db as any).db.prepare(
+          'SELECT * FROM training_notifications WHERE employeeId = ? AND planId = ? AND type = ?'
+        ).get(empId, planId, 'training_assign');
+        
+        if (existing) {
+          // 更新现有通知
+          (db as any).db.prepare(`
+            UPDATE training_notifications SET 
+              title = ?, content = ?, deadline = ?, pushStatus = 'pending',
+              isRead = 0, readAt = NULL, updatedAt = ?
+            WHERE employeeId = ? AND planId = ? AND type = ?
+          `).run(planTitle || content || '培训通知', content || '', deadline || '', now, empId, planId, 'training_assign');
+        } else {
+          // 创建新通知
+          (db as any).db.prepare(`
+            INSERT INTO training_notifications (
+              id, employeeId, employeeName, planId, planTitle, courseId, courseName,
+              type, title, content, priority, isRead, pushChannel, pushStatus, deadline, createdAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            `tn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            empId, emp.name || '', planId, planTitle || '', courseId || '', courseName || '',
+            'training_assign', planTitle || content || '培训通知', 
+            content || '您有一条新的培训任务，请及时完成学习。',
+            deadline ? 'high' : 'normal', 0, 'self_service', 'sent', deadline || '', now
+          );
+        }
+        results.push(emp.name || empId);
+      }
+      
+      res.json({ success: true, message: `已推送培训给 ${results.length} 位员工`, data: results });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 标记通知已读
+  router.post('/training/notifications/:id/read', (req, res) => {
+    try {
+      const { id } = req.params;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(
+        'UPDATE training_notifications SET isRead = 1, readAt = ?, pushStatus = "read" WHERE id = ?'
+      ).run(now, id);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 批量推送培训给部门员工
+  router.post('/training/push/department', (req, res) => {
+    try {
+      const { planId, planTitle, courseId, courseName, departmentId, deadline, content } = req.body;
+      const now = new Date().toISOString();
+      
+      // 获取部门下所有员工
+      const employees = (db as any).db.prepare(
+        'SELECT * FROM employees WHERE department = (SELECT name FROM departments WHERE id = ?) AND status = ?'
+      ).all(departmentId, 'active') as any[];
+      
+      let pushed = 0;
+      for (const emp of employees) {
+        (db as any).db.prepare(`
+          INSERT OR REPLACE INTO training_notifications (
+            id, employeeId, employeeName, planId, planTitle, courseId, courseName,
+            type, title, content, priority, isRead, pushChannel, pushStatus, deadline, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `tn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          emp.id, emp.name, planId, planTitle || '', courseId || '', courseName || '',
+          'training_assign', planTitle || content || '培训通知',
+          content || '您有一条新的培训任务，请及时完成学习。',
+          deadline ? 'high' : 'normal', 0, 'self_service', 'sent', deadline || '', now
+        );
+        pushed++;
+      }
+      
+      res.json({ success: true, message: `已推送培训给部门 ${pushed} 位员工` });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
     }

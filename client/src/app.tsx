@@ -21,9 +21,11 @@ import AttendanceRulesPage from './pages/AttendancePage/AttendanceRulesPage';
 import LeaveManagementPage from './pages/AttendancePage/LeaveManagementPage';
 import OvertimeManagementPage from './pages/AttendancePage/OvertimeManagementPage';
 import AttendanceStatisticsPage from './pages/AttendancePage/AttendanceStatisticsPage';
+import AttendanceDailyReportPage from './pages/AttendancePage/AttendanceDailyReportPage';
 import SalaryPage from './pages/SalaryPage/SalaryPage';
 import SalaryTablePage from './pages/SalaryPage/SalaryTablePage';
 import SalaryConfigPage from './pages/SalaryPage/SalaryConfigPage';
+import SalaryFormulaPage from './pages/SalaryPage/SalaryFormulaPage';
 import CompanyContributionPage from './pages/SalaryPage/CompanyContributionPage';
 import StatisticsPage from './pages/StatisticsPage/StatisticsPage';
 import PerformancePage from './pages/PerformancePage/PerformancePage';
@@ -99,11 +101,13 @@ export default function App() {
         <Route path="/attendance/leave" element={<LeaveManagementPage />} />
         <Route path="/attendance/overtime" element={<OvertimeManagementPage />} />
         <Route path="/attendance/statistics" element={<AttendanceStatisticsPage />} />
+        <Route path="/attendance/daily-report" element={<AttendanceDailyReportPage />} />
 
         {/* 薪酬管理 */}
         <Route path="/salary" element={<SalaryPage />} />
         <Route path="/salary/table" element={<SalaryTablePage />} />
         <Route path="/salary/config" element={<SalaryConfigPage />} />
+        <Route path="/salary/formula" element={<SalaryFormulaPage />} />
         <Route path="/salary/company" element={<CompanyContributionPage />} />
 
         {/* 统计分析 */}

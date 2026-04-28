@@ -2,14 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Select,
   Tag, Space, Popconfirm, message, Tabs, Statistic, Row, Col,
-  Divider, Progress, InputNumber, Descriptions, Alert
+  Divider, Progress, InputNumber, Descriptions, Alert, Badge
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined,
   DownloadOutlined, SearchOutlined, PlayCircleOutlined, VideoCameraOutlined,
   FileTextOutlined, TeamOutlined,
   QrcodeOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined,
-  BookOutlined, CalendarOutlined, StarOutlined
+  BookOutlined, CalendarOutlined, StarOutlined, BellOutlined, PushpinOutlined,
+  EyeOutlined, RocketOutlined
 } from '@ant-design/icons';
 
 const { TextArea } = Input;
@@ -96,6 +97,62 @@ interface AssessmentQuestion {
   question: string;
   options?: string[];
   score: number;
+}
+
+// ============ 新增：学习进度（视频断点） ============
+interface LearningProgress {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  courseId: string;
+  courseName: string;
+  planId?: string;
+  videoPosition: number;      // 视频播放位置（秒）
+  videoDuration: number;      // 视频总时长（秒）
+  progressPercent: number;    // 学习进度百分比
+  lastPosition: number;       // 上次保存位置
+  status: 'not_started' | 'in_progress' | 'completed';
+  totalWatchTime: number;     // 累计观看时长（秒）
+  watchCount: number;         // 观看次数
+  evaluationScore?: number;
+  evaluationStatus?: 'not_taken' | 'pending' | 'passed' | 'failed';
+  evaluationPassed?: number;
+  firstAccessAt?: string;
+  lastAccessAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+// ============ 新增：培训通知推送 ============
+interface TrainingNotification {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  planId?: string;
+  planTitle?: string;
+  courseId?: string;
+  courseName?: string;
+  type: 'training_assign' | 'exam_reminder' | 'completion_notice';
+  title: string;
+  content?: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  isRead: number;
+  readAt?: string;
+  deadline?: string;
+  pushChannel: 'self_service' | 'sms' | 'email';
+  pushStatus: 'pending' | 'sent' | 'read' | 'expired';
+  sentAt?: string;
+  createdAt: string;
+}
+
+// ============ 员工列表项 ============
+interface Employee {
+  id: string;
+  name: string;
+  employeeId: string;
+  department: string;
+  position?: string;
+  status: string;
 }
 
 // ============ 映射 ============
@@ -195,6 +252,10 @@ export default function TrainingPage() {
   const [classes, setClasses] = useState<TrainingClass[]>([]);
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [templates, setTemplates] = useState<AssessmentTemplate[]>([]);
+  // ============ 新增：学习进度和通知 ============
+  const [learningProgress, setLearningProgress] = useState<LearningProgress[]>([]);
+  const [notifications, setNotifications] = useState<TrainingNotification[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [planModal, setPlanModal] = useState(false);
   const [courseModal, setCourseModal] = useState(false);
@@ -203,6 +264,7 @@ export default function TrainingPage() {
   const [templateModal, setTemplateModal] = useState(false);
   const [detailModal, setDetailModal] = useState(false);
   const [qrModal, setQrModal] = useState(false);
+  const [pushModal, setPushModal] = useState(false);
   const [selectedClass, setSelectedClass] = useState<TrainingClass | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<TrainingCourse | null>(null);
   const [editingPlan, setEditingPlan] = useState<TrainingPlan | null>(null);
@@ -210,6 +272,9 @@ export default function TrainingPage() {
   const [editingClass, setEditingClass] = useState<TrainingClass | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<AssessmentTemplate | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [filterEmployee, setFilterEmployee] = useState<string>('');
+  const [filterCourse, setFilterCourse] = useState<string>('');
+  const [filterProgressStatus, setFilterProgressStatus] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [planForm] = Form.useForm();
@@ -222,25 +287,56 @@ export default function TrainingPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, c, cl, r, t] = await Promise.all([
+      const [p, c, cl, r, t, emp, prog] = await Promise.all([
         API.get('training_plans'),
         API.get('training_courses'),
         API.get('training_classes'),
         API.get('training_records'),
         API.get('assessment_templates'),
+        API.get('employees'),
+        API.get('training_learning_progress'),
       ]);
       setPlans(Array.isArray(p) ? p : []);
       setCourses(Array.isArray(c) ? c : []);
       setClasses(Array.isArray(cl) ? cl : []);
       setRecords(Array.isArray(r) ? r : []);
       setTemplates(Array.isArray(t) ? t : []);
+      setEmployees(Array.isArray(emp) ? emp : []);
+      setLearningProgress(Array.isArray(prog) ? prog : []);
     } catch (e) {
       messageApi.error('数据加载失败: ' + (e as Error).message);
     }
     setLoading(false);
   }, [messageApi]);
 
+  // 加载通知数据
+  const loadNotifications = useCallback(async (employeeId?: string) => {
+    try {
+      if (employeeId) {
+        const res = await fetch(`/api/training/notifications/${employeeId}`);
+        const data = await res.json();
+        if (data.success) {
+          setNotifications(data.data || []);
+        }
+      } else {
+        // 管理员查看所有通知 - 通过获取所有员工的通知
+        const allNotifs: TrainingNotification[] = [];
+        for (const emp of employees.slice(0, 20)) {
+          const res = await fetch(`/api/training/notifications/${emp.id}`);
+          const data = await res.json();
+          if (data.success && data.data) {
+            allNotifs.push(...data.data);
+          }
+        }
+        setNotifications(allNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      }
+    } catch (e) {
+      console.error('Failed to load notifications:', e);
+    }
+  }, [employees]);
+
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (employees.length > 0) loadNotifications(); }, [employees, loadNotifications]);
 
   // ============ 统计 ============
   const stats = {
@@ -254,6 +350,16 @@ export default function TrainingPage() {
     averageScore: records.filter(r => r.score != null).length > 0
       ? records.filter(r => r.score != null).reduce((s, r) => s + (r.score || 0), 0) / records.filter(r => r.score != null).length
       : 0,
+    // 学习进度统计
+    totalProgress: learningProgress.length,
+    inProgressCount: learningProgress.filter(p => p.status === 'in_progress').length,
+    completedCount: learningProgress.filter(p => p.status === 'completed').length,
+    avgProgress: learningProgress.length > 0
+      ? Math.round(learningProgress.reduce((s, p) => s + p.progressPercent, 0) / learningProgress.length)
+      : 0,
+    // 通知统计
+    unreadNotifications: notifications.filter(n => !n.isRead).length,
+    totalNotifications: notifications.length,
   };
 
   // ============ 培训计划 CRUD ============
@@ -556,6 +662,8 @@ export default function TrainingPage() {
     { key: 'course', label: '在线课程', icon: <VideoCameraOutlined /> },
     { key: 'class', label: '培训班', icon: <TeamOutlined /> },
     { key: 'record', label: '培训记录', icon: <FileTextOutlined /> },
+    { key: 'progress', label: <span>学习进度 <Badge count={stats.avgProgress} size="small" style={{ marginLeft: 4 }} /></span>, icon: <EyeOutlined /> },
+    { key: 'push', label: <span>培训推送 <Badge count={stats.unreadNotifications} size="small" style={{ marginLeft: 4 }} /></span>, icon: <PushpinOutlined /> },
     { key: 'assessment', label: '评估管理', icon: <StarOutlined /> },
   ];
 
@@ -659,6 +767,102 @@ export default function TrainingPage() {
     )},
   ];
 
+  // ============ 学习进度表格列 ============
+  const progressStatusMap: Record<string, { label: string; color: string }> = {
+    'not_started': { label: '未开始', color: 'default' },
+    'in_progress': { label: '学习中', color: 'processing' },
+    'completed': { label: '已完成', color: 'success' },
+  };
+
+  const progressColumns = [
+    { title: '员工', dataIndex: 'employeeName', key: 'emp', width: 100 },
+    { title: '课程', dataIndex: 'courseName', key: 'course', width: 180, render: (v: string) => v || '-' },
+    { title: '视频进度', key: 'progress', width: 160, render: (_: any, r: LearningProgress) => (
+      <div className="flex items-center gap-2">
+        <Progress percent={Math.round(r.progressPercent)} size="small" style={{ width: 100 }} 
+          status={r.status === 'completed' ? 'success' : 'active'} />
+        <span className="text-xs text-gray-500">
+          {formatDuration(r.videoPosition)} / {formatDuration(r.videoDuration)}
+        </span>
+      </div>
+    )},
+    { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Tag color={progressStatusMap[v]?.color}>{progressStatusMap[v]?.label || v}</Tag> },
+    { title: '观看时长', key: 'watchTime', width: 100, render: (_: any, r: LearningProgress) => formatDuration(r.totalWatchTime) },
+    { title: '观看次数', dataIndex: 'watchCount', key: 'watchCount', width: 80 },
+    { title: '最后学习', dataIndex: 'lastAccessAt', key: 'lastAccess', width: 140, render: (v: string) => v ? v.slice(0, 16) : '-' },
+    { title: '操作', key: 'action', width: 120, render: (_: any, r: LearningProgress) => (
+      <Space size="small">
+        <Button size="small" type="link" onClick={() => handleResumeVideo(r)}>断点续看</Button>
+      </Space>
+    )},
+  ];
+
+  // ============ 通知推送表格列 ============
+  const notifTypeMap: Record<string, { label: string; color: string }> = {
+    'training_assign': { label: '培训任务', color: 'blue' },
+    'exam_reminder': { label: '考试提醒', color: 'orange' },
+    'completion_notice': { label: '完成通知', color: 'green' },
+  };
+
+  const notificationColumns = [
+    { title: '员工', dataIndex: 'employeeName', key: 'emp', width: 100 },
+    { title: '标题', dataIndex: 'title', key: 'title', width: 180, ellipsis: true },
+    { title: '类型', dataIndex: 'type', key: 'type', width: 90, render: (v: string) => <Tag color={notifTypeMap[v]?.color}>{notifTypeMap[v]?.label || v}</Tag> },
+    { title: '截止日期', dataIndex: 'deadline', key: 'deadline', width: 100, render: (v: string) => v || '-' },
+    { title: '状态', key: 'status', width: 80, render: (_: any, r: TrainingNotification) => (
+      r.isRead ? <Tag color="green">已读</Tag> : <Badge status="processing" text={<span className="text-orange-500">未读</span>} />
+    )},
+    { title: '推送时间', dataIndex: 'createdAt', key: 'created', width: 140, render: (v: string) => v ? v.slice(0, 16) : '-' },
+    { title: '操作', key: 'action', width: 100, render: (_: any, r: TrainingNotification) => (
+      <Space size="small">
+        {r.isRead ? null : <Button size="small" type="link" onClick={() => markAsRead(r.id)}>标记已读</Button>}
+      </Space>
+    )},
+  ];
+
+  // ============ 辅助函数 ============
+  function formatDuration(seconds: number): string {
+    if (!seconds) return '-';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  const handleResumeVideo = (progress: LearningProgress) => {
+    messageApi.info(`继续播放：${progress.courseName || '课程'}，从 ${formatDuration(progress.lastPosition)} 处继续`);
+  };
+
+  const markAsRead = async (id: string) => {
+    try {
+      const res = await fetch(`/api/training/notifications/${id}/read`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: 1 } : n));
+        messageApi.success('已标记为已读');
+      }
+    } catch (e) { messageApi.error('操作失败'); }
+  };
+
+  const handlePushTraining = async (planId: string, planTitle: string, selectedEmpIds: string[], deadline?: string) => {
+    try {
+      const res = await fetch('/api/training/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, planTitle, employeeIds: selectedEmpIds, deadline }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        messageApi.success(data.message || '推送成功');
+        loadNotifications();
+      } else {
+        messageApi.error(data.message || '推送失败');
+      }
+    } catch (e) { messageApi.error('推送失败'); }
+  };
+
   // ============ 过滤 ============
   const filteredPlans = plans.filter(p =>
     (!filterStatus || p.status === filterStatus) &&
@@ -674,6 +878,18 @@ export default function TrainingPage() {
   const filteredRecords = records.filter(r =>
     (!searchText || r.employeeName?.includes(searchText) || r.employeeId?.includes(searchText))
   );
+  // 过滤学习进度
+  const filteredProgress = learningProgress.filter(p => {
+    if (filterProgressStatus && p.status !== filterProgressStatus) return false;
+    if (filterEmployee && p.employeeId !== filterEmployee) return false;
+    if (filterCourse && p.courseId !== filterCourse) return false;
+    if (searchText && !p.employeeName?.includes(searchText) && !p.courseName?.includes(searchText)) return false;
+    return true;
+  });
+  // 过滤通知
+  const filteredNotifications = notifications.filter(n =>
+    (!searchText || n.title?.includes(searchText) || n.employeeName?.includes(searchText))
+  );
 
   return (
     <div className="p-6 space-y-4">
@@ -686,12 +902,14 @@ export default function TrainingPage() {
       </div>
 
       <Row gutter={16}>
-        <Col span={4}><Card size="small"><Statistic title="培训计划" value={stats.totalPlans} suffix="个" valueStyle={{ color: '#1677ff' }} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="进行中" value={stats.ongoingPlans} suffix="个" valueStyle={{ color: '#52c41a' }} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="在线课程" value={stats.activeCourses} suffix="个" /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="培训班" value={stats.totalClasses} suffix="期" /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="培训记录" value={stats.totalRecords} suffix="条" /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="平均成绩" value={stats.averageScore.toFixed(1)} suffix="分" valueStyle={{ color: '#faad14' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="培训计划" value={stats.totalPlans} suffix="个" valueStyle={{ color: '#1677ff' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="进行中" value={stats.ongoingPlans} suffix="个" valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="在线课程" value={stats.activeCourses} suffix="个" /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="培训班" value={stats.totalClasses} suffix="期" /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="培训记录" value={stats.totalRecords} suffix="条" /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="学习进度" value={stats.avgProgress} suffix="%" valueStyle={{ color: '#722ed1' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="已完成" value={stats.completedCount} suffix="人" valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="未读通知" value={stats.unreadNotifications} suffix="条" valueStyle={{ color: '#faad14' }} /></Card></Col>
       </Row>
 
       <Card>
@@ -842,6 +1060,69 @@ export default function TrainingPage() {
             />
           </div>
         )}
+
+        {/* ========== Tab6: 学习进度（视频断点） ========== */}
+        {activeTab === 'progress' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Space>
+                <Input placeholder="搜索员工/课程" prefix={<SearchOutlined />} allowClear style={{ width: 200 }} onChange={e => setSearchText(e.target.value)} />
+                <Select placeholder="按状态筛选" allowClear style={{ width: 120 }} value={filterProgressStatus || undefined} onChange={v => setFilterProgressStatus(v || '')}>
+                  {Object.entries(progressStatusMap).map(([k, v]) => <Option key={k} value={k}>{v.label}</Option>)}
+                </Select>
+                <Select placeholder="选择员工" allowClear showSearch style={{ width: 150 }} value={filterEmployee || undefined} onChange={v => setFilterEmployee(v || '')} filterOption={(input, option) => (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())}>
+                  {employees.map(e => <Option key={e.id} value={e.id}>{e.name}</Option>)}
+                </Select>
+                <Select placeholder="选择课程" allowClear showSearch style={{ width: 180 }} value={filterCourse || undefined} onChange={v => setFilterCourse(v || '')} filterOption={(input, option) => (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())}>
+                  {courses.map(c => <Option key={c.id} value={c.id}>{c.title}</Option>)}
+                </Select>
+              </Space>
+              <Button type="primary" icon={<RocketOutlined />} onClick={() => messageApi.info('视频播放器功能需在员工端使用')}>
+                查看视频播放
+              </Button>
+            </div>
+            <Alert message="视频断点续看：员工在学习视频课程时，系统自动记录播放位置。下次进入时自动从上次停止处继续播放。" type="info" showIcon style={{ marginBottom: 8 }} />
+            <Table columns={progressColumns} dataSource={filteredProgress} rowKey="id" loading={loading} pagination={{ pageSize: 10, showSizeChanger: true, showTotal: t => `共 ${t} 条` }} size="small" scroll={{ x: 1100 }} />
+          </div>
+        )}
+
+        {/* ========== Tab7: 培训推送 ========== */}
+        {activeTab === 'push' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Space>
+                <Input placeholder="搜索员工/标题" prefix={<SearchOutlined />} allowClear style={{ width: 200 }} onChange={e => setSearchText(e.target.value)} />
+              </Space>
+              <Button type="primary" icon={<PushpinOutlined />} onClick={() => setPushModal(true)}>
+                推送培训任务
+              </Button>
+            </div>
+            <Row gutter={16} className="mb-4">
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="总通知数" value={stats.totalNotifications} valueStyle={{ color: '#1677ff' }} />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="未读通知" value={stats.unreadNotifications} valueStyle={{ color: '#faad14' }} />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="已完成学习" value={stats.completedCount} valueStyle={{ color: '#52c41a' }} />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="学习中" value={stats.inProgressCount} valueStyle={{ color: '#722ed1' }} />
+                </Card>
+              </Col>
+            </Row>
+            <Alert message="培训推送功能：将培训任务通过员工自助账号推送，支持设置完成截止日期。员工可在自助平台查看待完成的培训任务。" type="info" showIcon style={{ marginBottom: 8 }} />
+            <Table columns={notificationColumns} dataSource={filteredNotifications} rowKey="id" loading={loading} pagination={{ pageSize: 10, showSizeChanger: true, showTotal: t => `共 ${t} 条` }} size="small" scroll={{ x: 900 }} />
+          </div>
+        )}
       </Card>
 
       {/* ========== 培训计划弹窗 ========== */}
@@ -988,6 +1269,170 @@ export default function TrainingPage() {
           <Alert message="题目编辑功能正在完善中，当前仅支持修改模板基本信息。" type="info" showIcon style={{ marginTop: 8 }} />
         )}
       </Modal>
+
+      {/* ========== 培训推送弹窗 ========== */}
+      <PushTrainingModal
+        open={pushModal}
+        plans={plans}
+        courses={courses}
+        employees={employees}
+        onClose={() => setPushModal(false)}
+        onPush={handlePushTraining}
+      />
     </div>
+  );
+}
+
+// ============ 推送培训弹窗组件 ============
+function PushTrainingModal({
+  open, plans, courses, employees, onClose, onPush
+}: {
+  open: boolean;
+  plans: TrainingPlan[];
+  courses: TrainingCourse[];
+  employees: Employee[];
+  onClose: () => void;
+  onPush: (planId: string, planTitle: string, empIds: string[], deadline?: string) => void;
+}) {
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+  const [deadline, setDeadline] = useState<string>('');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  const [pushing, setPushing] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  const departments = [...new Set(employees.map(e => e.department).filter(Boolean))];
+  const filteredEmployees = employees.filter(e =>
+    (!departmentFilter || e.department === departmentFilter) &&
+    e.status === 'active'
+  );
+
+  const selectedPlan = plans.find(p => p.id === selectedPlanId);
+  const selectedCourse = courses.find(c => c.id === selectedCourseId);
+
+  const handlePush = async () => {
+    if (!selectedPlanId && !selectedCourseId) {
+      messageApi.error('请选择培训计划或课程');
+      return;
+    }
+    if (selectedEmpIds.length === 0) {
+      messageApi.error('请选择要推送的员工');
+      return;
+    }
+
+    setPushing(true);
+    const planTitle = selectedPlan?.title || selectedCourse?.title || '培训通知';
+    await onPush(selectedPlanId, planTitle, selectedEmpIds, deadline || undefined);
+    setPushing(false);
+    onClose();
+    setSelectedPlanId('');
+    setSelectedCourseId('');
+    setSelectedEmpIds([]);
+    setDeadline('');
+  };
+
+  const selectAll = () => setSelectedEmpIds(filteredEmployees.map(e => e.id));
+  const clearAll = () => setSelectedEmpIds([]);
+
+  return (
+    <>
+      {contextHolder}
+      <Modal title="推送培训任务" open={open} onOk={handlePush} onCancel={onClose}
+        width={680} okText="推送" cancelText="取消" okButtonProps={{ loading: pushing }}>
+        <div className="space-y-4">
+          <Alert message="将培训任务通过员工自助账号推送，员工可收到通知并完成学习。支持批量推送给部门员工。" type="info" showIcon />
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <div className="mb-3">
+                <label className="block text-sm font-medium mb-1">选择培训计划（可选）</label>
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder="选择培训计划"
+                  style={{ width: '100%' }}
+                  value={selectedPlanId || undefined}
+                  onChange={v => setSelectedPlanId(v || '')}
+                  filterOption={(input, option) => (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())}
+                >
+                  {plans.map(p => <Option key={p.id} value={p.id}>{p.title}</Option>)}
+                </Select>
+              </div>
+            </Col>
+            <Col span={12}>
+              <div className="mb-3">
+                <label className="block text-sm font-medium mb-1">选择课程（可选）</label>
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder="选择课程"
+                  style={{ width: '100%' }}
+                  value={selectedCourseId || undefined}
+                  onChange={v => setSelectedCourseId(v || '')}
+                  filterOption={(input, option) => (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())}
+                >
+                  {courses.map(c => <Option key={c.id} value={c.id}>{c.title}</Option>)}
+                </Select>
+              </div>
+            </Col>
+          </Row>
+
+          <div className="mb-3">
+            <label className="block text-sm font-medium mb-1">完成截止日期（可选）</label>
+            <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} style={{ width: '100%' }} />
+          </div>
+
+          <Divider>选择推送员工</Divider>
+
+          <div className="mb-3 flex items-center gap-4">
+            <Select
+              allowClear
+              placeholder="按部门筛选"
+              style={{ width: 150 }}
+              value={departmentFilter || undefined}
+              onChange={v => setDepartmentFilter(v || '')}
+            >
+              {departments.map(d => <Option key={d} value={d}>{d}</Option>)}
+            </Select>
+            <Button size="small" onClick={selectAll}>全选</Button>
+            <Button size="small" onClick={clearAll}>清空</Button>
+            <span className="text-sm text-gray-500 ml-auto">已选 {selectedEmpIds.length} 人</span>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2">
+            {filteredEmployees.length === 0 ? (
+              <div className="text-center text-gray-400 py-4">暂无员工数据</div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2">
+                {filteredEmployees.map(emp => (
+                  <div
+                    key={emp.id}
+                    onClick={() => setSelectedEmpIds(prev =>
+                      prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
+                    )}
+                    className={`cursor-pointer px-2 py-1 rounded text-sm ${
+                      selectedEmpIds.includes(emp.id)
+                        ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                        : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
+                    }`}
+                  >
+                    <div className="font-medium">{emp.name}</div>
+                    <div className="text-xs text-gray-400">{emp.department}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {selectedPlan && (
+            <div className="bg-blue-50 rounded-lg p-3 text-sm">
+              <div className="font-medium text-blue-800">{selectedPlan.title}</div>
+              <div className="text-blue-600">时间：{selectedPlan.startDate} ~ {selectedPlan.endDate}</div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </>
   );
 }

@@ -7,7 +7,8 @@ import {
 import {
   DollarOutlined, SettingOutlined, BarChartOutlined,
   FileTextOutlined, TeamOutlined, PlusOutlined,
-  EditOutlined, DeleteOutlined, CheckCircleOutlined
+  EditOutlined, DeleteOutlined, CheckCircleOutlined,
+  CalculatorOutlined
 } from '@ant-design/icons';
 
 // ============ DB 真实字段类型 ============
@@ -190,9 +191,9 @@ export default function SalaryPage() {
 
   const quickActions = [
     { title: '工资表', desc: '查看工资明细', icon: <FileTextOutlined style={{ fontSize: 28, color: '#1890ff' }} />, path: '/salary/table', color: '#e6f7ff' },
-    { title: '薪资配置', desc: '薪资项目、公式', icon: <SettingOutlined style={{ fontSize: 28, color: '#52c41a' }} />, path: '/salary/config', color: '#f6ffed' },
+    { title: '公式引擎', desc: '配置公式批量计算', icon: <CalculatorOutlined style={{ fontSize: 28, color: '#722ed1' }} />, path: '/salary/formula', color: '#f9f0ff' },
+    { title: '薪资配置', desc: '薪资项目设置', icon: <SettingOutlined style={{ fontSize: 28, color: '#52c41a' }} />, path: '/salary/config', color: '#f6ffed' },
     { title: '社保公积金', desc: '企业/个人缴纳', icon: <TeamOutlined style={{ fontSize: 28, color: '#fa8c16' }} />, path: '/salary/company', color: '#fff7e6' },
-    { title: '薪资分析', desc: '对比与趋势', icon: <BarChartOutlined style={{ fontSize: 28, color: '#722ed1' }} />, path: '/salary', color: '#f9f0ff', tab: 'analysis' },
   ];
 
   const itemTypeCards: Record<string, { label: string; color: string }> = {

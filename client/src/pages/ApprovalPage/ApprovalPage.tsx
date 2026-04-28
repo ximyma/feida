@@ -1,368 +1,462 @@
+/**
+ * 增强版审批管理页面 v2.0
+ * 支持多步骤工作流、条件分支、并行审批、委托、加签
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Select, Tag, Space,
   Popconfirm, message, Tabs, Row, Col, Steps, Divider, Descriptions,
-  Badge, Drawer, List, Tooltip, Progress, Alert, Collapse
+  Badge, Drawer, List, Tooltip, Alert, Timeline, Collapse, InputNumber,
+  DatePicker, Avatar, Empty, Popover
 } from 'antd';
-const { TextArea } = Input;
 import {
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
   UserOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  SendOutlined, HistoryOutlined, AuditOutlined
+  SendOutlined, HistoryOutlined, AuditOutlined, HolderOutlined,
+  SwapOutlined, ExclamationCircleOutlined, TeamOutlined
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import WorkflowDesigner from './WorkflowDesigner';
 
 const { Option } = Select;
-const { Panel } = Collapse;
+const { TextArea } = Input;
 
 // ============ 类型定义 ============
-interface ApprovalRequest {
+interface WorkflowInstance {
   id: string;
-  flowId: string;
-  module: string;
+  definitionId: string;
+  definitionName?: string;
+  businessId: string;
+  businessType: string;
   title: string;
   applicantId: string;
   applicantName: string;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
-  currentStep: number;
+  department?: string;
+  status: string;
+  currentNodeId: string;
   formData: string;
-  submittedAt: string;
-  completedAt?: string;
+  nodeHistory?: any[];
   createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
 }
 
-interface WorkflowTemplate {
+interface PendingTask {
   id: string;
-  name: string;
-  type: string;
-  description: string;
-  steps: string;
-  isActive: number;
-  createdBy: string;
-  createdAt: string;
+  instanceId: string;
+  nodeId: string;
+  nodeName: string;
+  title: string;
+  businessType: string;
+  applicantName: string;
+  department?: string;
+  definitionName?: string;
+  formData?: string;
+  startedAt?: string;
+  dueDate?: string;
+}
+
+interface NodeHistory {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  status: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  comment?: string;
+  startedAt: string;
+  completedAt?: string;
 }
 
 const moduleLabels: Record<string, string> = {
-  leave: '请假申请',
-  overtime: '加班申请',
-  makeup: '补卡申请',
-  transfer: '调岗申请',
-  resignation: '离职申请',
-  regular: '转正申请',
-  promotion: '晋升申请',
-  expense: '报销申请',
-  purchase: '采购申请',
-  custom: '其他申请'
+  leave: '请假申请', overtime: '加班申请', makeup: '补卡申请',
+  transfer: '调岗申请', resignation: '离职申请', regular: '转正申请',
+  promotion: '晋升申请', expense: '报销申请', purchase: '采购申请', custom: '其他申请'
 };
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  pending: { label: '审批中', color: 'processing' },
+  pending: { label: '待审批', color: 'processing' },
+  running: { label: '审批中', color: 'processing' },
   approved: { label: '已通过', color: 'success' },
+  completed: { label: '已完成', color: 'success' },
   rejected: { label: '已拒绝', color: 'error' },
-  cancelled: { label: '已撤回', color: 'default' }
+  cancelled: { label: '已撤回', color: 'default' },
 };
 
 export default function ApprovalPage() {
   const [activeTab, setActiveTab] = useState('pending');
-  const [requests, setRequests] = useState<ApprovalRequest[]>([]);
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [instances, setInstances] = useState<WorkflowInstance[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const [detailModal, setDetailModal] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<ApprovalRequest | null>(null);
-  const [templateModal, setTemplateModal] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<WorkflowTemplate | null>(null);
-  const [approvalComment, setApprovalComment] = useState('');
+  const [detailDrawer, setDetailDrawer] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<WorkflowInstance | null>(null);
+  const [nodeHistory, setNodeHistory] = useState<NodeHistory[]>([]);
 
-  const [form] = Form.useForm();
+  const [processModal, setProcessModal] = useState(false);
+  const [processingTask, setProcessingTask] = useState<PendingTask | null>(null);
+  const [processAction, setProcessAction] = useState<'approve' | 'reject'>('approve');
+  const [processComment, setProcessComment] = useState('');
+  const [delegateModal, setDelegateModal] = useState(false);
+  const [delegateUser, setDelegateUser] = useState<any>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+
   const [messageApi, contextHolder] = message.useMessage();
+
+  // 加载当前用户
+  useEffect(() => {
+    const stored = localStorage.getItem('currentUser');
+    if (stored) {
+      try { setCurrentUser(JSON.parse(stored)); } catch {}
+    }
+  }, []);
 
   // 加载数据
   const loadData = useCallback(async () => {
+    if (!currentUser) return;
     setLoading(true);
     try {
-      const [reqRes, tempRes] = await Promise.all([
-        fetch('/api/approval_requests').then(r => r.json()).catch(() => []),
-        fetch('/api/workflow_templates').then(r => r.json()).catch(() => [])
+      const [instRes, pendingRes, usersRes] = await Promise.all([
+        fetch(`/api/workflow/instances?applicantId=${currentUser.id}`),
+        fetch(`/api/workflow/pending?userId=${currentUser.id}`),
+        fetch('/api/workflow/users'),
       ]);
-      setRequests(Array.isArray(reqRes) ? reqRes : []);
-      setTemplates(Array.isArray(tempRes) ? tempRes : []);
+
+      const [instJson, pendingJson, usersJson] = await Promise.all([
+        instRes.json(), pendingRes.json(), usersRes.json()
+      ]);
+
+      if (instJson.success) setInstances(instJson.data);
+      if (pendingJson.success) setPendingTasks(pendingJson.data);
+      if (usersJson.success) setAllUsers(usersJson.data);
     } catch {
       messageApi.error('加载数据失败');
     }
     setLoading(false);
-  }, [messageApi]);
+  }, [currentUser, messageApi]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (currentUser) loadData(); }, [currentUser, loadData]);
 
-  // 统计
-  const stats = {
-    pending: requests.filter(r => r.status === 'pending').length,
-    approved: requests.filter(r => r.status === 'approved').length,
-    rejected: requests.filter(r => r.status === 'rejected').length,
-    total: requests.length
+  // 加载流程详情
+  const loadInstanceDetail = async (instanceId: string) => {
+    const [instRes, histRes] = await Promise.all([
+      fetch(`/api/workflow/instances?instanceId=${instanceId}`),
+      fetch(`/api/workflow/history/${instanceId}`),
+    ]);
+    const instJson = await instRes.json();
+    const histJson = await histRes.json();
+    if (instJson.success && instJson.data.length > 0) setSelectedInstance(instJson.data[0]);
+    if (histJson.success) setNodeHistory(histJson.data);
+    setDetailDrawer(true);
   };
 
-  // 审批操作
-  const handleApprove = async (request: ApprovalRequest) => {
-    Modal.confirm({
-      title: '审批通过',
-      icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-      content: (
-        <div className="space-y-2">
-          <TextArea rows={2} placeholder="审批意见（可选）" value={approvalComment} onChange={e => setApprovalComment(e.target.value)} />
-        </div>
-      ),
-      onOk: async () => {
-        const res = await fetch(`/api/approval_requests/${request.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'approved', completedAt: new Date().toISOString() })
-        });
-        if (res.ok) {
-          messageApi.success('审批通过');
-          setApprovalComment('');
-          loadData();
-        }
-      }
-    });
-  };
-
-  const handleReject = async (request: ApprovalRequest) => {
-    Modal.confirm({
-      title: '审批拒绝',
-      icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-      content: (
-        <div className="space-y-2">
-          <TextArea rows={2} placeholder="拒绝原因" value={approvalComment} onChange={e => setApprovalComment(e.target.value)} />
-        </div>
-      ),
-      onOk: async () => {
-        const res = await fetch(`/api/approval_requests/${request.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'rejected', completedAt: new Date().toISOString() })
-        });
-        if (res.ok) {
-          messageApi.success('已拒绝');
-          setApprovalComment('');
-          loadData();
-        }
-      }
-    });
-  };
-
-  const handleWithdraw = async (request: ApprovalRequest) => {
-    const res = await fetch(`/api/approval_requests/${request.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'cancelled' })
-    });
-    if (res.ok) {
-      messageApi.success('已撤回');
-      loadData();
+  // 处理审批
+  const handleProcess = async () => {
+    if (!processingTask || !currentUser) return;
+    if (processAction === 'reject' && !processComment.trim()) {
+      messageApi.warning('请填写拒绝理由');
+      return;
     }
-  };
-
-  // 模板操作
-  const openTemplateModal = (template?: WorkflowTemplate) => {
-    setEditingTemplate(template || null);
-    if (template) {
-      form.setFieldsValue({
-        ...template,
-        isActive: template.isActive === 1,
-        steps: JSON.parse(template.steps || '[]')
-      });
-    } else {
-      form.resetFields();
-      form.setFieldsValue({ steps: [{ name: '' }], isActive: true });
-    }
-    setTemplateModal(true);
-  };
-
-  const saveTemplate = async () => {
     try {
-      const values = await form.validateFields();
-      const payload = {
-        id: editingTemplate?.id || `wt_${Date.now()}`,
-        name: values.name,
-        type: values.type,
-        description: values.description || '',
-        steps: JSON.stringify(values.steps || []),
-        isActive: values.isActive ? 1 : 0,
-        createdBy: '系统管理员'
-      };
-      const url = editingTemplate ? `/api/workflow_templates/${editingTemplate.id}` : '/api/workflow_templates';
-      const method = editingTemplate ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
+      const res = await fetch('/api/workflow/process', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          instanceId: processingTask.instanceId,
+          nodeId: processingTask.nodeId,
+          userId: currentUser.id,
+          userName: currentUser.realName,
+          action: processAction,
+          comment: processComment,
+        }),
       });
-      if (res.ok || res.status === 200) {
-        messageApi.success(editingTemplate ? '模板已更新' : '模板已创建');
-        setTemplateModal(false);
+      const json = await res.json();
+      if (json.success) {
+        messageApi.success(processAction === 'approve' ? '审批已通过' : '已拒绝');
+        setProcessModal(false);
+        setProcessingTask(null);
+        setProcessComment('');
         loadData();
+      } else {
+        messageApi.error(json.message || '操作失败');
       }
-    } catch {}
+    } catch { messageApi.error('操作失败'); }
   };
 
-  const deleteTemplate = async (id: string) => {
-    await fetch(`/api/workflow_templates/${id}`, { method: 'DELETE' });
-    messageApi.success('模板已删除');
-    loadData();
+  // 委托审批
+  const handleDelegate = async () => {
+    if (!processingTask || !delegateUser || !currentUser) return;
+    try {
+      const res = await fetch('/api/workflow/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instanceId: processingTask.instanceId,
+          nodeId: processingTask.nodeId,
+          userId: currentUser.id,
+          userName: currentUser.realName,
+          action: 'delegate',
+          comment: `委托给 ${delegateUser.realName}`,
+          delegateUserId: delegateUser.id,
+          delegateUserName: delegateUser.realName,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        messageApi.success(`已委托给 ${delegateUser.realName}`);
+        setDelegateModal(false);
+        setDelegateUser(null);
+        setProcessingTask(null);
+        loadData();
+      } else { messageApi.error(json.message || '委托失败'); }
+    } catch { messageApi.error('委托失败'); }
   };
 
-  // 列定义
-  const requestColumns = [
-    { title: '标题', dataIndex: 'title', key: 'title', width: 200 },
-    { title: '类型', dataIndex: 'module', key: 'module', width: 100, render: (v: string) => <Tag color="blue">{moduleLabels[v] || v}</Tag> },
-    { title: '申请人', dataIndex: 'applicantName', key: 'applicant', width: 100 },
-    { title: '提交时间', dataIndex: 'submittedAt', key: 'submittedAt', width: 150, render: (v: string) => v?.slice(0, 16) || '-' },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (v: string) => <Tag color={statusLabels[v]?.color}>{statusLabels[v]?.label || v}</Tag> },
-    { title: '当前节点', key: 'step', width: 100, render: (_: any, r: ApprovalRequest) => `步骤 ${r.currentStep + 1}` },
-    {
-      title: '操作', key: 'action', width: 200, render: (_: any, r: ApprovalRequest) => (
-        <Space size="small">
-          <Button size="small" type="link" onClick={() => { setSelectedRequest(r); setDetailModal(true); }}>详情</Button>
-          {r.status === 'pending' && (
-            <>
-              <Button size="small" type="link" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} onClick={() => handleApprove(r)}>通过</Button>
-              <Button size="small" danger type="link" icon={<CloseCircleOutlined />} onClick={() => handleReject(r)}>拒绝</Button>
-            </>
-          )}
-          {r.status === 'pending' && r.applicantId === 'emp-1' && (
-            <Button size="small" type="link" onClick={() => handleWithdraw(r)}>撤回</Button>
-          )}
-        </Space>
-      )
-    }
-  ];
+  // 撤回申请
+  const handleCancel = async (instanceId: string) => {
+    if (!currentUser) return;
+    const res = await fetch(`/api/workflow/cancel/${instanceId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id }),
+    });
+    const json = await res.json();
+    if (json.success) { messageApi.success('已撤回'); loadData(); }
+    else { messageApi.error(json.message || '撤回失败'); }
+  };
 
-  const templateColumns = [
-    { title: '模板名称', dataIndex: 'name', key: 'name', width: 180 },
-    { title: '类型', dataIndex: 'type', key: 'type', width: 100, render: (v: string) => <Tag color="blue">{moduleLabels[v] || v}</Tag> },
-    { title: '描述', dataIndex: 'description', key: 'desc', width: 200 },
-    { title: '审批步骤', dataIndex: 'steps', key: 'steps', width: 200, render: (v: string) => {
-      const steps = JSON.parse(v || '[]');
-      return steps.map((s: any, i: number) => <Tag key={i}>{s.name || s}</Tag>);
-    }},
-    { title: '状态', dataIndex: 'isActive', key: 'status', width: 80, render: (v: number) => <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag> },
-    {
-      title: '操作', key: 'action', width: 130, render: (_: any, r: WorkflowTemplate) => (
-        <Space size="small">
-          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openTemplateModal(r)}>编辑</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => deleteTemplate(r.id)}>
-            <Button size="small" danger type="link" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      )
-    }
-  ];
-
-  const filteredRequests = requests.filter(r => {
-    if (activeTab === 'pending') return r.status === 'pending';
-    if (activeTab === 'approved') return r.status === 'approved';
-    if (activeTab === 'rejected') return r.status === 'rejected';
-    return true;
-  });
-
-  const tabs = [
-    { key: 'pending', label: `待审批 (${stats.pending})` },
-    { key: 'approved', label: `已通过 (${stats.approved})` },
-    { key: 'rejected', label: `已拒绝 (${stats.rejected})` },
-    { key: 'templates', label: '流程模板' }
-  ];
+  const badgeCount = (count: number) => count > 0
+    ? <Badge count={count} style={{ backgroundColor: '#ff4d4f' }} />
+    : null;
 
   return (
-    <div className="p-6 space-y-4">
+    <div style={{ padding: 24 }}>
       {contextHolder}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">📋 流程审批</h2>
-          <p className="text-sm text-muted-foreground mt-1">审批各类申请，管理工作流模板</p>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openTemplateModal()}>新建模板</Button>
-      </div>
+      <h2 style={{ marginBottom: 16 }}>📋 审批流程管理</h2>
 
-      <Row gutter={16}>
-        <Col span={6}><Card size="small"><div className="text-center"><Badge count={stats.pending} showZero><ClockCircleOutlined style={{ fontSize: 24, color: '#1677ff' }} /></Badge><div className="mt-2 text-sm">待审批</div></div></Card></Col>
-        <Col span={6}><Card size="small"><div className="text-center"><CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a' }} /><div className="mt-2 text-sm">已通过 {stats.approved}</div></div></Card></Col>
-        <Col span={6}><Card size="small"><div className="text-center"><CloseCircleOutlined style={{ fontSize: 24, color: '#ff4d4f' }} /><div className="mt-2 text-sm">已拒绝 {stats.rejected}</div></div></Card></Col>
-        <Col span={6}><Card size="small"><div className="text-center"><AuditOutlined style={{ fontSize: 24 }} /><div className="mt-2 text-sm">总计 {stats.total}</div></div></Card></Col>
-      </Row>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'pending',
+            label: <span><ClockCircleOutlined /> 待我审批 {badgeCount(pendingTasks.length)}</span>,
+            children: (
+              <div>
+                <Alert
+                  message={`您有 ${pendingTasks.length} 条待审批任务`}
+                  type="info" showIcon icon={<ClockCircleOutlined />}
+                  style={{ marginBottom: 16 }}
+                />
+                <List
+                  loading={loading}
+                  dataSource={pendingTasks}
+                  locale={{ emptyText: <Empty description="暂无待审批任务" /> }}
+                  renderItem={(task: PendingTask) => (
+                    <List.Item
+                      actions={[
+                        <Button type="primary" size="small" icon={<CheckCircleOutlined />}
+                          onClick={() => { setProcessingTask(task); setProcessAction('approve'); setProcessModal(true); }}>
+                          同意
+                        </Button>,
+                        <Button danger size="small" icon={<CloseCircleOutlined />}
+                          onClick={() => { setProcessingTask(task); setProcessAction('reject'); setProcessModal(true); }}>
+                          拒绝
+                        </Button>,
+                        <Button size="small" icon={<SwapOutlined />}
+                          onClick={() => { setProcessingTask(task); setDelegateModal(true); }}>
+                          委托
+                        </Button>,
+                        <Button size="small" type="link" icon={<HistoryOutlined />}
+                          onClick={() => loadInstanceDetail(task.instanceId)}>详情</Button>,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        avatar={<Avatar style={{ background: '#1890ff' }} icon={<AuditOutlined />} />}
+                        title={<span>{task.title || moduleLabels[task.businessType] || task.businessType}</span>}
+                        description={
+                          <Space split={<span style={{ color: '#ccc' }}>|</span>}>
+                            <span>申请人: {task.applicantName}</span>
+                            <span>节点: <Tag color="blue">{task.nodeName}</Tag></span>
+                            {task.definitionName && <span>{task.definitionName}</span>}
+                            {task.startedAt && <span>{dayjs(task.startedAt).format('MM-DD HH:mm')}</span>}
+                            {task.dueDate && new Date(task.dueDate) < new Date() && (
+                              <Tag color="red" icon={<ExclamationCircleOutlined />}>已超时</Tag>
+                            )}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  )}
+                />
+              </div>
+            ),
+          },
+          {
+            key: 'my',
+            label: <span><UserOutlined /> 我的申请</span>,
+            children: (
+              <Table
+                loading={loading}
+                dataSource={instances}
+                rowKey="id"
+                size="small"
+                pagination={{ pageSize: 10 }}
+                columns={[
+                  {
+                    title: '标题', dataIndex: 'title', key: 'title',
+                    render: (v: string, r: WorkflowInstance) => (
+                      <a onClick={() => loadInstanceDetail(r.id)}>{v || moduleLabels[r.businessType] || r.businessType}</a>
+                    )
+                  },
+                  { title: '流程', dataIndex: 'definitionName', key: 'definitionName' },
+                  { title: '申请人', dataIndex: 'applicantName', key: 'applicantName' },
+                  { title: '部门', dataIndex: 'department', key: 'department' },
+                  {
+                    title: '状态', dataIndex: 'status', key: 'status',
+                    render: (s: string) => {
+                      const sl = statusLabels[s] || { label: s, color: 'default' };
+                      return <Badge status={sl.color as any} text={sl.label} />;
+                    }
+                  },
+                  {
+                    title: '提交时间', dataIndex: 'createdAt', key: 'createdAt',
+                    render: (v: string) => v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'
+                  },
+                  {
+                    title: '操作', key: 'action', width: 120,
+                    render: (_: any, r: WorkflowInstance) => (
+                      <Space>
+                        <Button size="small" type="link" onClick={() => loadInstanceDetail(r.id)}>详情</Button>
+                        {r.status === 'running' && r.applicantId === currentUser?.id && (
+                          <Popconfirm title="确定撤回？" onConfirm={() => handleCancel(r.id)}>
+                            <Button size="small" danger type="link">撤回</Button>
+                          </Popconfirm>
+                        )}
+                      </Space>
+                    )
+                  },
+                ]}
+              />
+            ),
+          },
+          {
+            key: 'workflows',
+            label: <span><HolderOutlined /> 工作流设计</span>,
+            children: <WorkflowDesigner />,
+          },
+        ]}
+      />
 
-      <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
-
-        {activeTab !== 'templates' ? (
-          <Table columns={requestColumns} dataSource={filteredRequests} rowKey="id" loading={loading}
-            pagination={{ pageSize: 10 }} locale={{ emptyText: '暂无数据' }} />
-        ) : (
-          <Table columns={templateColumns} dataSource={templates} rowKey="id" loading={loading}
-            pagination={{ pageSize: 10 }} locale={{ emptyText: '暂无模板' }} />
-        )}
-      </Card>
-
-      {/* 详情弹窗 */}
-      <Modal title="申请详情" open={detailModal} onCancel={() => setDetailModal(false)} footer={null} width={600}>
-        {selectedRequest && (
-          <div className="space-y-4">
+      {/* 流程详情抽屉 */}
+      <Drawer
+        title={`📋 ${selectedInstance?.title || '流程详情'}`}
+        placement="right" width={600}
+        open={detailDrawer}
+        onClose={() => setDetailDrawer(false)}
+      >
+        {selectedInstance && (
+          <>
             <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="标题" span={2}>{selectedRequest.title}</Descriptions.Item>
-              <Descriptions.Item label="类型">{moduleLabels[selectedRequest.module] || selectedRequest.module}</Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={statusLabels[selectedRequest.status]?.color}>{statusLabels[selectedRequest.status]?.label}</Tag></Descriptions.Item>
-              <Descriptions.Item label="申请人">{selectedRequest.applicantName}</Descriptions.Item>
-              <Descriptions.Item label="工号">{selectedRequest.applicantId}</Descriptions.Item>
-              <Descriptions.Item label="提交时间">{selectedRequest.submittedAt?.slice(0, 16)}</Descriptions.Item>
-              <Descriptions.Item label="完成时间">{selectedRequest.completedAt?.slice(0, 16) || '-'}</Descriptions.Item>
+              <Descriptions.Item label="流程名称">{selectedInstance.definitionName}</Descriptions.Item>
+              <Descriptions.Item label="业务类型">{moduleLabels[selectedInstance.businessType] || selectedInstance.businessType}</Descriptions.Item>
+              <Descriptions.Item label="申请人">{selectedInstance.applicantName}</Descriptions.Item>
+              <Descriptions.Item label="部门">{selectedInstance.department || '-'}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                <Badge status={statusLabels[selectedInstance.status]?.color as any} text={statusLabels[selectedInstance.status]?.label} />
+              </Descriptions.Item>
+              <Descriptions.Item label="提交时间">{selectedInstance.createdAt ? dayjs(selectedInstance.createdAt).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
+              {(() => {
+                const fd = JSON.parse(selectedInstance.formData || '{}');
+                return (
+                  <>
+                    {fd.startDate && <Descriptions.Item label="开始日期">{fd.startDate}</Descriptions.Item>}
+                    {fd.endDate && <Descriptions.Item label="结束日期">{fd.endDate}</Descriptions.Item>}
+                    {fd.days && <Descriptions.Item label="天数">{fd.days}</Descriptions.Item>}
+                    {fd.reason && <Descriptions.Item label="申请理由" span={2}>{fd.reason}</Descriptions.Item>}
+                  </>
+                );
+              })()}
             </Descriptions>
-            <Divider>申请内容</Divider>
-            <pre className="bg-gray-50 p-3 rounded text-sm">{JSON.stringify(JSON.parse(selectedRequest.formData || '{}'), null, 2)}</pre>
-          </div>
+
+            <Divider>审批进度</Divider>
+            <Timeline
+              items={nodeHistory.map((node: NodeHistory) => ({
+                color: node.status === 'approved' ? 'green' : node.status === 'rejected' ? 'red' : node.status === 'pending' ? 'blue' : 'gray',
+                children: (
+                  <div>
+                    <strong>{node.nodeName}</strong>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {node.assigneeName && <span>审批人: {node.assigneeName} </span>}
+                      {node.startedAt && <span>{dayjs(node.startedAt).format('MM-DD HH:mm')}</span>}
+                      {node.completedAt && <span> → {dayjs(node.completedAt).format('MM-DD HH:mm')}</span>}
+                    </div>
+                    {node.comment && (
+                      <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic', marginTop: 4 }}>“{node.comment}”</div>
+                    )}
+                    {node.status === 'pending' && <Tag color="blue" style={{ marginTop: 4 }}>⏳ 待处理</Tag>}
+                  </div>
+                ),
+              }))}
+            />
+          </>
+        )}
+      </Drawer>
+
+      {/* 审批处理弹窗 */}
+      <Modal
+        title={processAction === 'approve' ? '✅ 同意申请' : '❌ 拒绝申请'}
+        open={processModal}
+        onOk={handleProcess}
+        onCancel={() => { setProcessModal(false); setProcessingTask(null); setProcessComment(''); }}
+        okText={processAction === 'approve' ? '确认同意' : '确认拒绝'}
+        okButtonProps={{ danger: processAction === 'reject' }}
+      >
+        {processingTask && (
+          <>
+            <Alert
+              message={`正在审批: ${processingTask.title || moduleLabels[processingTask.businessType]}`}
+              type="info" showIcon style={{ marginBottom: 16 }}
+            />
+            <Form layout="vertical">
+              <Form.Item label="审批意见" required={processAction === 'reject'}>
+                <TextArea rows={4} value={processComment}
+                  onChange={e => setProcessComment(e.target.value)}
+                  placeholder={processAction === 'approve' ? '可选填写审批意见...' : '请填写拒绝理由...'}
+                />
+              </Form.Item>
+            </Form>
+          </>
         )}
       </Modal>
 
-      {/* 模板编辑弹窗 */}
-      <Modal title={editingTemplate ? '编辑模板' : '新建模板'} open={templateModal} onOk={saveTemplate} onCancel={() => setTemplateModal(false)} width={600} okText="保存" cancelText="取消">
-        <Form form={form} layout="vertical" size="small">
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="name" label="模板名称" rules={[{ required: true }]}>
-                <Input placeholder="如：请假审批流程" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="type" label="申请类型" rules={[{ required: true }]}>
-                <Select placeholder="选择类型">
-                  {Object.entries(moduleLabels).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="description" label="描述">
-            <TextArea rows={2} placeholder="流程说明" />
-          </Form.Item>
-          <Form.Item name="steps" label="审批步骤">
-            <Form.List name="steps">
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name, ...restField }) => (
-                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                      <Form.Item {...restField} name={[name, 'name']} rules={[{ required: true }]}>
-                        <Input placeholder="步骤名称，如：部门经理审批" />
-                      </Form.Item>
-                      <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} />
-                    </Space>
-                  ))}
-                  <Button type="dashed" onClick={() => add({ name: '' })} block icon={<PlusOutlined />}>添加步骤</Button>
-                </>
-              )}
-            </Form.List>
-          </Form.Item>
-          <Form.Item name="isActive" valuePropName="checked" label="状态">
-            <Tag.CheckableTag checked={form.getFieldValue('isActive')} onChange={v => form.setFieldsValue({ isActive: v })}>
-              {form.getFieldValue('isActive') ? '启用' : '停用'}
-            </Tag.CheckableTag>
+      {/* 委托弹窗 */}
+      <Modal
+        title="🔄 委托审批"
+        open={delegateModal}
+        onOk={handleDelegate}
+        onCancel={() => { setDelegateModal(false); setDelegateUser(null); }}
+        okText="确认委托" okButtonProps={{ disabled: !delegateUser }}
+      >
+        <Alert message="委托后，该审批任务将转交给选中的人员处理" type="info" showIcon style={{ marginBottom: 16 }} />
+        <Form layout="vertical">
+          <Form.Item label="委托给">
+            <Select
+              showSearch value={delegateUser?.id}
+              onChange={(v, opt: any) => setDelegateUser(opt?.item)}
+              placeholder="选择委托人" style={{ width: '100%' }}
+              filterOption={(input, option: any) =>
+                (option?.item?.realName || '').toLowerCase().includes(input.toLowerCase())
+              }
+            >
+              {allUsers.filter(u => u.id !== currentUser?.id).map(u => (
+                <Option key={u.id} value={u.id} item={u}>
+                  <Space><UserOutlined /><span>{u.realName}</span><span style={{ color: '#999', fontSize: 12 }}>{u.userType}</span></Space>
+                </Option>
+              ))}
+            </Select>
           </Form.Item>
         </Form>
       </Modal>

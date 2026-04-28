@@ -137,6 +137,26 @@ export default function ResignationPage() {
         message.success(editing ? '修改成功' : '新增成功');
         setModalOpen(false);
         fetchData();
+        // 启动离职申请工作流
+        if (!editing) {
+          const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+          const savedData = await res.clone().json().catch(() => ({}));
+          try {
+            await fetch('/api/workflow/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                definitionId: 'wf_resignation',
+                businessId: savedData.id || `resignation_${Date.now()}`,
+                businessType: vals.changeType === '离职' ? 'resignation' : vals.changeType === '转正' ? 'regular' : 'transfer',
+                title: `${vals.changeType}申请 - ${vals.employeeName || currentUser.realName || '员工'}`,
+                applicantId: currentUser.id || vals.employeeId || '',
+                applicantName: currentUser.realName || vals.employeeName || '',
+                formData: submitData,
+              })
+            });
+          } catch {}
+        }
       } else {
         message.error('保存失败');
       }

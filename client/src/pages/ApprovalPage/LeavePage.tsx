@@ -159,6 +159,28 @@ export default function LeavePage() {
         message.success(editing ? '修改成功' : '新增成功');
         setModalOpen(false);
         fetchData();
+
+        // 非编辑模式下，自动启动工作流
+        if (!editing) {
+          const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+          const savedData = await res.clone().json().catch(() => ({}));
+          try {
+            await fetch('/api/workflow/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                definitionId: 'wf_leave',
+                businessId: savedData.id || `leave_${Date.now()}`,
+                businessType: 'leave',
+                title: `请假申请 - ${vals.employeeName || currentUser.realName || '员工'}`,
+                applicantId: currentUser.id || vals.employeeId || '',
+                applicantName: currentUser.realName || vals.employeeName || '',
+                department: vals.department || '',
+                formData: submitData,
+              })
+            });
+          } catch {/* 工作流启动失败不影响主流程 */}
+        }
       } else {
         message.error('保存失败');
       }

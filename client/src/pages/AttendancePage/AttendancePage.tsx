@@ -7,7 +7,7 @@ import {
 import {
   ClockCircleOutlined, CheckCircleOutlined, CalendarOutlined,
   SettingOutlined, FormOutlined, BarChartOutlined, PlusOutlined,
-  EditOutlined, DeleteOutlined, RightOutlined
+  EditOutlined, DeleteOutlined, RightOutlined, FileTextOutlined
 } from '@ant-design/icons';
 
 interface IAttendanceRecord {
@@ -194,9 +194,9 @@ export default function AttendancePage() {
 
   // 快捷操作入口
   const quickActions = [
-    { title: '班次配置', desc: '管理早中晚班、弹性班', icon: <SettingOutlined style={{ fontSize: 28, color: '#1890ff' }} />, path: '/attendance/shift', color: '#e6f7ff' },
+    { title: '考勤日报', desc: '自动生成日报汇总', icon: <FileTextOutlined style={{ fontSize: 28, color: '#1890ff' }} />, path: '/attendance/daily-report', color: '#e6f7ff' },
     { title: '排班管理', desc: '员工排班、调班', icon: <CalendarOutlined style={{ fontSize: 28, color: '#52c41a' }} />, path: '/attendance/schedule', color: '#f6ffed' },
-    { title: '考勤规则', desc: '迟到早退规则配置', icon: <FormOutlined style={{ fontSize: 28, color: '#fa8c16' }} />, path: '/attendance/rules', color: '#fff7e6' },
+    { title: '班次配置', desc: '管理早中晚班、弹性班', icon: <SettingOutlined style={{ fontSize: 28, color: '#fa8c16' }} />, path: '/attendance/shift', color: '#fff7e6' },
     { title: '请假管理', desc: '请假申请与审批', icon: <ClockCircleOutlined style={{ fontSize: 28, color: '#722ed1' }} />, path: '/attendance/leave', color: '#f9f0ff' },
     { title: '加班管理', desc: '加班申请与审批', icon: <CheckCircleOutlined style={{ fontSize: 28, color: '#13c2c2' }} />, path: '/attendance/overtime', color: '#e6fffb' },
     { title: '考勤统计', desc: '月度统计、异常分析', icon: <BarChartOutlined style={{ fontSize: 28, color: '#eb2f96' }} />, path: '/attendance/statistics', color: '#fff0f6' },

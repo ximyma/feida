@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fieldToLabel } from '@/utils/fieldLabels';
+import { Card, Table, Tag, Row, Col, Statistic, Button, Modal, Form, Input, Select, message, Tabs, Popconfirm, Dropdown, Menu } from 'antd';
+import { TeamOutlined, ApartmentOutlined, UserOutlined, BankOutlined, ArrowRightOutlined, SwapOutlined, MergeOutlined, SortAscendingOutlined, MoreOutlined, DeleteOutlined } from '@ant-design/icons';
 
 // ==================== 类型定义 ====================
 interface Department {
@@ -50,10 +53,13 @@ interface Employee {
 }
 
 type TabType = 'orgchart' | 'departments' | 'positions' | 'ranks' | 'headcount';
+type DrillView = 'department' | 'position' | null;
 
 export default function OrganizationPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('orgchart');
   const [loading, setLoading] = useState(true);
+  const [messageApi, contextHolder] = message.useMessage();
   
   // 数据状态
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -64,12 +70,22 @@ export default function OrganizationPage() {
   // 组织架构树状态
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['company']));
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [drillView, setDrillView] = useState<DrillView>(null);
   
   // 编辑状态
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [dialogForm, setDialogForm] = useState<Record<string, any>>({});
   const [dialogType, setDialogType] = useState<'department' | 'position' | 'rank'>('department');
+
+  // 部门划转/合并/调序状态
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<Department | null>(null);
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [mergeSource, setMergeSource] = useState<Department[]>([]);
+  const [sortModalVisible, setSortModalVisible] = useState(false);
+  const [siblingDepts, setSiblingDepts] = useState<Department[]>([]);
 
   // 加载数据
   useEffect(() => {
@@ -125,6 +141,45 @@ export default function OrganizationPage() {
     }];
   }, [departments, employees]);
 
+  // ==================== 组织架构统计 ====================
+  const orgStats = useMemo(() => {
+    const activeEmps = employees.filter(e => e.status === 'active');
+    const deptStats = departments.map(d => ({
+      name: d.name,
+      value: activeEmps.filter(e => e.deptId === d.id).length,
+    }));
+    return {
+      totalDepts: departments.length,
+      totalPositions: positions.length,
+      totalEmployees: activeEmps.length,
+      deptDistribution: deptStats.slice(0, 10),
+    };
+  }, [departments, positions, employees]);
+
+  // 获取部门面包屑路径
+  const getDeptPath = (deptId: string | null): Department[] => {
+    if (!deptId) return [];
+    const path: Department[] = [];
+    let current = departments.find(d => d.id === deptId);
+    while (current) {
+      path.unshift(current);
+      current = departments.find(d => d.id === current.parentId);
+    }
+    return path;
+  };
+
+  // 穿透查询：点击岗位
+  const handlePositionClick = (pos: Position) => {
+    setSelectedPosition(pos);
+    setDrillView('position');
+  };
+
+  // 返回部门视图
+  const handleBackToDept = () => {
+    setDrillView(null);
+    setSelectedPosition(null);
+  };
+
   const toggleNode = (nodeId: string) => {
     const newExpanded = new Set(expandedNodes);
     if (newExpanded.has(nodeId)) {
@@ -159,6 +214,19 @@ export default function OrganizationPage() {
             <span className="text-xs text-muted-foreground ml-auto">
               编制: {node.headcountActual || 0}/{node.headcountPlan}
             </span>
+          )}
+          {node.id !== 'company' && (
+            <Dropdown menu={{
+              items: [
+                { key: 'transfer', icon: <SwapOutlined />, label: '部门划转', onClick: () => handleTransfer(node) },
+                { key: 'merge', icon: <MergeOutlined />, label: '合并到本部门', onClick: () => handleMergeInit(node) },
+                { key: 'sort', icon: <SortAscendingOutlined />, label: '同级调序', onClick: () => handleSort(node) },
+                { type: 'divider' },
+                { key: 'edit', icon: null, label: '编辑部门', onClick: () => handleEdit(node, 'department') },
+              ]
+            }} trigger={['click']}>
+              <MoreOutlined className="ml-2 text-gray-400 hover:text-gray-600" onClick={(e) => e.stopPropagation()} />
+            </Dropdown>
           )}
         </div>
         {hasChildren && isExpanded && node.children.map((child: any) => renderTreeNode(child, depth + 1))}
@@ -223,15 +291,132 @@ export default function OrganizationPage() {
     }
   };
 
+  // ==================== 部门划转 ====================
+  const handleTransfer = (dept: Department) => {
+    setTransferTarget(dept);
+    setTransferModalVisible(true);
+  };
+
+  const handleTransferSubmit = async (newParentId: string | null) => {
+    if (!transferTarget) return;
+    try {
+      await fetch(`/api/departments/${transferTarget.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentId: newParentId, level: newParentId ? (departments.find(d => d.id === newParentId)?.level || 0) + 1 : 1 })
+      });
+      messageApi.success('部门划转成功');
+      setTransferModalVisible(false);
+      loadData();
+    } catch {
+      messageApi.error('划转失败');
+    }
+  };
+
+  // ==================== 部门合并 ====================
+  const handleMergeInit = (dept: Department) => {
+    setMergeSource([dept]);
+    setMergeModalVisible(true);
+  };
+
+  const handleMergeAddDept = (dept: Department) => {
+    if (!mergeSource.find(d => d.id === dept.id)) {
+      setMergeSource([...mergeSource, dept]);
+    }
+  };
+
+  const handleMergeRemove = (deptId: string) => {
+    setMergeSource(mergeSource.filter(d => d.id !== deptId));
+  };
+
+  const handleMergeSubmit = async (targetDeptId: string, mergedName?: string) => {
+    if (mergeSource.length < 2) {
+      messageApi.warning('请至少选择2个部门进行合并');
+      return;
+    }
+    const sourceIds = mergeSource.filter(d => d.id !== targetDeptId).map(d => d.id);
+    try {
+      // 1. 更新所有子部门到目标部门
+      for (const child of departments.filter(d => d.parentId && sourceIds.includes(d.parentId))) {
+        await fetch(`/api/departments/${child.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parentId: targetDeptId })
+        });
+      }
+      // 2. 更新合并后部门名称
+      if (mergedName) {
+        await fetch(`/api/departments/${targetDeptId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: mergedName })
+        });
+      }
+      // 3. 删除被合并的部门
+      for (const id of sourceIds) {
+        await fetch(`/api/departments/${id}`, { method: 'DELETE' });
+      }
+      messageApi.success(`成功合并${sourceIds.length + 1}个部门`);
+      setMergeModalVisible(false);
+      setMergeSource([]);
+      loadData();
+    } catch {
+      messageApi.error('合并失败');
+    }
+  };
+
+  // ==================== 部门调序 ====================
+  const handleSort = (dept: Department) => {
+    const siblings = departments
+      .filter(d => d.parentId === dept.parentId)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    setSiblingDepts(siblings);
+    setSortModalVisible(true);
+  };
+
+  const handleSortSubmit = async (sortedDepts: Department[]) => {
+    try {
+      for (let i = 0; i < sortedDepts.length; i++) {
+        await fetch(`/api/departments/${sortedDepts[i].id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sortOrder: i + 1 })
+        });
+      }
+      messageApi.success('排序已更新');
+      setSortModalVisible(false);
+      loadData();
+    } catch {
+      messageApi.error('排序失败');
+    }
+  };
+
   // ==================== 渲染函数 ====================
   const renderOrgChart = () => (
     <div className="flex h-[calc(100vh-180px)]">
+      {contextHolder}
       {/* 左侧树形导航 */}
       <div className="w-80 border-r bg-card overflow-y-auto">
         <div className="p-4 border-b bg-muted/30">
-          <h3 className="font-semibold">组织架构</h3>
+          <h3 className="font-semibold flex items-center gap-2"><ApartmentOutlined /> 组织架构</h3>
           <p className="text-xs text-muted-foreground mt-1">点击展开/收起，选择部门查看详情</p>
         </div>
+        
+        {/* 组织统计卡片 */}
+        <div className="p-3 border-b bg-blue-50">
+          <Row gutter={8}>
+            <Col span={8}>
+              <Statistic title="部门" value={orgStats.totalDepts} valueStyle={{ fontSize: 18 }} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="岗位" value={orgStats.totalPositions} valueStyle={{ fontSize: 18 }} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="员工" value={orgStats.totalEmployees} valueStyle={{ fontSize: 18, color: '#52c41a' }} />
+            </Col>
+          </Row>
+        </div>
+        
         <div className="py-2">
           {treeData.map(node => renderTreeNode(node))}
         </div>
@@ -239,101 +424,161 @@ export default function OrganizationPage() {
       
       {/* 右侧详情 */}
       <div className="flex-1 p-6 overflow-y-auto">
-        {selectedDept ? (
+        {/* 穿透视图：岗位详情 */}
+        {drillView === 'position' && selectedPosition ? (
           <div>
+            {/* 面包屑 */}
+            <div className="flex items-center gap-2 mb-4 text-sm">
+              <Button type="link" onClick={handleBackToDept} icon={<ArrowRightOutlined style={{ transform: 'rotate(180deg)' }} />}>
+                返回
+              </Button>
+              <span className="text-muted-foreground">/</span>
+              <span className="text-muted-foreground">{selectedDept?.name}</span>
+              <span className="text-muted-foreground">/</span>
+              <span className="font-medium">{selectedPosition.name}</span>
+            </div>
+            
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold">{selectedDept.name}</h2>
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <UserOutlined /> {selectedPosition.name}
+                  <Tag color="blue">岗位</Tag>
+                </h2>
+                <p className="text-muted-foreground">职级: {selectedPosition.level || '-'} | 编制: {selectedPosition.headcountActual || 0}/{selectedPosition.headcountPlan || 0}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={() => { setEditingItem(selectedPosition); setDialogType('position'); setDialogForm(selectedPosition); setShowDialog(true); }}>
+                  编辑岗位
+                </Button>
+                <Button type="primary" onClick={() => navigate(`/personnel?dept=${selectedDept?.id}&position=${selectedPosition.id}`)}>
+                  查看员工
+                </Button>
+              </div>
+            </div>
+            
+            {/* 岗位员工列表 */}
+            <Card title={`岗位员工 (${employees.filter(e => e.positionId === selectedPosition.id).length}人)`}>
+              <Table
+                dataSource={employees.filter(e => e.positionId === selectedPosition.id)}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+                columns={[
+                  { title: '姓名', dataIndex: 'name', key: 'name', render: (v, r) => <span className="font-medium">{v}</span> },
+                  { title: '工号', dataIndex: 'employeeId', key: 'empNo' },
+                  { title: '部门', dataIndex: 'department', key: 'dept' },
+                  { title: '状态', dataIndex: 'status', key: 'status', render: (v) => <Tag color={v === 'active' ? 'green' : 'default'}>{v === 'active' ? '在职' : '离职'}</Tag> },
+                  { title: '操作', key: 'action', render: (_, r) => (
+                    <Button type="link" size="small" onClick={() => navigate(`/personnel?id=${r.id}`)}>查看详情</Button>
+                  )},
+                ]}
+              />
+            </Card>
+          </div>
+        ) : selectedDept ? (
+          <div>
+            {/* 面包屑 */}
+            <div className="flex items-center gap-2 mb-4 text-sm">
+              {getDeptPath(selectedDept.id).map((d, i) => (
+                <React.Fragment key={d.id}>
+                  {i > 0 && <span className="text-muted-foreground">/</span>}
+                  <Button type="link" size="small" onClick={() => setSelectedDept(d)} className="p-0">
+                    {d.name}
+                  </Button>
+                </React.Fragment>
+              ))}
+            </div>
+            
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  {selectedDept.id === 'company' ? <BankOutlined /> : <ApartmentOutlined />}
+                  {selectedDept.name}
+                </h2>
                 {selectedDept.code && <p className="text-muted-foreground">编码: {selectedDept.code}</p>}
               </div>
               {selectedDept.id !== 'company' && (
-                <button
-                  onClick={() => handleEdit(selectedDept, 'department')}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-                >
+                <Button onClick={() => handleEdit(selectedDept, 'department')}>
                   编辑部门
-                </button>
+                </Button>
               )}
             </div>
             
             {/* 编制卡片 */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-card border rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">计划编制</p>
-                <p className="text-3xl font-bold text-primary">{selectedDept.headcountPlan || 0}</p>
-              </div>
-              <div className="bg-card border rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">实际人数</p>
-                <p className="text-3xl font-bold text-green-600">{selectedDept.headcountActual || 0}</p>
-              </div>
-              <div className="bg-card border rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">编制差异</p>
-                <p className="text-3xl font-bold">
-                  {(selectedDept.headcountPlan || 0) - (selectedDept.headcountActual || 0)}
-                </p>
-              </div>
-            </div>
+            <Row gutter={16} className="mb-6">
+              <Col span={8}>
+                <Card size="small">
+                  <Statistic title="计划编制" value={selectedDept.headcountPlan || 0} prefix={<TeamOutlined />} />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small">
+                  <Statistic title="实际人数" value={selectedDept.headcountActual || 0} valueStyle={{ color: '#52c41a' }} />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small">
+                  <Statistic title="编制差异" value={(selectedDept.headcountPlan || 0) - (selectedDept.headcountActual || 0)} 
+                    valueStyle={{ color: (selectedDept.headcountPlan || 0) >= (selectedDept.headcountActual || 0) ? '#52c41a' : '#ff4d4f' }} />
+                </Card>
+              </Col>
+            </Row>
             
             {/* 部门岗位 */}
-            <div className="bg-card border rounded-lg">
-              <div className="p-4 border-b flex justify-between items-center">
-                <h3 className="font-semibold">岗位列表</h3>
-                <button
-                  onClick={() => handleAdd('position')}
-                  className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                >
-                  添加岗位
-                </button>
-              </div>
-              <div className="divide-y">
-                {positions.filter(p => p.departmentId === selectedDept.id).map(pos => (
-                  <div key={pos.id} className="p-4 flex items-center justify-between hover:bg-accent/30">
-                    <div>
-                      <p className="font-medium">{pos.name}</p>
-                      <p className="text-sm text-muted-foreground">职级: {pos.level || '-'} | 编制: {pos.headcountActual || 0}/{pos.headcountPlan || 0}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleEdit(pos, 'position')} className="text-sm text-primary hover:underline">编辑</button>
-                      <button onClick={() => handleDelete(pos.id, 'positions')} className="text-sm text-destructive hover:underline">删除</button>
-                    </div>
-                  </div>
-                ))}
-                {positions.filter(p => p.departmentId === selectedDept.id).length === 0 && (
-                  <p className="p-4 text-center text-muted-foreground">暂无岗位</p>
-                )}
-              </div>
-            </div>
+            <Card title="岗位列表" extra={
+              <Button type="primary" size="small" onClick={() => handleAdd('position')}>添加岗位</Button>
+            } className="mb-4">
+              <Table
+                dataSource={positions.filter(p => p.departmentId === selectedDept.id)}
+                rowKey="id"
+                pagination={false}
+                size="small"
+                onRow={(record) => ({
+                  onClick: () => handlePositionClick(record),
+                  style: { cursor: 'pointer' },
+                })}
+                columns={[
+                  { title: '岗位名称', dataIndex: 'name', key: 'name', render: (v) => <span className="font-medium flex items-center gap-2"><UserOutlined />{v}</span> },
+                  { title: '职级', dataIndex: 'level', key: 'level' },
+                  { title: '编制', key: 'headcount', render: (_, r) => `${r.headcountActual || 0}/${r.headcountPlan || 0}人` },
+                  { title: '状态', dataIndex: 'isActive', key: 'active', render: (v) => <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag> },
+                  { title: '操作', key: 'action', render: (_, r) => (
+                    <Space>
+                      <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); handleEdit(r, 'position'); }}>编辑</Button>
+                      <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); handleDelete(r.id, 'positions'); }}>删除</Button>
+                    </Space>
+                  )},
+                ]}
+              />
+              <Alert message="💡 点击岗位名称可穿透查看该岗位下的员工明细" type="info" showIcon className="mt-2" />
+            </Card>
             
             {/* 部门员工 */}
-            <div className="bg-card border rounded-lg mt-4">
-              <div className="p-4 border-b">
-                <h3 className="font-semibold">部门员工 ({employees.filter(e => e.deptId === selectedDept.id).length}人)</h3>
-              </div>
-              <div className="divide-y max-h-60 overflow-y-auto">
-                {employees.filter(e => e.deptId === selectedDept.id).slice(0, 10).map(emp => (
-                  <div key={emp.id} className="p-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{emp.name}</p>
-                      <p className="text-sm text-muted-foreground">{emp.position} | {emp.employeeId}</p>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {emp.status === 'active' ? '在职' : '离职'}
-                    </span>
-                  </div>
-                ))}
-                {employees.filter(e => e.deptId === selectedDept.id).length > 10 && (
-                  <p className="p-3 text-center text-sm text-muted-foreground">
-                    还有 {employees.filter(e => e.deptId === selectedDept.id).length - 10} 名员工...
-                  </p>
-                )}
-              </div>
-            </div>
+            <Card title={`部门员工 (${employees.filter(e => e.deptId === selectedDept.id).length}人)`} extra={
+              <Button type="link" onClick={() => navigate(`/personnel?dept=${selectedDept.id}`)}>查看全部</Button>
+            }>
+              <Table
+                dataSource={employees.filter(e => e.deptId === selectedDept.id).slice(0, 5)}
+                rowKey="id"
+                pagination={false}
+                size="small"
+                columns={[
+                  { title: '姓名', dataIndex: 'name', key: 'name', render: (v) => <span className="font-medium">{v}</span> },
+                  { title: '工号', dataIndex: 'employeeId', key: 'empNo' },
+                  { title: '职位', dataIndex: 'position', key: 'position' },
+                  { title: '状态', dataIndex: 'status', key: 'status', render: (v) => <Tag color={v === 'active' ? 'green' : 'default'}>{v === 'active' ? '在职' : '离职'}</Tag> },
+                  { title: '操作', key: 'action', render: (_, r) => (
+                    <Button type="link" size="small" onClick={() => navigate(`/personnel?id=${r.id}`)}>详情</Button>
+                  )},
+                ]}
+              />
+            </Card>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="text-center">
               <p className="text-4xl mb-4">🏢</p>
               <p>请在左侧选择部门查看详情</p>
+              <p className="text-sm mt-2">点击岗位名称可穿透查看员工明细</p>
             </div>
           </div>
         )}
@@ -382,8 +627,13 @@ export default function OrganizationPage() {
                   </span>
                 </td>
                 <td className="p-3 text-center">
-                  <button onClick={() => handleEdit(dept, 'department')} className="text-primary hover:underline mr-2">编辑</button>
-                  <button onClick={() => handleDelete(dept.id, 'departments')} className="text-destructive hover:underline">删除</button>
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => handleEdit(dept, 'department')} className="text-primary hover:underline mr-1">编辑</button>
+                    <button onClick={() => handleTransfer(dept)} className="text-blue-600 hover:underline mr-1" title="划转到其他部门">划转</button>
+                    <button onClick={() => handleMergeInit(dept)} className="text-purple-600 hover:underline mr-1" title="合并到本部门">合并</button>
+                    <button onClick={() => handleSort(dept)} className="text-orange-600 hover:underline mr-1" title="调整显示顺序">调序</button>
+                    <button onClick={() => handleDelete(dept.id, 'departments')} className="text-destructive hover:underline">删除</button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -914,6 +1164,198 @@ export default function OrganizationPage() {
     );
   };
 
+  // ==================== 部门划转Modal ====================
+  const renderTransferModal = () => (
+    <Modal
+      title={<><SwapOutlined /> 部门划转 - {transferTarget?.name}</>}
+      open={transferModalVisible}
+      onCancel={() => setTransferModalVisible(false)}
+      footer={null}
+      width={500}
+    >
+      <div className="py-4">
+        <Alert message={`将 "${transferTarget?.name}" 划转到其他上级部门`} type="info" showIcon className="mb-4" />
+        
+        <Form layout="vertical">
+          <Form.Item label="选择目标上级部门" required>
+            <Select
+              placeholder="请选择目标上级部门"
+              onChange={(value) => handleTransferSubmit(value)}
+              size="large"
+            >
+              <Select.Option value={null}>设为顶级部门</Select.Option>
+              {departments
+                .filter(d => d.id !== transferTarget?.id && !departments.find(p => p.id === d.parentId))
+                .map(d => (
+                  <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+        
+        <Alert 
+          message="划转说明" 
+          description={
+            <ul className="text-sm text-gray-600 list-disc ml-4">
+              <li>划转后，该部门及其所有子部门将归属于新的上级部门</li>
+              <li>该部门下的员工将自动跟随部门划转</li>
+              <li>该部门的岗位将保持不变</li>
+            </ul>
+          } 
+          type="warning" 
+          showIcon 
+          className="mt-4"
+        />
+      </div>
+    </Modal>
+  );
+
+  // ==================== 部门合并Modal ====================
+  const renderMergeModal = () => (
+    <Modal
+      title={<><MergeOutlined /> 部门合并</>}
+      open={mergeModalVisible}
+      onCancel={() => { setMergeModalVisible(false); setMergeSource([]); }}
+      footer={null}
+      width={600}
+    >
+      <div className="py-4">
+        <Alert message="选择一个目标部门，然后将其他部门合并到该部门" type="info" showIcon className="mb-4" />
+        
+        <Row gutter={16}>
+          <Col span={12}>
+            <h4 className="font-medium mb-2">选择合并来源部门</h4>
+            <div className="border rounded p-2 max-h-60 overflow-y-auto">
+              {departments.filter(d => !mergeSource.find(s => s.id === d.id)).map(d => (
+                <div 
+                  key={d.id} 
+                  className="p-2 hover:bg-blue-50 cursor-pointer rounded flex justify-between items-center"
+                  onClick={() => handleMergeAddDept(d)}
+                >
+                  <span>{d.name}</span>
+                  <Tag>{employees.filter(e => e.deptId === d.id).length}人</Tag>
+                </div>
+              ))}
+            </div>
+          </Col>
+          <Col span={12}>
+            <h4 className="font-medium mb-2">已选择的合并部门</h4>
+            <div className="border rounded p-2 max-h-60 overflow-y-auto">
+              {mergeSource.length === 0 ? (
+                <div className="text-gray-400 text-center py-4">请从左侧选择部门</div>
+              ) : mergeSource.map(d => (
+                <Tag 
+                  key={d.id} 
+                  closable 
+                  onClose={() => handleMergeRemove(d.id)}
+                  color="purple"
+                  className="m-1"
+                >
+                  {d.name} ({employees.filter(e => e.deptId === d.id).length}人)
+                </Tag>
+              ))}
+            </div>
+          </Col>
+        </Row>
+        
+        <Divider>合并设置</Divider>
+        
+        <Form layout="vertical">
+          <Form.Item label="合并后目标部门" required>
+            <Select
+              placeholder="选择保留的目标部门"
+              onChange={(value) => setMergeSource([mergeSource.find(s => s.id === value) || mergeSource[0]])}
+              size="large"
+            >
+              {mergeSource.map(d => (
+                <Select.Option key={d.id} value={d.id}>
+                  {d.name} (将作为合并后部门)
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item label="合并后部门名称（可选）">
+            <Input 
+              placeholder="留空则使用目标部门原名称" 
+              onChange={(e) => {}} 
+            />
+          </Form.Item>
+        </Form>
+        
+        <Alert 
+          message="合并说明" 
+          description={
+            <ul className="text-sm text-gray-600 list-disc ml-4">
+              <li>被合并部门的员工将转移到目标部门</li>
+              <li>被合并部门的子部门将变为目标部门的子部门</li>
+              <li>被合并部门将被删除</li>
+              <li>建议先备份数据</li>
+            </ul>
+          } 
+          type="warning" 
+          showIcon 
+        />
+        
+        <div className="flex justify-end gap-2 mt-4">
+          <Button onClick={() => { setMergeModalVisible(false); setMergeSource([]); }}>取消</Button>
+          <Button 
+            type="primary" 
+            icon={<MergeOutlined />}
+            disabled={mergeSource.length < 2}
+            onClick={() => handleMergeSubmit(mergeSource[0]?.id, '')}
+          >
+            确认合并
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+
+  // ==================== 部门调序Modal ====================
+  const renderSortModal = () => (
+    <Modal
+      title={<><SortAscendingOutlined /> 部门排序</>}
+      open={sortModalVisible}
+      onCancel={() => setSortModalVisible(false)}
+      footer={null}
+      width={500}
+    >
+      <div className="py-4">
+        <Alert message="拖动部门卡片调整同级部门的显示顺序" type="info" showIcon className="mb-4" />
+        
+        <div className="space-y-2">
+          {siblingDepts.map((dept, index) => (
+            <div 
+              key={dept.id}
+              className="flex items-center gap-3 p-3 border rounded-lg bg-white hover:bg-blue-50 cursor-move"
+            >
+              <SortAscendingOutlined className="text-gray-400" />
+              <span className="w-8 text-center bg-blue-100 text-blue-600 rounded font-bold">{index + 1}</span>
+              <span className="flex-1 font-medium">{dept.name}</span>
+              <Tag>{employees.filter(e => e.deptId === dept.id).length}人</Tag>
+            </div>
+          ))}
+        </div>
+        
+        <Alert 
+          message="排序说明" 
+          description="序号将作为部门在同级中的显示顺序，数字越小显示越靠前" 
+          type="warning" 
+          showIcon 
+          className="mt-4"
+        />
+        
+        <div className="flex justify-end gap-2 mt-4">
+          <Button onClick={() => setSortModalVisible(false)}>取消</Button>
+          <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => handleSortSubmit(siblingDepts)}>
+            保存排序
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+
   if (loading) {
     return <div className="flex items-center justify-center h-64">加载中...</div>;
   }
@@ -957,6 +1399,15 @@ export default function OrganizationPage() {
       
       {/* 弹窗 */}
       {showDialog && renderDialog()}
+      
+      {/* 部门划转Modal */}
+      {renderTransferModal()}
+      
+      {/* 部门合并Modal */}
+      {renderMergeModal()}
+      
+      {/* 部门排序Modal */}
+      {renderSortModal()}
     </div>
   );
 }

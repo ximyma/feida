@@ -351,6 +351,57 @@ export class DatabaseService {
         feedback TEXT, submittedAt TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+      -- 学习进度表（视频断点、学习时长等）
+      CREATE TABLE IF NOT EXISTS training_learning_progress (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        courseId TEXT NOT NULL,
+        courseName TEXT,
+        planId TEXT,
+        -- 视频学习进度
+        videoPosition INTEGER DEFAULT 0,        -- 视频播放位置（秒）
+        videoDuration INTEGER DEFAULT 0,        -- 视频总时长（秒）
+        progressPercent REAL DEFAULT 0,         -- 学习进度百分比
+        lastPosition INTEGER DEFAULT 0,         -- 上次保存的位置（秒）
+        -- 学习状态
+        status TEXT DEFAULT 'not_started',       -- not_started | in_progress | completed
+        totalWatchTime INTEGER DEFAULT 0,       -- 累计观看时长（秒）
+        watchCount INTEGER DEFAULT 0,            -- 观看次数
+        -- 评估状态
+        evaluationScore REAL,
+        evaluationStatus TEXT DEFAULT 'not_taken',  -- not_taken | pending | passed | failed
+        evaluationPassed INTEGER DEFAULT 0,
+        -- 时间戳
+        firstAccessAt TEXT,
+        lastAccessAt TEXT,
+        completedAt TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(employeeId, courseId)
+      );
+      -- 培训推送通知表
+      CREATE TABLE IF NOT EXISTS training_notifications (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        planId TEXT,
+        planTitle TEXT,
+        courseId TEXT,
+        courseName TEXT,
+        type TEXT DEFAULT 'training_assign',    -- training_assign | exam_reminder | completion_notice
+        title TEXT NOT NULL,
+        content TEXT,
+        priority TEXT DEFAULT 'normal',         -- low | normal | high | urgent
+        isRead INTEGER DEFAULT 0,
+        readAt TEXT,
+        deadline TEXT,                           -- 完成截止日期
+        pushChannel TEXT DEFAULT 'self_service', -- self_service | sms | email
+        pushStatus TEXT DEFAULT 'pending',       -- pending | sent | read | expired
+        sentAt TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(employeeId, planId, type)
+      );
       CREATE TABLE IF NOT EXISTS dormitories (
         id TEXT PRIMARY KEY, building TEXT, room TEXT, floor INTEGER,
         capacity INTEGER DEFAULT 4, occupied INTEGER DEFAULT 0,
@@ -671,6 +722,57 @@ export class DatabaseService {
         id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
         description TEXT, steps TEXT DEFAULT '[]', isActive INTEGER DEFAULT 1,
         createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      -- 增强版工作流引擎表（v2.0）
+      CREATE TABLE IF NOT EXISTS workflow_definitions (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT UNIQUE,
+        description TEXT, version INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'draft', isDefault INTEGER DEFAULT 0,
+        formConfigId TEXT, nodes TEXT DEFAULT '[]',
+        edges TEXT DEFAULT '[]', variables TEXT DEFAULT '{}',
+        createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT
+      );
+      CREATE TABLE IF NOT EXISTS workflow_form_configs (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT UNIQUE,
+        module TEXT, fields TEXT DEFAULT '[]',
+        layout TEXT DEFAULT 'default', createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS workflow_instances (
+        id TEXT PRIMARY KEY, definitionId TEXT NOT NULL,
+        businessId TEXT NOT NULL, businessType TEXT NOT NULL,
+        title TEXT NOT NULL, applicantId TEXT NOT NULL, applicantName TEXT,
+        department TEXT, status TEXT DEFAULT 'running',
+        currentNodeId TEXT, formData TEXT DEFAULT '{}',
+        variables TEXT DEFAULT '{}', businessData TEXT DEFAULT '{}',
+        startedAt TEXT, completedAt TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS workflow_instance_nodes (
+        id TEXT PRIMARY KEY, instanceId TEXT NOT NULL,
+        nodeId TEXT NOT NULL, nodeName TEXT,
+        nodeType TEXT,
+        status TEXT DEFAULT 'pending',
+        assigneeId TEXT, assigneeName TEXT,
+        assigneeType TEXT,
+        actions TEXT DEFAULT '[]',
+        formSnapshot TEXT, comment TEXT,
+        startedAt TEXT, completedAt TEXT,
+        dueDate TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS workflow_node_assignees (
+        id TEXT PRIMARY KEY, instanceId TEXT NOT NULL,
+        nodeId TEXT NOT NULL,
+        assigneeType TEXT NOT NULL,
+        assigneeId TEXT, assigneeName TEXT,
+        assigneeMode TEXT DEFAULT 'single',
+        signType TEXT DEFAULT 'all',
+        signPercent INTEGER DEFAULT 100,
+        required INTEGER DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS workflow_comments (
+        id TEXT PRIMARY KEY, instanceId TEXT NOT NULL,
+        nodeId TEXT, userId TEXT, userName TEXT,
+        content TEXT, type TEXT DEFAULT 'normal',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS meeting_rooms (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, capacity INTEGER DEFAULT 10,
