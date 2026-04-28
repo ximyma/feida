@@ -5,9 +5,10 @@ import {
   Divider, Badge, List, Collapse, Alert, Upload, DatePicker,
   InputNumber, Checkbox, Drawer, Timeline, Statistic, Tooltip
 } from 'antd';
+import CanteenPage from '../LogisticsPage/CanteenPage';
 const { TextArea } = Input;
 import {
-  FolderOutlined, FileOutlined, NotificationOutlined, SurveyOutlined,
+  FolderOutlined, FileOutlined, NotificationOutlined, FileTextOutlined, CoffeeOutlined,
   HomeOutlined, ToolOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   UploadOutlined, DownloadOutlined, SearchOutlined, CalendarOutlined,
   TeamOutlined, UserOutlined, EyeOutlined, BellOutlined
@@ -441,7 +442,8 @@ export default function OfficePage() {
     { key: 'documents', label: '📁 文档管理', icon: <FolderOutlined /> },
     { key: 'announcements', label: '📢 公告问卷', icon: <NotificationOutlined /> },
     { key: 'meetings', label: '📅 会议管理', icon: <CalendarOutlined /> },
-    { key: 'supplies', label: '📦 办公用品', icon: <ToolOutlined /> }
+    { key: 'supplies', label: '📦 办公用品', icon: <ToolOutlined /> },
+    { key: 'canteen', label: '🍽️ 食堂管理', icon: <CoffeeOutlined /> }
   ];
 
   return (
@@ -450,7 +452,7 @@ export default function OfficePage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">🏢 综合事务管理</h2>
-          <p className="text-sm text-muted-foreground mt-1">文档管理 · 公告问卷 · 会议预订 · 办公用品</p>
+          <p className="text-sm text-muted-foreground mt-1">文档管理 · 公告问卷 · 会议预订 · 办公用品 · 食堂管理</p>
         </div>
       </div>
 
@@ -526,6 +528,9 @@ export default function OfficePage() {
             </Row>
           </div>
         )}
+
+        {/* 食堂管理 */}
+        {activeTab === 'canteen' && <CanteenPage />}
       </Card>
 
       {/* 文件夹弹窗 */}

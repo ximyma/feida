@@ -645,6 +645,28 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_report_cat ON report_definitions(category);
       CREATE INDEX IF NOT EXISTS idx_ds_type ON data_sources(type);
             CREATE INDEX IF NOT EXISTS idx_cfg_cat ON report_configs(category);
+      -- 考勤设备配置表
+      CREATE TABLE IF NOT EXISTS attendance_devices (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        deviceType TEXT NOT NULL DEFAULT 'app',
+        status TEXT DEFAULT 'unconfigured',
+        config TEXT DEFAULT '{}',
+        lastSyncAt TEXT,
+        syncCount INTEGER DEFAULT 0,
+        remark TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      -- 年假规则全局配置表
+      CREATE TABLE IF NOT EXISTS leave_rule_configs (
+        id TEXT PRIMARY KEY,
+        annualDays INTEGER DEFAULT 15,
+        carryoverDays INTEGER DEFAULT 5,
+        maxDays INTEGER DEFAULT 30,
+        accrueMonth INTEGER DEFAULT 1,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
       CREATE TABLE IF NOT EXISTS workflow_templates (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
         description TEXT, steps TEXT DEFAULT '[]', isActive INTEGER DEFAULT 1,

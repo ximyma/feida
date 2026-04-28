@@ -43,6 +43,15 @@ const statusMap: Record<string, { label: string; className: string; icon: string
   overtime: { label: '加班', className: 'bg-purple-100 text-purple-700', icon: '🌙', color: 'purple' },
 };
 
+// 从登录态获取当前用户信息
+function getCurrentUser(): { id: string; employeeId?: string; realName?: string } {
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) return JSON.parse(userStr);
+  } catch { /* ignore */ }
+  return { id: '', realName: '未知' };
+}
+
 export default function AttendancePage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
@@ -50,48 +59,109 @@ export default function AttendancePage() {
   const [schedules, setSchedules] = useState<ISchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [clockInTime, setClockInTime] = useState<string | null>(null);
-  const [clockOutTime, setClockOutTime] = useState<string | null>(null);
+  // 当日本人打卡状态（从数据库加载）
+  const [todayRecord, setTodayRecord] = useState<any>(null);
+  const [clockLoading, setClockLoading] = useState(false);
+  const [totalEmployees, setTotalEmployees] = useState(0);
   const [editingRecord, setEditingRecord] = useState<IAttendanceRecord | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/attendance_records').then(r => r.json()).catch(() => []),
-      fetch('/api/schedules').then(r => r.json()).catch(() => []),
-    ]).then(([attendanceData, scheduleData]) => {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const currentUser = getCurrentUser();
+      const employeeId = currentUser.employeeId || currentUser.id;
+      const today = new Date().toISOString().slice(0, 10);
+      const [attendanceData, scheduleData, empData, todayData] = await Promise.all([
+        fetch('/api/attendance_records').then(r => r.json()).catch(() => []),
+        fetch('/api/schedules').then(r => r.json()).catch(() => []),
+        fetch('/api/employees').then(r => r.json()).catch(() => []),
+        employeeId ? fetch(`/api/attendance/today/${employeeId}`).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+      ]);
       setAttendanceRecords(Array.isArray(attendanceData) ? attendanceData : []);
       setSchedules(Array.isArray(scheduleData) ? scheduleData : []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+      setTotalEmployees(Array.isArray(empData) ? empData.filter((e: any) => e.status === 'active').length : 0);
+      setTodayRecord(todayData);
+    } catch {
+      messageApi.error('加载数据失败');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const todayRecords = attendanceRecords.filter(r => r.date === selectedDate);
 
   const stats = {
-    totalEmployees: 48,
-    todayPresent: todayRecords.filter(r => r.status === 'normal' || r.status === 'overtime').length,
-    todayLate: todayRecords.filter(r => r.status === 'late').length,
-    todayAbsent: todayRecords.filter(r => r.status === 'absent').length,
-    todayLeave: todayRecords.filter(r => r.status === 'leave').length,
-    todayOvertime: todayRecords.filter(r => r.status === 'overtime').length,
-    totalWorkHours: todayRecords.reduce((sum, r) => sum + (r.workHours || 0), 0),
-    totalOvertimeHours: todayRecords.reduce((sum, r) => sum + (r.overtimeHours || 0), 0),
+    totalEmployees,
+    todayPresent: todayRecords.filter(r => r.status === 'normal' || r.status === 'overtime' || r.status === '正常').length,
+    todayLate: todayRecords.filter(r => r.status === 'late' || r.status === '迟到').length,
+    todayAbsent: todayRecords.filter(r => r.status === 'absent' || r.status === '缺勤').length,
+    todayLeave: todayRecords.filter(r => r.status === 'leave' || r.status === '请假').length,
+    todayOvertime: todayRecords.filter(r => r.status === 'overtime' || r.status === '加班').length,
+    totalWorkHours: Math.round(todayRecords.reduce((sum, r) => sum + (r.workHours || 0), 0) * 10) / 10,
+    totalOvertimeHours: Math.round(todayRecords.reduce((sum, r) => sum + (r.overtimeHours || 0), 0) * 10) / 10,
   };
 
-  const handleClockIn = () => {
-    const now = new Date();
-    const time = now.toTimeString().slice(0, 5);
-    setClockInTime(time);
-    messageApi.success(`上班打卡成功：${time}`);
+  // 真实上班打卡
+  const handleClockIn = async () => {
+    const currentUser = getCurrentUser();
+    const employeeId = currentUser.employeeId || currentUser.id;
+    if (!employeeId) {
+      messageApi.error('请先登录');
+      return;
+    }
+    setClockLoading(true);
+    try {
+      const res = await fetch('/api/attendance/clock-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          employeeName: currentUser.realName || '未知',
+          location: '公司',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        messageApi.success(data.message || '上班打卡成功');
+        await loadData();
+      } else {
+        messageApi.warning(data.message || '打卡失败');
+      }
+    } catch {
+      messageApi.error('网络错误，打卡失败');
+    }
+    setClockLoading(false);
   };
 
-  const handleClockOut = () => {
-    const now = new Date();
-    const time = now.toTimeString().slice(0, 5);
-    setClockOutTime(time);
-    messageApi.success(`下班打卡成功：${time}`);
+  // 真实下班签退
+  const handleClockOut = async () => {
+    const currentUser = getCurrentUser();
+    const employeeId = currentUser.employeeId || currentUser.id;
+    if (!employeeId) {
+      messageApi.error('请先登录');
+      return;
+    }
+    setClockLoading(true);
+    try {
+      const res = await fetch('/api/attendance/clock-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        messageApi.success(data.message || '下班签退成功');
+        await loadData();
+      } else {
+        messageApi.warning(data.message || '签退失败');
+      }
+    } catch {
+      messageApi.error('网络错误，签退失败');
+    }
+    setClockLoading(false);
   };
 
   const handleEditRecord = (record: IAttendanceRecord) => {
@@ -285,37 +355,51 @@ export default function AttendancePage() {
                     {new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </div>
 
-                  {clockInTime ? (
+                  {todayRecord?.clockIn ? (
                     <div className="space-y-4">
                       <div className="bg-success/10 rounded-lg p-4">
                         <div className="text-sm text-muted-foreground">上班打卡时间</div>
-                        <div className="text-2xl font-bold text-success">{clockInTime}</div>
+                        <div className="text-2xl font-bold text-success">{todayRecord.clockIn}</div>
+                        {todayRecord.status === '迟到' && (
+                          <div className="text-xs text-orange-500 mt-1">迟到 {todayRecord.lateMinutes} 分钟</div>
+                        )}
                       </div>
-                      {clockOutTime ? (
+                      {todayRecord?.clockOut ? (
                         <div className="bg-blue-500/10 rounded-lg p-4">
-                          <div className="text-sm text-muted-foreground">下班打卡时间</div>
-                          <div className="text-2xl font-bold text-blue-600">{clockOutTime}</div>
+                          <div className="text-sm text-muted-foreground">下班签退时间</div>
+                          <div className="text-2xl font-bold text-blue-600">{todayRecord.clockOut}</div>
+                          <div className="text-xs text-muted-foreground mt-1">工时 {todayRecord.workHours}h</div>
                         </div>
                       ) : (
-                        <Button size="large" type="primary" onClick={handleClockOut} block>下班打卡</Button>
+                        <Button size="large" type="primary" onClick={handleClockOut} loading={clockLoading} block>下班签退</Button>
                       )}
                     </div>
                   ) : (
-                    <Button size="large" type="primary" onClick={handleClockIn} block>上班打卡</Button>
+                    <Button size="large" type="primary" onClick={handleClockIn} loading={clockLoading} block style={{ height: 56, fontSize: 18 }}>
+                      上班打卡
+                    </Button>
                   )}
 
                   <div className="mt-8 pt-6 border-t">
                     <h4 className="font-medium mb-4">今日打卡记录</h4>
                     <Row gutter={16}>
                       <Col span={12} className="text-center bg-muted/30 rounded-lg p-3">
-                        <div className="text-muted-foreground">上班</div>
-                        <div className="font-medium">{clockInTime || '未打卡'}</div>
+                        <div className="text-muted-foreground text-sm">上班打卡</div>
+                        <div className="font-medium mt-1">{todayRecord?.clockIn || '未打卡'}</div>
                       </Col>
                       <Col span={12} className="text-center bg-muted/30 rounded-lg p-3">
-                        <div className="text-muted-foreground">下班</div>
-                        <div className="font-medium">{clockOutTime || '未打卡'}</div>
+                        <div className="text-muted-foreground text-sm">下班签退</div>
+                        <div className="font-medium mt-1">{todayRecord?.clockOut || '未签退'}</div>
                       </Col>
                     </Row>
+                    {todayRecord && (
+                      <div className="mt-3 text-sm text-muted-foreground">
+                        班次：{todayRecord.shiftTypeName || '标准班'} &nbsp;|&nbsp; 状态：
+                        <span className={todayRecord.status === '正常' ? 'text-green-600' : 'text-orange-500'}>
+                          {todayRecord.status || '正常'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -380,6 +380,10 @@ const Layout: React.FC = () => {
           {hasModule('/recruitment') && renderNewModuleNav('/recruitment')}
           {/* 后勤（管理员可见） */}
           {hasModule('/logistics') && renderNewModuleNav('/logistics')}
+          {/* 综合事务 */}
+          {hasModule('/office') && renderNewModuleNav('/office')}
+          {/* 培训管理 */}
+          {hasModule('/training') && renderNewModuleNav('/training')}
           {/* 审批 */}
           {hasModule('/approval') && renderNewModuleNav('/approval')}
           {/* 系统管理（仅管理员可见） */}
