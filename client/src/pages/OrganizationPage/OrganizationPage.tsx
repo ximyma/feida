@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldToLabel } from '@/utils/fieldLabels';
-import { Card, Table, Tag, Row, Col, Statistic, Button, Modal, Form, Input, Select, message, Tabs, Popconfirm, Dropdown, Menu } from 'antd';
-import { TeamOutlined, ApartmentOutlined, UserOutlined, BankOutlined, ArrowRightOutlined, SwapOutlined, MergeOutlined, SortAscendingOutlined, MoreOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Row, Col, Statistic, Button, Modal, Form, Input, Select, message, Tabs, Popconfirm, Dropdown, Menu, Space, Alert, Divider } from 'antd';
+import { TeamOutlined, ApartmentOutlined, UserOutlined, BankOutlined, ArrowRightOutlined, SwapOutlined, MergeOutlined, SortAscendingOutlined, MoreOutlined, DeleteOutlined, CheckCircleOutlined } from '@ant-design/icons';
 
 // ==================== 类型定义 ====================
 interface Department {
