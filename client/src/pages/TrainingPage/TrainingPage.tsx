@@ -10,8 +10,14 @@ import {
   FileTextOutlined, TeamOutlined,
   QrcodeOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined,
   BookOutlined, CalendarOutlined, StarOutlined, BellOutlined, PushpinOutlined,
-  EyeOutlined, RocketOutlined
+  EyeOutlined, RocketOutlined, BookOutlined as BookFilled, CustomerServiceOutlined
 } from '@ant-design/icons';
+// 引入新的V2组件
+import CourseCenter from './CourseCenterTab';
+import MyLearning from './MyLearningTab';
+import LiveCenterTab from './components/LiveCenterTab';
+import LearningReportTab from './components/LearningReportTab';
+import CertificateTab from './components/CertificateTab';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -252,6 +258,7 @@ export default function TrainingPage() {
   const [classes, setClasses] = useState<TrainingClass[]>([]);
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [templates, setTemplates] = useState<AssessmentTemplate[]>([]);
+  const [liveCount, setLiveCount] = useState(0);
   // ============ 新增：学习进度和通知 ============
   const [learningProgress, setLearningProgress] = useState<LearningProgress[]>([]);
   const [notifications, setNotifications] = useState<TrainingNotification[]>([]);
@@ -287,7 +294,7 @@ export default function TrainingPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, c, cl, r, t, emp, prog] = await Promise.all([
+      const [p, c, cl, r, t, emp, prog, live] = await Promise.all([
         API.get('training_plans'),
         API.get('training_courses'),
         API.get('training_classes'),
@@ -295,6 +302,7 @@ export default function TrainingPage() {
         API.get('assessment_templates'),
         API.get('employees'),
         API.get('training_learning_progress'),
+        fetch('/api/training/live').then(r => r.json()),
       ]);
       setPlans(Array.isArray(p) ? p : []);
       setCourses(Array.isArray(c) ? c : []);
@@ -303,6 +311,10 @@ export default function TrainingPage() {
       setTemplates(Array.isArray(t) ? t : []);
       setEmployees(Array.isArray(emp) ? emp : []);
       setLearningProgress(Array.isArray(prog) ? prog : []);
+      // 计算正在直播的数量
+      if (live.success && Array.isArray(live.data)) {
+        setLiveCount(live.data.filter((l: any) => l.status === 'live').length);
+      }
     } catch (e) {
       messageApi.error('数据加载失败: ' + (e as Error).message);
     }
@@ -658,13 +670,18 @@ export default function TrainingPage() {
 
   // ============ Tabs ============
   const tabs = [
+    { key: 'center', label: '课程中心', icon: <BookFilled /> },
+    { key: 'learning', label: '我的学习', icon: <CustomerServiceOutlined /> },
+    { key: 'live', label: <span>直播中心 <Badge count={liveCount} size="small" style={{ marginLeft: 4 }} /></span>, icon: <PlayCircleOutlined /> },
     { key: 'plan', label: '培训计划', icon: <CalendarOutlined /> },
-    { key: 'course', label: '在线课程', icon: <VideoCameraOutlined /> },
+    { key: 'course', label: '在线课程(旧)', icon: <VideoCameraOutlined /> },
     { key: 'class', label: '培训班', icon: <TeamOutlined /> },
     { key: 'record', label: '培训记录', icon: <FileTextOutlined /> },
     { key: 'progress', label: <span>学习进度 <Badge count={stats.avgProgress} size="small" style={{ marginLeft: 4 }} /></span>, icon: <EyeOutlined /> },
     { key: 'push', label: <span>培训推送 <Badge count={stats.unreadNotifications} size="small" style={{ marginLeft: 4 }} /></span>, icon: <PushpinOutlined /> },
     { key: 'assessment', label: '评估管理', icon: <StarOutlined /> },
+    { key: 'report', label: '学习报表', icon: <RocketOutlined /> },
+    { key: 'certificate', label: '我的证书', icon: <CheckCircleOutlined /> },
   ];
 
   // ============ 表格列 ============
@@ -915,7 +932,26 @@ export default function TrainingPage() {
       <Card>
         <Tabs activeKey={activeTab} onChange={setActiveTab} tabBarStyle={{ marginBottom: 16 }} items={tabs} />
 
-        {/* ========== Tab1: 培训计划 ========== */}
+        {/* ========== 新Tab: 课程中心V2 ========== */}
+        {activeTab === 'center' && (
+          <CourseCenter employeeId="emp-1" isAdmin={true} />
+        )}
+
+        {/* ========== 新Tab: 我的学习 ========== */}
+        {activeTab === 'learning' && (
+          <MyLearning employeeId="emp-1" />
+        )}
+
+        {/* ========== 新Tab: 直播中心 ========== */}
+        {activeTab === 'live' && (
+          <LiveCenterTab 
+            currentUserId="emp-1" 
+            currentUserName="管理员" 
+            isAdmin={true} 
+          />
+        )}
+
+        {/* ========== Tab: 培训计划 ========== */}
         {activeTab === 'plan' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -1122,6 +1158,24 @@ export default function TrainingPage() {
             <Alert message="培训推送功能：将培训任务通过员工自助账号推送，支持设置完成截止日期。员工可在自助平台查看待完成的培训任务。" type="info" showIcon style={{ marginBottom: 8 }} />
             <Table columns={notificationColumns} dataSource={filteredNotifications} rowKey="id" loading={loading} pagination={{ pageSize: 10, showSizeChanger: true, showTotal: t => `共 ${t} 条` }} size="small" scroll={{ x: 900 }} />
           </div>
+        )}
+
+        {/* ========== Tab: 学习报表 ========== */}
+        {activeTab === 'report' && (
+          <LearningReportTab
+            currentUserId="emp-1"
+            currentUserName="管理员"
+            isAdmin={true}
+          />
+        )}
+
+        {/* ========== Tab: 我的证书 ========== */}
+        {activeTab === 'certificate' && (
+          <CertificateTab
+            currentUserId="emp-1"
+            currentUserName="管理员"
+            isAdmin={true}
+          />
         )}
       </Card>
 

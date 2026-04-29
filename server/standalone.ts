@@ -117,6 +117,10 @@ function apiRouter() {
     // 培训模块
     'training_plans','training_courses','training_records','training_evaluations',
     'training_learning_progress','training_notifications',
+    'training_categories','training_courses_v2','training_chapters',
+    'training_reviews','training_review_replies','training_notes',
+    'training_live_sessions','training_live_messages','training_live_attendances',
+    'training_live_reservations','training_learning_paths','training_path_courses',
     // 后勤模块
     'dormitories','dormitory_assignments','dormitory_bills','canteens','meal_records',
     'vehicles','vehicle_usage','visitors',
@@ -1295,6 +1299,236 @@ function apiRouter() {
     }
   });
 
+  // ============ 培训视频上传 API ============
+  
+  // 创建视频上传目录
+  const videoUploadDir = path.join(process.cwd(), 'uploads', 'videos');
+  if (!fs.existsSync(videoUploadDir)) fs.mkdirSync(videoUploadDir, { recursive: true });
+  
+  // 视频上传（支持分片）
+  router.post('/training/video/upload', upload.single('file'), async (req: any, res: any) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ success: false, error: 'No file uploaded' });
+        return;
+      }
+      
+      const { chapterId, courseId, uploaderId } = req.body;
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      const ext = path.extname(originalName).toLowerCase();
+      
+      // 检查文件类型
+      const allowedVideoTypes = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+      if (!allowedVideoTypes.includes(ext)) {
+        // 删除无效文件
+        fs.unlinkSync(file.path);
+        res.status(400).json({ success: false, error: '不支持的视频格式，请上传 MP4、WebM、OGG 等格式' });
+        return;
+      }
+      
+      // 生成唯一文件名
+      const videoId = `video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const storedName = `${videoId}${ext}`;
+      const storedPath = path.join(videoUploadDir, storedName);
+      
+      // 移动文件到视频目录
+      fs.renameSync(file.path, storedPath);
+      
+      // 获取视频时长（使用 ffprobe，如果可用）
+      let duration = 0;
+      try {
+        const { execSync } = require('child_process');
+        const ffprobeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${storedPath}"`;
+        duration = parseFloat(execSync(ffprobeCmd, { encoding: 'utf8' })) || 0;
+      } catch (e) {
+        // ffprobe 不可用，忽略时长获取
+        console.log('ffprobe not available, duration not extracted');
+      }
+      
+      const videoUrl = `/api/training/video/${videoId}`;
+      
+      res.json({
+        success: true,
+        video: {
+          id: videoId,
+          originalName,
+          storedName,
+          storedPath,
+          url: videoUrl,
+          mimeType: file.mimetype,
+          size: file.size,
+          duration: Math.round(duration),
+          chapterId: chapterId || null,
+          courseId: courseId || null,
+          uploadedBy: uploaderId || null,
+          uploadedAt: new Date().toISOString()
+        }
+      });
+    } catch (e: any) {
+      console.error('Video upload error:', e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ============ 富文本图片上传 API ============
+  
+  // 创建图片上传目录
+  const imageUploadDir = path.join(process.cwd(), 'uploads', 'images');
+  if (!fs.existsSync(imageUploadDir)) fs.mkdirSync(imageUploadDir, { recursive: true });
+  
+  // 图片上传（用于富文本编辑器）
+  router.post('/training/image/upload', upload.single('file'), async (req: any, res: any) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ success: false, error: 'No file uploaded' });
+        return;
+      }
+      
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      const ext = path.extname(originalName).toLowerCase();
+      
+      // 检查文件类型
+      const allowedImageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+      if (!allowedImageTypes.includes(ext)) {
+        fs.unlinkSync(file.path);
+        res.status(400).json({ success: false, error: '不支持的图片格式，请上传 JPG、PNG、GIF、WebP 等格式' });
+        return;
+      }
+      
+      // 生成唯一文件名
+      const imageId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const storedName = `${imageId}${ext}`;
+      const storedPath = path.join(imageUploadDir, storedName);
+      
+      // 移动文件
+      fs.renameSync(file.path, storedPath);
+      
+      const imageUrl = `/api/training/image/${imageId}${ext}`;
+      
+      res.json({
+        success: true,
+        image: {
+          id: imageId,
+          originalName,
+          url: imageUrl,
+          mimeType: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date().toISOString()
+        }
+      });
+    } catch (e: any) {
+      console.error('Image upload error:', e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // 获取图片
+  router.get('/training/image/:imageId', (req: any, res: any) => {
+    try {
+      const { imageId } = req.params;
+      
+      // 查找文件（支持带扩展名和不带扩展名的请求）
+      const possibleExtensions = ['', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+      let filePath: string | null = null;
+      
+      for (const ext of possibleExtensions) {
+        const tryPath = path.join(imageUploadDir, `${imageId}${ext}`);
+        if (fs.existsSync(tryPath)) {
+          filePath = tryPath;
+          break;
+        }
+      }
+      
+      if (!filePath) {
+        res.status(404).json({ error: '图片不存在' });
+        return;
+      }
+      
+      const stat = fs.statSync(filePath);
+      const mimeTypes: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+      };
+      const ext = path.extname(filePath).toLowerCase();
+      
+      res.writeHead(200, {
+        'Content-Length': stat.size,
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=31536000',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 获取视频（流式播放）
+  router.get('/training/video/:videoId', (req: any, res: any) => {
+    try {
+      const { videoId } = req.params;
+      const videoPath = path.join(videoUploadDir, `${videoId}.mp4`);
+      
+      if (!fs.existsSync(videoPath)) {
+        res.status(404).json({ error: '视频不存在' });
+        return;
+      }
+      
+      const stat = fs.statSync(videoPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+      
+      if (range) {
+        // 支持 Range 请求（断点续传/拖动）
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+        
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': 'video/mp4'
+        });
+        
+        const stream = fs.createReadStream(videoPath, { start, end });
+        stream.pipe(res);
+      } else {
+        // 完整文件
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': 'video/mp4'
+        });
+        fs.createReadStream(videoPath).pipe(res);
+      }
+    } catch (e: any) {
+      console.error('Video streaming error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 删除视频
+  router.delete('/training/video/:videoId', (req: any, res: any) => {
+    try {
+      const { videoId } = req.params;
+      const videoPath = path.join(videoUploadDir, `${videoId}.mp4`);
+      
+      if (fs.existsSync(videoPath)) {
+        fs.unlinkSync(videoPath);
+      }
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // 文件下载
   router.get('/documents/download/:id', (req: any, res: any) => {
     try {
@@ -1582,6 +1816,97 @@ function apiRouter() {
       const def = defs.find((d: any) => d.id === req.params.id);
       if (!def) { res.json({ success: false, message: '未找到' }); return; }
       res.json({ success: true, data: def });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 创建工作流定义
+  router.post('/workflows', (req, res) => {
+    try {
+      const { name, code, description, nodes, edges, status, isDefault, formConfigId, variables } = req.body;
+      
+      if (!name || !code) {
+        res.json({ success: false, message: '名称和编码不能为空' });
+        return;
+      }
+      
+      // 处理前端已序列化的数据
+      const nodesJson = typeof nodes === 'string' ? nodes : JSON.stringify(nodes || []);
+      const edgesJson = typeof edges === 'string' ? edges : JSON.stringify(edges || []);
+      const variablesJson = typeof variables === 'string' ? variables : JSON.stringify(variables || {});
+      
+      const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const now = new Date().toISOString();
+      
+      db.query(`INSERT INTO workflow_definitions 
+        (id, name, code, description, version, status, isDefault, formConfigId, nodes, edges, variables, createdBy, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id, name, code, description || '', 1, status || 'draft', isDefault || 0,
+          formConfigId || null, nodesJson, edgesJson, variablesJson, req.body.createdBy || 'admin', now, now
+        ]
+      );
+      
+      const newDef = db.query('SELECT * FROM workflow_definitions WHERE id = ?', [id]);
+      res.json({ success: true, data: newDef[0] });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 更新工作流定义
+  router.put('/workflows/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, code, description, nodes, edges, status, isDefault, formConfigId, variables } = req.body;
+      
+      const existing = db.query('SELECT * FROM workflow_definitions WHERE id = ?', [id]);
+      if (!existing || existing.length === 0) {
+        res.json({ success: false, message: '工作流不存在' });
+        return;
+      }
+      
+      // 处理前端已序列化的数据
+      const nodesJson = typeof nodes === 'string' ? nodes : JSON.stringify(nodes || []);
+      const edgesJson = typeof edges === 'string' ? edges : JSON.stringify(edges || []);
+      const variablesJson = typeof variables === 'string' ? variables : JSON.stringify(variables || {});
+      
+      const now = new Date().toISOString();
+      const newVersion = (existing[0].version || 1) + 1;
+      
+      db.query(`UPDATE workflow_definitions SET 
+        name = ?, code = ?, description = ?, version = ?, status = ?, 
+        isDefault = ?, formConfigId = ?, nodes = ?, edges = ?, variables = ?, updatedAt = ?
+        WHERE id = ?`,
+        [
+          name, code, description || '', newVersion, status || existing[0].status,
+          isDefault ?? existing[0].isDefault, formConfigId || null,
+          nodesJson, edgesJson, variablesJson, now, id
+        ]
+      );
+      
+      const updated = db.query('SELECT * FROM workflow_definitions WHERE id = ?', [id]);
+      res.json({ success: true, data: updated[0] });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 删除工作流定义
+  router.delete('/workflows/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // 检查是否有正在运行的实例
+      const instances = db.query('SELECT COUNT(*) as c FROM workflow_instances WHERE definitionId = ? AND status = ?', [id, 'running']);
+      if (instances[0]?.c > 0) {
+        res.json({ success: false, message: '该工作流有正在运行的实例，无法删除' });
+        return;
+      }
+      
+      db.query('DELETE FROM workflow_definitions WHERE id = ?', [id]);
+      res.json({ success: true, message: '删除成功' });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
     }
@@ -1920,6 +2245,1444 @@ function apiRouter() {
       }
       
       res.json({ success: true, message: `已推送培训给部门 ${pushed} 位员工` });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 培训模块 V2.0 API ============
+
+  // 获取课程分类列表
+  router.get('/training/categories', (req, res) => {
+    try {
+      const { parentId } = req.query as any;
+      let sql = 'SELECT * FROM training_categories WHERE isActive = 1';
+      const params: any[] = [];
+      
+      if (parentId !== undefined) {
+        if (parentId === 'root' || parentId === 'null' || parentId === '') {
+          sql += ' AND (parentId IS NULL OR parentId = "")';
+        } else {
+          sql += ' AND parentId = ?';
+          params.push(parentId);
+        }
+      }
+      
+      sql += ' ORDER BY sortOrder ASC';
+      const categories = (db as any).db.prepare(sql).all(...params);
+      
+      res.json({ success: true, data: categories });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取课程列表（V2）
+  router.get('/training/v2/courses', (req, res) => {
+    try {
+      const { categoryId, courseType, status, keyword, targetType, page = 1, pageSize = 10 } = req.query as any;
+      const offset = (Number(page) - 1) * Number(pageSize);
+      
+      let sql = 'SELECT * FROM training_courses_v2 WHERE 1=1';
+      let countSql = 'SELECT COUNT(*) as total FROM training_courses_v2 WHERE 1=1';
+      const params: any[] = [];
+      
+      if (categoryId) {
+        sql += ' AND categoryId = ?';
+        countSql += ' AND categoryId = ?';
+        params.push(categoryId);
+      }
+      if (courseType) {
+        sql += ' AND courseType = ?';
+        countSql += ' AND courseType = ?';
+        params.push(courseType);
+      }
+      if (status) {
+        sql += ' AND status = ?';
+        countSql += ' AND status = ?';
+        params.push(status);
+      } else {
+        sql += " AND status = 'published'";
+        countSql += " AND status = 'published'";
+      }
+      if (keyword) {
+        sql += ' AND (title LIKE ? OR subtitle LIKE ? OR description LIKE ?)';
+        countSql += ' AND (title LIKE ? OR subtitle LIKE ? OR description LIKE ?)';
+        const kw = `%${keyword}%`;
+        params.push(kw, kw, kw);
+      }
+      if (targetType) {
+        sql += ' AND targetType = ?';
+        countSql += ' AND targetType = ?';
+        params.push(targetType);
+      }
+      
+      const total = ((db as any).db.prepare(countSql).get(...params) as any).total;
+      
+      sql += ' ORDER BY isMandatory DESC, enrollmentCount DESC, publishedAt DESC LIMIT ? OFFSET ?';
+      const courses = (db as any).db.prepare(sql).all(...params, Number(pageSize), offset);
+      
+      res.json({ success: true, data: courses, total, page: Number(page), pageSize: Number(pageSize) });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取课程详情（V2）
+  router.get('/training/v2/courses/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const course = (db as any).db.prepare('SELECT * FROM training_courses_v2 WHERE id = ?').get(id);
+      
+      if (!course) {
+        res.json({ success: false, message: '课程不存在' });
+        return;
+      }
+      
+      // 获取章节列表
+      const chapters = (db as any).db.prepare(
+        'SELECT * FROM training_chapters WHERE courseId = ? ORDER BY sortOrder ASC'
+      ).all(id);
+      
+      // 获取评价统计
+      const reviewStats = (db as any).db.prepare(`
+        SELECT 
+          COUNT(*) as total,
+          AVG(rating) as avgRating,
+          SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as fiveStar,
+          SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as fourStar,
+          SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as threeStar,
+          SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as twoStar,
+          SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as oneStar
+        FROM training_reviews WHERE courseId = ? AND status = 'published'
+      `).get(id) as any;
+      
+      res.json({ 
+        success: true, 
+        data: { ...course, chapters, reviewStats } 
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取章节内容
+  router.get('/training/v2/chapters/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const chapter = (db as any).db.prepare('SELECT * FROM training_chapters WHERE id = ?').get(id);
+      
+      if (!chapter) {
+        res.json({ success: false, message: '章节不存在' });
+        return;
+      }
+      
+      res.json({ success: true, data: chapter });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取课程评价列表
+  router.get('/training/v2/reviews', (req, res) => {
+    try {
+      const { courseId, page = 1, pageSize = 10 } = req.query as any;
+      const offset = (Number(page) - 1) * Number(pageSize);
+      
+      if (!courseId) {
+        res.json({ success: false, message: '缺少课程ID' });
+        return;
+      }
+      
+      const total = ((db as any).db.prepare(
+        "SELECT COUNT(*) as total FROM training_reviews WHERE courseId = ? AND status = 'published'"
+      ).get(courseId) as any).total;
+      
+      const reviews = (db as any).db.prepare(`
+        SELECT * FROM training_reviews 
+        WHERE courseId = ? AND status = 'published'
+        ORDER BY createdAt DESC 
+        LIMIT ? OFFSET ?
+      `).all(courseId, Number(pageSize), offset);
+      
+      res.json({ success: true, data: reviews, total, page: Number(page), pageSize: Number(pageSize) });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 创建课程（管理员）
+  router.post('/training/v2/courses', (req, res) => {
+    try {
+      const {
+        title, subtitle, coverUrl, categoryId, categoryName, courseType,
+        teacherId, teacherName, description, targetType, targetValues,
+        completionType, completionValue, credit, durationMinutes,
+        isMandatory, isPublic, tags
+      } = req.body;
+      
+      const id = `course_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(`
+        INSERT INTO training_courses_v2 (
+          id, title, subtitle, coverUrl, categoryId, categoryName, courseType,
+          teacherId, teacherName, description, targetType, targetValues,
+          completionType, completionValue, credit, durationMinutes,
+          isMandatory, isPublic, status, tags, createdAt, updatedAt
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        id, title, subtitle || '', coverUrl || '', categoryId || '', categoryName || '', courseType || 'video',
+        teacherId || '', teacherName || '', description || '', targetType || 'all', JSON.stringify(targetValues || []),
+        completionType || 'duration', completionValue || 100, credit || 0, durationMinutes || 0,
+        isMandatory ? 1 : 0, isPublic !== false ? 1 : 0, 'draft', JSON.stringify(tags || []), now, now
+      );
+      
+      const course = (db as any).db.prepare('SELECT * FROM training_courses_v2 WHERE id = ?').get(id);
+      res.json({ success: true, data: course });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 更新课程
+  router.put('/training/v2/courses/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      delete updates.id;
+      delete updates.createdAt;
+      updates.updatedAt = new Date().toISOString();
+      
+      if (updates.targetValues && Array.isArray(updates.targetValues)) {
+        updates.targetValues = JSON.stringify(updates.targetValues);
+      }
+      if (updates.tags && Array.isArray(updates.tags)) {
+        updates.tags = JSON.stringify(updates.tags);
+      }
+      
+      const keys = Object.keys(updates);
+      if (keys.length > 0) {
+        const setClause = keys.map(k => `${k} = ?`).join(', ');
+        const values = keys.map(k => updates[k]);
+        (db as any).db.prepare(`UPDATE training_courses_v2 SET ${setClause} WHERE id = ?`).run(...values, id);
+      }
+      
+      const course = (db as any).db.prepare('SELECT * FROM training_courses_v2 WHERE id = ?').get(id);
+      res.json({ success: true, data: course });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 发布课程
+  router.post('/training/v2/courses/:id/publish', (req, res) => {
+    try {
+      const { id } = req.params;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(
+        "UPDATE training_courses_v2 SET status = 'published', publishedAt = ?, updatedAt = ? WHERE id = ?"
+      ).run(now, now, id);
+      
+      res.json({ success: true, message: '课程发布成功' });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 添加章节
+  router.post('/training/v2/chapters', (req, res) => {
+    try {
+      const {
+        courseId, title, description, chapterType, sortOrder, required,
+        content, contentLength, videoUrl, videoDuration,
+        examDuration, passingScore, attachments
+      } = req.body;
+      
+      const id = `ch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(`
+        INSERT INTO training_chapters (
+          id, courseId, title, description, chapterType, sortOrder, required,
+          content, contentLength, videoUrl, videoDuration,
+          examDuration, passingScore, attachments, createdAt, updatedAt
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        id, courseId, title, description || '', chapterType, sortOrder || 0, required !== false ? 1 : 0,
+        content || null, contentLength || 0, videoUrl || '', videoDuration || 0,
+        examDuration || null, passingScore || null, JSON.stringify(attachments || []), now, now
+      );
+      
+      // 更新课程章节数
+      const chapterCount = ((db as any).db.prepare(
+        'SELECT COUNT(*) as c FROM training_chapters WHERE courseId = ?'
+      ).get(courseId) as any).c;
+      (db as any).db.prepare(
+        'UPDATE training_courses_v2 SET chapterCount = ?, updatedAt = ? WHERE id = ?'
+      ).run(chapterCount, now, courseId);
+      
+      const chapter = (db as any).db.prepare('SELECT * FROM training_chapters WHERE id = ?').get(id);
+      res.json({ success: true, data: chapter });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 更新章节
+  router.put('/training/v2/chapters/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      delete updates.id;
+      delete updates.createdAt;
+      updates.updatedAt = new Date().toISOString();
+      
+      if (updates.attachments && Array.isArray(updates.attachments)) {
+        updates.attachments = JSON.stringify(updates.attachments);
+      }
+      
+      const keys = Object.keys(updates);
+      if (keys.length > 0) {
+        const setClause = keys.map(k => `${k} = ?`).join(', ');
+        const values = keys.map(k => updates[k]);
+        (db as any).db.prepare(`UPDATE training_chapters SET ${setClause} WHERE id = ?`).run(...values, id);
+      }
+      
+      const chapter = (db as any).db.prepare('SELECT * FROM training_chapters WHERE id = ?').get(id);
+      res.json({ success: true, data: chapter });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取我的学习记录（V2增强版）
+  router.get('/training/v2/my/learning', (req, res) => {
+    try {
+      const { employeeId, status } = req.query as any;
+      
+      if (!employeeId) {
+        res.json({ success: false, message: '缺少员工ID' });
+        return;
+      }
+      
+      let sql = `
+        SELECT 
+          lp.*,
+          c.title as courseName,
+          c.coverUrl,
+          c.categoryName,
+          c.courseType,
+          c.teacherName,
+          c.credit,
+          c.durationMinutes,
+          c.chapterCount
+        FROM training_learning_progress lp
+        LEFT JOIN training_courses_v2 c ON lp.courseId = c.id
+        WHERE lp.employeeId = ?
+      `;
+      const params: any[] = [employeeId];
+      
+      if (status) {
+        sql += ' AND lp.status = ?';
+        params.push(status);
+      }
+      
+      sql += ' ORDER BY lp.lastAccessAt DESC';
+      
+      const records = (db as any).db.prepare(sql).all(...params);
+      
+      // 格式化数据
+      const data = records.map((r: any) => ({
+        ...r,
+        coverUrl: r.coverUrl || `https://picsum.photos/seed/${r.courseId}/400/225`,
+        progressPercent: r.progressPercent || 0,
+        totalWatchTime: r.totalWatchTime || 0,
+        lastAccessAt: r.lastAccessAt || r.createdAt,
+      }));
+      
+      res.json({ success: true, data });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 保存章节学习进度（文字/视频通用）
+  router.post('/training/v2/progress', (req, res) => {
+    try {
+      const { employeeId, employeeName, courseId, courseName, chapterId, chapterType, position, duration, totalLength } = req.body;
+      const now = new Date().toISOString();
+      
+      // 计算进度
+      let progressPercent = 0;
+      if (chapterType === 'video' && duration > 0) {
+        progressPercent = Math.min(100, (position / duration) * 100);
+      } else if (chapterType === 'text' && totalLength > 0) {
+        progressPercent = Math.min(100, (position / totalLength) * 100);
+      } else {
+        progressPercent = 100; // 其他类型直接标记完成
+      }
+      
+      // 查找或创建学习记录
+      const existing = (db as any).db.prepare(
+        'SELECT * FROM training_learning_progress WHERE employeeId = ? AND courseId = ?'
+      ).get(employeeId, courseId) as any;
+      
+      if (existing) {
+        // 更新进度
+        let totalWatchTime = existing.totalWatchTime || 0;
+        if (chapterType === 'video') {
+          totalWatchTime += Math.abs(position - (existing.videoPosition || 0));
+        }
+        
+        const newStatus = progressPercent >= 100 ? 'completed' : 
+                          progressPercent > 0 ? 'in_progress' : existing.status;
+        
+        (db as any).db.prepare(`
+          UPDATE training_learning_progress SET 
+            chapterId = ?,
+            videoPosition = ?,
+            videoDuration = ?,
+            progressPercent = ?,
+            lastPosition = ?,
+            status = ?,
+            totalWatchTime = ?,
+            watchCount = watchCount + 1,
+            lastAccessAt = ?,
+            completedAt = ?
+          WHERE employeeId = ? AND courseId = ?
+        `).run(
+          chapterId || existing.chapterId,
+          chapterType === 'video' ? position : existing.videoPosition,
+          duration || existing.videoDuration,
+          Math.max(existing.progressPercent || 0, progressPercent),
+          position,
+          newStatus,
+          totalWatchTime,
+          now,
+          newStatus === 'completed' ? now : null,
+          employeeId,
+          courseId
+        );
+      } else {
+        // 创建新记录
+        const id = `lp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const newStatus = progressPercent >= 100 ? 'completed' : progressPercent > 0 ? 'in_progress' : 'not_started';
+        
+        (db as any).db.prepare(`
+          INSERT INTO training_learning_progress (
+            id, employeeId, employeeName, courseId, courseName, chapterId,
+            videoPosition, videoDuration, progressPercent, lastPosition,
+            status, totalWatchTime, watchCount, firstAccessAt, lastAccessAt, completedAt
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `).run(
+          id, employeeId, employeeName || '', courseId, courseName || '',
+          chapterId || null,
+          chapterType === 'video' ? position : 0,
+          duration || 0,
+          progressPercent,
+          position,
+          newStatus,
+          chapterType === 'video' ? position : 0,
+          1,
+          now, now,
+          newStatus === 'completed' ? now : null
+        );
+      }
+      
+      // 更新课程完成人数统计
+      const completedCount = ((db as any).db.prepare(
+        "SELECT COUNT(*) as c FROM training_learning_progress WHERE courseId = ? AND status = 'completed'"
+      ).get(courseId) as any).c;
+      (db as any).db.prepare(
+        'UPDATE training_courses_v2 SET completionCount = ? WHERE id = ?'
+      ).run(completedCount, courseId);
+      
+      res.json({ success: true, progressPercent });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取员工课程学习进度（单个课程）
+  router.get('/training/v2/progress/:courseId', (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const { employeeId } = req.query as any;
+      
+      if (!employeeId) {
+        res.json({ success: false, message: '缺少员工ID' });
+        return;
+      }
+      
+      const progress = (db as any).db.prepare(
+        'SELECT * FROM training_learning_progress WHERE employeeId = ? AND courseId = ?'
+      ).get(employeeId, courseId);
+      
+      // 获取课程章节完成情况
+      const chapters = (db as any).db.prepare(
+        'SELECT id, title, chapterType, sortOrder FROM training_chapters WHERE courseId = ? ORDER BY sortOrder'
+      ).all(courseId) as any[];
+      
+      res.json({ 
+        success: true, 
+        data: {
+          progress: progress || { videoPosition: 0, progressPercent: 0, status: 'not_started' },
+          chapters: chapters.map(ch => ({ ...ch, completed: false }))
+        }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 添加学习笔记
+  router.post('/training/v2/notes', (req, res) => {
+    try {
+      const { employeeId, employeeName, courseId, chapterId, noteType, content, highlightText, position } = req.body;
+      
+      const id = `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(`
+        INSERT INTO training_notes (
+          id, employeeId, employeeName, courseId, chapterId, noteType,
+          content, highlightText, position, createdAt, updatedAt
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        id, employeeId, employeeName || '', courseId || '', chapterId || '',
+        noteType || 'note', content, highlightText || null, position ? JSON.stringify(position) : null, now, now
+      );
+      
+      const note = (db as any).db.prepare('SELECT * FROM training_notes WHERE id = ?').get(id);
+      res.json({ success: true, data: note });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取我的笔记
+  router.get('/training/v2/notes', (req, res) => {
+    try {
+      const { employeeId, courseId, chapterId } = req.query as any;
+      
+      if (!employeeId) {
+        res.json({ success: false, message: '缺少员工ID' });
+        return;
+      }
+      
+      let sql = 'SELECT * FROM training_notes WHERE employeeId = ?';
+      const params: any[] = [employeeId];
+      
+      if (courseId) {
+        sql += ' AND courseId = ?';
+        params.push(courseId);
+      }
+      if (chapterId) {
+        sql += ' AND chapterId = ?';
+        params.push(chapterId);
+      }
+      
+      sql += ' ORDER BY createdAt DESC';
+      
+      const notes = (db as any).db.prepare(sql).all(...params);
+      res.json({ success: true, data: notes });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 删除笔记
+  router.delete('/training/v2/notes/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      (db as any).db.prepare('DELETE FROM training_notes WHERE id = ?').run(id);
+      res.json({ success: true, message: '笔记已删除' });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 添加课程评价
+  router.post('/training/v2/reviews', (req, res) => {
+    try {
+      const { courseId, employeeId, employeeName, rating, content, pros, cons, isAnonymous } = req.body;
+      
+      const id = `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const now = new Date().toISOString();
+      
+      (db as any).db.prepare(`
+        INSERT INTO training_reviews (
+          id, courseId, employeeId, employeeName, rating, content,
+          pros, cons, isAnonymous, status, createdAt, updatedAt
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        id, courseId, employeeId, employeeName || '', rating, content || '',
+        pros || '', cons || '', isAnonymous ? 1 : 0, 'published', now, now
+      );
+      
+      // 更新课程评分
+      const stats = (db as any).db.prepare(`
+        SELECT COUNT(*) as total, AVG(rating) as avgRating
+        FROM training_reviews WHERE courseId = ? AND status = 'published'
+      `).get(courseId) as any;
+      
+      (db as any).db.prepare(
+        'UPDATE training_courses_v2 SET rating = ?, reviewCount = ? WHERE id = ?'
+      ).run(Math.round((stats.avgRating || 0) * 10) / 10, stats.total, courseId);
+      
+      const review = (db as any).db.prepare('SELECT * FROM training_reviews WHERE id = ?').get(id);
+      res.json({ success: true, data: review });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取培训统计
+  router.get('/training/v2/stats', (req, res) => {
+    try {
+      const { employeeId } = req.query as any;
+      
+      const stats = {
+        totalCourses: ((db as any).db.prepare(
+          "SELECT COUNT(*) as c FROM training_courses_v2 WHERE status = 'published'"
+        ).get() as any).c,
+        totalEnrollments: ((db as any).db.prepare(
+          'SELECT COUNT(*) as c FROM training_learning_progress'
+        ).get() as any).c,
+        totalCompletions: ((db as any).db.prepare(
+          "SELECT COUNT(*) as c FROM training_learning_progress WHERE status = 'completed'"
+        ).get() as any).c,
+        totalReviews: ((db as any).db.prepare(
+          'SELECT COUNT(*) as c FROM training_reviews WHERE status = "published"'
+        ).get() as any).c,
+      };
+      
+      // 如果有员工ID，获取个人统计
+      if (employeeId) {
+        const myStats = {
+          enrolledCourses: ((db as any).db.prepare(
+            'SELECT COUNT(*) as c FROM training_learning_progress WHERE employeeId = ?'
+          ).get(employeeId) as any).c,
+          completedCourses: ((db as any).db.prepare(
+            "SELECT COUNT(*) as c FROM training_learning_progress WHERE employeeId = ? AND status = 'completed'"
+          ).get(employeeId) as any).c,
+          totalLearningTime: ((db as any).db.prepare(
+            'SELECT COALESCE(SUM(totalWatchTime), 0) as t FROM training_learning_progress WHERE employeeId = ?'
+          ).get(employeeId) as any).t,
+          pendingCourses: ((db as any).db.prepare(
+            "SELECT COUNT(*) as c FROM training_courses_v2 WHERE status = 'published' AND isMandatory = 1 AND id NOT IN (SELECT courseId FROM training_learning_progress WHERE employeeId = ? AND status = 'completed')"
+          ).get(employeeId) as any).c,
+          totalCredits: ((db as any).db.prepare(`
+            SELECT COALESCE(SUM(c.credit), 0) as t 
+            FROM training_learning_progress lp
+            JOIN training_courses_v2 c ON lp.courseId = c.id
+            WHERE lp.employeeId = ? AND lp.status = 'completed'
+          `).get(employeeId) as any).t,
+        };
+        stats['myStats'] = myStats;
+      }
+      
+      res.json({ success: true, data: stats });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 直播系统 API ============
+
+  // 获取直播列表
+  router.get('/training/live', (req, res) => {
+    try {
+      const { status, page = 1, pageSize = 20 } = req.query as any;
+      
+      let query = 'SELECT * FROM training_live_sessions WHERE 1=1';
+      const params: any[] = [];
+      
+      if (status) {
+        query += ' AND status = ?';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY createdAt DESC';
+      
+      // 分页
+      const offset = (page - 1) * pageSize;
+      query += ` LIMIT ${pageSize} OFFSET ${offset}`;
+      
+      const sessions = ((db as any).db.prepare(query).all(...params) as any[]).map((s: any) => ({
+        ...s,
+        viewerCount: s.viewerCount || 0,
+        maxViewerCount: s.maxViewerCount || 0,
+        totalDuration: s.totalDuration || 0,
+      }));
+      
+      // 获取总数
+      let countQuery = 'SELECT COUNT(*) as total FROM training_live_sessions WHERE 1=1';
+      if (status) countQuery += ' AND status = ?';
+      const total = ((db as any).db.prepare(countQuery).get(...params) as any).total;
+      
+      res.json({ success: true, data: sessions, total, page, pageSize });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取直播详情
+  router.get('/training/live/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const session = (db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id);
+      
+      if (!session) {
+        res.json({ success: false, message: '直播不存在' });
+        return;
+      }
+      
+      // 获取关联的章节信息
+      if (session.chapterId) {
+        const chapter = ((db as any).db.prepare(
+          'SELECT * FROM training_chapters WHERE id = ?'
+        ).get(session.chapterId) as any);
+        if (chapter) {
+          session.chapter = chapter;
+          // 获取课程信息
+          const course = ((db as any).db.prepare(
+            'SELECT * FROM training_courses_v2 WHERE id = ?'
+          ).get(chapter.courseId) as any);
+          session.course = course;
+        }
+      }
+      
+      res.json({ success: true, data: session });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 创建直播
+  router.post('/training/live', (req, res) => {
+    try {
+      const { chapterId, title, description, streamKey } = req.body;
+      
+      const id = `live_${Date.now()}`;
+      const key = streamKey || `live_${Date.now()}`;
+      
+      const session = {
+        id,
+        chapterId: chapterId || null,
+        title: title || '未命名直播',
+        description: description || '',
+        streamKey: key,
+        streamUrl: `rtmp://your-stream-server.com/live/${key}`,
+        pullUrl: `http://your-cdn.com/live/${key}.m3u8`,
+        status: 'pending',
+        viewerCount: 0,
+        maxViewerCount: 0,
+        totalDuration: 0,
+        recordUrl: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      
+      ((db as any).db.prepare(`
+        INSERT INTO training_live_sessions 
+        (id, chapterId, title, description, streamKey, streamUrl, pullUrl, status, viewerCount, maxViewerCount, totalDuration, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        session.id, session.chapterId, session.title, session.description,
+        session.streamKey, session.streamUrl, session.pullUrl, session.status,
+        session.viewerCount, session.maxViewerCount, session.totalDuration, session.createdAt
+      ));
+      
+      res.json({ success: true, data: session });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 开始直播
+  router.put('/training/live/:id/start', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      ((db as any).db.prepare(`
+        UPDATE training_live_sessions 
+        SET status = 'live', startedAt = ?, viewerCount = 0, maxViewerCount = 0, totalDuration = 0
+        WHERE id = ?
+      `).run(new Date().toISOString(), id));
+      
+      const session = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id));
+      
+      res.json({ success: true, data: session });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 结束直播
+  router.put('/training/live/:id/stop', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const session = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id) as any);
+      
+      if (!session) {
+        res.json({ success: false, message: '直播不存在' });
+        return;
+      }
+      
+      // 计算直播时长
+      let duration = 0;
+      if (session.startedAt) {
+        duration = Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000);
+      }
+      
+      ((db as any).db.prepare(`
+        UPDATE training_live_sessions 
+        SET status = 'ended', endedAt = ?, totalDuration = ?
+        WHERE id = ?
+      `).run(new Date().toISOString(), duration, id));
+      
+      const updated = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id));
+      
+      res.json({ success: true, data: updated });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 删除直播
+  router.delete('/training/live/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      ((db as any).db.prepare('DELETE FROM training_live_messages WHERE sessionId = ?').run(id));
+      ((db as any).db.prepare('DELETE FROM training_live_attendances WHERE sessionId = ?').run(id));
+      ((db as any).db.prepare('DELETE FROM training_live_sessions WHERE id = ?').run(id));
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 进入直播间
+  router.post('/training/live/:id/enter', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { employeeId, employeeName } = req.body;
+      
+      const session = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id) as any);
+      
+      if (!session) {
+        res.json({ success: false, message: '直播不存在' });
+        return;
+      }
+      
+      // 更新观看人数
+      const newCount = (session.viewerCount || 0) + 1;
+      const maxCount = Math.max(session.maxViewerCount || 0, newCount);
+      
+      ((db as any).db.prepare(`
+        UPDATE training_live_sessions 
+        SET viewerCount = ?, maxViewerCount = ?
+        WHERE id = ?
+      `).run(newCount, maxCount, id));
+      
+      // 记录观看历史
+      const existing = ((db as any).db.prepare(
+        'SELECT * FROM training_live_attendances WHERE sessionId = ? AND userId = ?'
+      ).get(id, employeeId));
+      
+      if (!existing) {
+        ((db as any).db.prepare(`
+          INSERT INTO training_live_attendances (id, sessionId, userId, userName, createdAt)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(`att_${Date.now()}`, id, employeeId, employeeName || '匿名用户', new Date().toISOString()));
+      }
+      
+      res.json({ success: true, viewerCount: newCount });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取直播消息/弹幕
+  router.get('/training/live/:id/messages', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { type, page = 1, pageSize = 50 } = req.query as any;
+      
+      let query = 'SELECT * FROM training_live_messages WHERE sessionId = ?';
+      const params: any[] = [id];
+      
+      if (type) {
+        query += ' AND messageType = ?';
+        params.push(type);
+      }
+      
+      query += ' ORDER BY createdAt DESC';
+      
+      const offset = (page - 1) * pageSize;
+      query += ` LIMIT ${pageSize} OFFSET ${offset}`;
+      
+      const messages = ((db as any).db.prepare(query).all(...params) as any[]).map((m: any) => ({
+        ...m,
+        isHidden: m.isHidden === 1,
+      }));
+      
+      res.json({ success: true, data: messages.reverse() });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 发送消息/弹幕
+  router.post('/training/live/:id/messages', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId, userName, type = 'chat', content } = req.body;
+      
+      if (!content) {
+        res.json({ success: false, message: '消息内容不能为空' });
+        return;
+      }
+      
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      ((db as any).db.prepare(`
+        INSERT INTO training_live_messages (id, sessionId, userId, userName, messageType, content, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(messageId, id, userId, userName || '匿名用户', type, content, new Date().toISOString()));
+      
+      const message = ((db as any).db.prepare(
+        'SELECT * FROM training_live_messages WHERE id = ?'
+      ).get(messageId));
+      
+      res.json({ success: true, data: message });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 隐藏消息（管理员）
+  router.put('/training/live/:id/messages/:msgId/hide', (req, res) => {
+    try {
+      const { msgId } = req.params;
+      
+      ((db as any).db.prepare(
+        'UPDATE training_live_messages SET isHidden = 1 WHERE id = ?'
+      ).run(msgId));
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 取消隐藏消息（管理员）
+  router.put('/training/live/:id/messages/:msgId/unhide', (req, res) => {
+    try {
+      const { msgId } = req.params;
+      
+      ((db as any).db.prepare(
+        'UPDATE training_live_messages SET isHidden = 0 WHERE id = ?'
+      ).run(msgId));
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 直播签到
+  router.post('/training/live/:id/signin', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { employeeId, employeeName, duration = 0 } = req.body;
+      
+      const existing = ((db as any).db.prepare(
+        'SELECT * FROM training_live_attendances WHERE sessionId = ? AND userId = ?'
+      ).get(id, employeeId) as any);
+      
+      if (existing) {
+        // 更新观看时长
+        ((db as any).db.prepare(`
+          UPDATE training_live_attendances 
+          SET checkinTime = ?, durationWatched = ?
+          WHERE id = ?
+        `).run(new Date().toISOString(), duration, existing.id));
+      } else {
+        // 新增签到记录
+        ((db as any).db.prepare(`
+          INSERT INTO training_live_attendances (id, sessionId, userId, userName, checkinTime, durationWatched, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `att_${Date.now()}`, id, employeeId, employeeName || '匿名用户',
+          new Date().toISOString(), duration, new Date().toISOString()
+        ));
+      }
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取直播统计
+  router.get('/training/live/:id/stats', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const session = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ?'
+      ).get(id) as any);
+      
+      if (!session) {
+        res.json({ success: false, message: '直播不存在' });
+        return;
+      }
+      
+      // 获取观看人数统计
+      const attendance = ((db as any).db.prepare(`
+        SELECT 
+          COUNT(*) as totalAttendees,
+          SUM(durationWatched) as totalDuration
+        FROM training_live_attendances WHERE sessionId = ?
+      `).get(id) as any);
+      
+      // 获取消息统计
+      const messageStats = ((db as any).db.prepare(`
+        SELECT messageType, COUNT(*) as count 
+        FROM training_live_messages 
+        WHERE sessionId = ? AND isHidden = 0
+        GROUP BY messageType
+      `).all(id) as any[]);
+      
+      res.json({ 
+        success: true, 
+        data: {
+          ...session,
+          totalAttendees: attendance?.totalAttendees || 0,
+          totalDuration: attendance?.totalDuration || 0,
+          messageStats: messageStats.reduce((acc: any, m: any) => {
+            acc[m.messageType] = m.count;
+            return acc;
+          }, {}),
+        }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取直播回放列表
+  router.get('/training/live/:id/recordings', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const session = ((db as any).db.prepare(
+        'SELECT * FROM training_live_sessions WHERE id = ? AND status = ?'
+      ).get(id, 'ended') as any);
+      
+      if (!session) {
+        res.json({ success: false, message: '直播回放不存在' });
+        return;
+      }
+      
+      res.json({ 
+        success: true, 
+        data: {
+          id: session.id,
+          title: session.title,
+          recordUrl: session.recordUrl,
+          duration: session.totalDuration,
+          viewCount: session.viewerCount,
+          createdAt: session.startedAt,
+          endedAt: session.endedAt,
+        }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 课程评价 API ============
+
+  // 获取课程评价列表
+  router.get('/training/reviews', (req, res) => {
+    try {
+      const { courseId, page = 1, pageSize = 20, status = 'published' } = req.query as any;
+      
+      let query = 'SELECT * FROM training_reviews WHERE 1=1';
+      const params: any[] = [];
+      
+      if (courseId) {
+        query += ' AND courseId = ?';
+        params.push(courseId);
+      }
+      
+      if (status) {
+        query += ' AND status = ?';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY createdAt DESC';
+      
+      const offset = (page - 1) * pageSize;
+      query += ` LIMIT ${pageSize} OFFSET ${offset}`;
+      
+      const reviews = ((db as any).db.prepare(query).all(...params) as any[]);
+      
+      // 获取统计信息
+      const stats = ((db as any).db.prepare(`
+        SELECT 
+          COUNT(*) as total,
+          AVG(rating) as avgRating,
+          SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as fiveStar,
+          SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as fourStar,
+          SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as threeStar,
+          SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as twoStar,
+          SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as oneStar
+        FROM training_reviews 
+        WHERE courseId = ? AND status = 'published'
+      `).get(courseId) as any);
+      
+      res.json({ 
+        success: true, 
+        data: reviews,
+        stats: stats || { total: 0, avgRating: 0 }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 提交课程评价
+  router.post('/training/reviews', (req, res) => {
+    try {
+      const { courseId, employeeId, employeeName, rating, content } = req.body;
+      
+      if (!content) {
+        res.json({ success: false, message: '评价内容不能为空' });
+        return;
+      }
+      
+      // 检查是否已评价
+      const existing = ((db as any).db.prepare(
+        'SELECT * FROM training_reviews WHERE courseId = ? AND userId = ?'
+      ).get(courseId, employeeId));
+      
+      if (existing) {
+        res.json({ success: false, message: '您已评价过该课程' });
+        return;
+      }
+      
+      const id = `review_${Date.now()}`;
+      
+      ((db as any).db.prepare(`
+        INSERT INTO training_reviews (id, courseId, userId, userName, rating, content, status, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, 'published', ?)
+      `).run(id, courseId, employeeId, employeeName, rating || 5, content, new Date().toISOString()));
+      
+      const review = ((db as any).db.prepare(
+        'SELECT * FROM training_reviews WHERE id = ?'
+      ).get(id));
+      
+      res.json({ success: true, data: review });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 删除评价（管理员）
+  router.delete('/training/reviews/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      ((db as any).db.prepare('DELETE FROM training_reviews WHERE id = ?').run(id));
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 证书 API ============
+
+  // 获取证书列表
+  router.get('/training/certificates', (req, res) => {
+    try {
+      const { employeeId, courseId, status, page = 1, pageSize = 20 } = req.query as any;
+      
+      let query = 'SELECT * FROM training_certificates WHERE 1=1';
+      const params: any[] = [];
+      
+      if (employeeId) {
+        query += ' AND employeeId = ?';
+        params.push(employeeId);
+      }
+      
+      if (courseId) {
+        query += ' AND courseId = ?';
+        params.push(courseId);
+      }
+      
+      if (status) {
+        query += ' AND status = ?';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY issueDate DESC';
+      
+      const offset = (page - 1) * pageSize;
+      query += ` LIMIT ${pageSize} OFFSET ${offset}`;
+      
+      const certificates = ((db as any).db.prepare(query).all(...params) as any[]);
+      
+      res.json({ success: true, data: certificates });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取证书详情
+  router.get('/training/certificates/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const certificate = ((db as any).db.prepare(
+        'SELECT * FROM training_certificates WHERE id = ?'
+      ).get(id));
+      
+      if (!certificate) {
+        res.json({ success: false, message: '证书不存在' });
+        return;
+      }
+      
+      res.json({ success: true, data: certificate });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 颁发证书（管理员）
+  router.post('/training/certificates', (req, res) => {
+    try {
+      const { employeeId, employeeName, employeeDept, courseId, courseName, credit, template, expiryYears = 2 } = req.body;
+      
+      const id = `cert_${Date.now()}`;
+      const issueDate = new Date().toISOString();
+      const expiryDate = new Date(Date.now() + expiryYears * 365 * 24 * 60 * 60 * 1000).toISOString();
+      const certificateNo = `FEIDA-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Date.now()).slice(-6)}`;
+      
+      ((db as any).db.prepare(`
+        INSERT INTO training_certificates 
+        (id, employeeId, employeeName, employeeDept, courseId, courseName, credit, template, issueDate, expiryDate, certificateNo, status, issuedBy, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', '培训管理员', ?)
+      `).run(
+        id, employeeId, employeeName, employeeDept, courseId, courseName,
+        credit || 0, template || 'standard', issueDate, expiryDate, certificateNo, issueDate
+      ));
+      
+      const certificate = ((db as any).db.prepare(
+        'SELECT * FROM training_certificates WHERE id = ?'
+      ).get(id));
+      
+      res.json({ success: true, data: certificate });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 验证证书
+  router.get('/training/certificates/verify/:certificateNo', (req, res) => {
+    try {
+      const { certificateNo } = req.params;
+      
+      const certificate = ((db as any).db.prepare(
+        'SELECT * FROM training_certificates WHERE certificateNo = ?'
+      ).get(certificateNo) as any);
+      
+      if (!certificate) {
+        res.json({ success: false, message: '证书不存在或已撤销' });
+        return;
+      }
+      
+      // 检查是否过期
+      if (certificate.expiryDate && new Date(certificate.expiryDate) < new Date()) {
+        ((db as any).db.prepare(
+          "UPDATE training_certificates SET status = 'expired' WHERE id = ?"
+        ).run(certificate.id));
+        certificate.status = 'expired';
+      }
+      
+      res.json({ 
+        success: true, 
+        data: {
+          employeeName: certificate.employeeName,
+          courseName: certificate.courseName,
+          issueDate: certificate.issueDate,
+          expiryDate: certificate.expiryDate,
+          status: certificate.status,
+          isValid: certificate.status === 'active'
+        }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 撤销证书（管理员）
+  router.put('/training/certificates/:id/revoke', (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      ((db as any).db.prepare(
+        "UPDATE training_certificates SET status = 'revoked' WHERE id = ?"
+      ).run(id));
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // ============ 学习报表 API ============
+
+  // 获取个人学习报表
+  router.get('/training/reports/personal', (req, res) => {
+    try {
+      const { employeeId } = req.query as any;
+      
+      if (!employeeId) {
+        res.json({ success: false, message: '请提供员工ID' });
+        return;
+      }
+      
+      // 学习进度统计
+      const progressStats = ((db as any).db.prepare(`
+        SELECT 
+          COUNT(*) as totalCourses,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completedCourses,
+          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as inProgressCourses,
+          COALESCE(SUM(totalWatchTime), 0) as totalLearningTime
+        FROM training_learning_progress 
+        WHERE employeeId = ?
+      `).get(employeeId) as any);
+      
+      // 获得学分
+      const creditStats = ((db as any).db.prepare(`
+        SELECT COALESCE(SUM(c.credit), 0) as totalCredits
+        FROM training_learning_progress lp
+        JOIN training_courses_v2 c ON lp.courseId = c.id
+        WHERE lp.employeeId = ? AND lp.status = 'completed'
+      `).get(employeeId) as any);
+      
+      // 评分统计
+      const ratingStats = ((db as any).db.prepare(`
+        SELECT AVG(rating) as avgRating, COUNT(*) as reviewCount
+        FROM training_reviews
+        WHERE userId = ?
+      `).get(employeeId) as any);
+      
+      // 学习日历（最近30天）
+      const calendarData: Record<string, number> = {};
+      const today = new Date();
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        calendarData[dateStr] = Math.floor(Math.random() * 120) + 10; // 模拟数据
+      }
+      
+      res.json({ 
+        success: true, 
+        data: {
+          personalStats: {
+            ...progressStats,
+            totalCredits: creditStats?.totalCredits || 0,
+            avgRating: ratingStats?.avgRating || 0,
+            reviewCount: ratingStats?.reviewCount || 0
+          },
+          learningCalendar: calendarData,
+          currentStreak: 5,
+          longestStreak: 12
+        }
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取部门学习报表
+  router.get('/training/reports/department', (req, res) => {
+    try {
+      const { deptId } = req.query as any;
+      
+      // 模拟部门数据
+      const deptStats = [
+        {
+          deptId: 'd1',
+          deptName: '技术研发部',
+          totalEmployees: 45,
+          avgCompletionRate: 72,
+          activeLearners: 38,
+          topLearners: [
+            { name: '李明', courses: 12, time: 480 },
+            { name: '王芳', courses: 10, time: 420 }
+          ]
+        },
+        {
+          deptId: 'd2',
+          deptName: '市场营销部',
+          totalEmployees: 30,
+          avgCompletionRate: 65,
+          activeLearners: 25,
+          topLearners: [
+            { name: '刘洋', courses: 8, time: 320 },
+            { name: '陈静', courses: 7, time: 280 }
+          ]
+        }
+      ];
+      
+      res.json({ success: true, data: deptStats });
+    } catch (e: any) {
+      res.json({ success: false, message: e.message });
+    }
+  });
+
+  // 获取课程完成率报表
+  router.get('/training/reports/courses', (req, res) => {
+    try {
+      const courseStats = ((db as any).db.prepare(`
+        SELECT 
+          c.id,
+          c.title as courseName,
+          COUNT(lp.id) as totalEnrolled,
+          SUM(CASE WHEN lp.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(CASE WHEN lp.status = 'completed' THEN 100.0 ELSE 0 END) as completionRate
+        FROM training_courses_v2 c
+        LEFT JOIN training_learning_progress lp ON c.id = lp.courseId
+        WHERE c.status = 'published'
+        GROUP BY c.id, c.title
+        ORDER BY completionRate DESC
+      `).all() as any[]);
+      
+      res.json({ success: true, data: courseStats });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
     }

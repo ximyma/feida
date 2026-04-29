@@ -279,14 +279,14 @@ function createWorkflow(data: any) {
     updatedAt: now,
   };
 
-  db.query(`INSERT INTO workflow_definitions
+  db.db.prepare(`INSERT INTO workflow_definitions
     (id,name,code,description,version,status,isDefault,formConfigId,nodes,edges,variables,createdBy,createdAt,updatedAt)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     workflow.id, workflow.name, workflow.code, workflow.description,
     workflow.version, workflow.status, workflow.isDefault, workflow.formConfigId,
     workflow.nodes, workflow.edges, workflow.variables, workflow.createdBy,
     workflow.createdAt, workflow.updatedAt
-  ]);
+  );
   return workflow;
 }
 

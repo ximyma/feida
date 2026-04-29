@@ -826,6 +826,236 @@ export class DatabaseService {
         passingScore INTEGER DEFAULT 60, isActive INTEGER DEFAULT 1,
         questions TEXT DEFAULT '[]', createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- ============ 培训模块 V2.0 升级表 ============
+      
+      -- 课程分类表
+      CREATE TABLE IF NOT EXISTS training_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parentId TEXT,
+        icon VARCHAR(50),
+        sortOrder INTEGER DEFAULT 0,
+        description TEXT,
+        isActive INTEGER DEFAULT 1,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 课程主表（V2.0 增强版）
+      CREATE TABLE IF NOT EXISTS training_courses_v2 (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        subtitle VARCHAR(500),
+        coverUrl VARCHAR(500),
+        categoryId TEXT,
+        categoryName TEXT,
+        courseType TEXT DEFAULT 'video',     -- text/video/live/mixed
+        teacherId TEXT,
+        teacherName TEXT,
+        description TEXT,
+        targetType TEXT DEFAULT 'all',       -- all/department/position
+        targetValues TEXT DEFAULT '[]',      -- JSON数组
+        completionType TEXT DEFAULT 'duration', -- duration/complete/exam
+        completionValue DECIMAL(10,2) DEFAULT 100,
+        credit DECIMAL(3,1) DEFAULT 0,
+        durationMinutes INTEGER DEFAULT 0,
+        chapterCount INTEGER DEFAULT 0,
+        enrollmentCount INTEGER DEFAULT 0,
+        completionCount INTEGER DEFAULT 0,
+        rating DECIMAL(2,1) DEFAULT 0,
+        reviewCount INTEGER DEFAULT 0,
+        isMandatory INTEGER DEFAULT 0,
+        isPublic INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'draft',         -- draft/published/offline
+        publishedAt TEXT,
+        tags TEXT DEFAULT '[]',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 章节表（支持文字/视频/直播多种类型）
+      CREATE TABLE IF NOT EXISTS training_chapters (
+        id TEXT PRIMARY KEY,
+        courseId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        chapterType TEXT NOT NULL,           -- text/video/live/exam
+        sortOrder INTEGER DEFAULT 0,
+        required INTEGER DEFAULT 1,
+        -- 文字内容
+        content TEXT,
+        contentLength INTEGER DEFAULT 0,
+        -- 视频信息
+        videoUrl VARCHAR(500),
+        videoDuration INTEGER DEFAULT 0,
+        videoSize INTEGER DEFAULT 0,
+        videoQuality TEXT DEFAULT '1080p',
+        hlsUrl VARCHAR(500),
+        thumbnailUrl VARCHAR(500),
+        -- 直播信息
+        liveStartTime TEXT,
+        liveEndTime TEXT,
+        liveStreamKey VARCHAR(100),
+        livePullUrl VARCHAR(500),
+        liveRecordUrl VARCHAR(500),
+        liveStatus TEXT DEFAULT 'pending',   -- pending/live/ended
+        -- 考试信息
+        examId TEXT,
+        examDuration INTEGER DEFAULT 60,
+        passingScore INTEGER DEFAULT 60,
+        -- 资源附件
+        attachments TEXT DEFAULT '[]',        -- JSON数组 [{name, url, size}]
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 课程评价表
+      CREATE TABLE IF NOT EXISTS training_reviews (
+        id TEXT PRIMARY KEY,
+        courseId TEXT NOT NULL,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        content TEXT,
+        pros TEXT,
+        cons TEXT,
+        isAnonymous INTEGER DEFAULT 0,
+        replyCount INTEGER DEFAULT 0,
+        likeCount INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'published',    -- pending/published/hidden
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 评价回复表
+      CREATE TABLE IF NOT EXISTS training_review_replies (
+        id TEXT PRIMARY KEY,
+        reviewId TEXT NOT NULL,
+        employeeId TEXT,
+        employeeName TEXT,
+        content TEXT NOT NULL,
+        likeCount INTEGER DEFAULT 0,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 学习笔记表
+      CREATE TABLE IF NOT EXISTS training_notes (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        courseId TEXT,
+        chapterId TEXT,
+        noteType TEXT DEFAULT 'note',        -- note/highlight/question
+        content TEXT NOT NULL,
+        highlightText TEXT,                 -- 高亮的原文
+        position TEXT,                       -- 位置信息（JSON）
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 直播会话表
+      CREATE TABLE IF NOT EXISTS training_live_sessions (
+        id TEXT PRIMARY KEY,
+        chapterId TEXT,
+        courseId TEXT,
+        title TEXT NOT NULL,
+        hostId TEXT,
+        hostName TEXT,
+        streamKey VARCHAR(100),
+        streamUrl VARCHAR(500),
+        pullUrl VARCHAR(500),
+        status TEXT DEFAULT 'pending',       -- pending/live/ended
+        viewerCount INTEGER DEFAULT 0,
+        maxViewerCount INTEGER DEFAULT 0,
+        totalDuration INTEGER DEFAULT 0,
+        recordUrl VARCHAR(500),
+        quality TEXT DEFAULT '1080p',
+        startedAt TEXT,
+        endedAt TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 直播消息表（弹幕/聊天/问答）
+      CREATE TABLE IF NOT EXISTS training_live_messages (
+        id TEXT PRIMARY KEY,
+        sessionId TEXT NOT NULL,
+        chapterId TEXT,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        messageType TEXT NOT NULL,          -- danmu/chat/question/answer/system
+        content TEXT NOT NULL,
+        isHidden INTEGER DEFAULT 0,
+        isPinned INTEGER DEFAULT 0,
+        likeCount INTEGER DEFAULT 0,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 直播签到表
+      CREATE TABLE IF NOT EXISTS training_live_attendances (
+        id TEXT PRIMARY KEY,
+        sessionId TEXT NOT NULL,
+        chapterId TEXT,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        checkinTime TEXT,
+        durationWatched INTEGER DEFAULT 0,
+        ipAddress VARCHAR(50),
+        deviceInfo TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(sessionId, employeeId)
+      );
+      
+      -- 直播预约表
+      CREATE TABLE IF NOT EXISTS training_live_reservations (
+        id TEXT PRIMARY KEY,
+        sessionId TEXT NOT NULL,
+        chapterId TEXT,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        notifyEnabled INTEGER DEFAULT 1,
+        notifiedAt TEXT,
+        reservedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(sessionId, employeeId)
+      );
+      
+      -- 学习路径表
+      CREATE TABLE IF NOT EXISTS training_learning_paths (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        targetType TEXT DEFAULT 'all',
+        targetValues TEXT DEFAULT '[]',
+        totalCredit DECIMAL(5,1) DEFAULT 0,
+        totalDuration INTEGER DEFAULT 0,
+        courseCount INTEGER DEFAULT 0,
+        isMandatory INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- 学习路径课程关联表
+      CREATE TABLE IF NOT EXISTS training_path_courses (
+        id TEXT PRIMARY KEY,
+        pathId TEXT NOT NULL,
+        courseId TEXT NOT NULL,
+        sortOrder INTEGER DEFAULT 0,
+        UNIQUE(pathId, courseId)
+      );
+      
+      -- ============ 索引 ============
+      CREATE INDEX IF NOT EXISTS idx_course_category ON training_courses_v2(categoryId);
+      CREATE INDEX IF NOT EXISTS idx_course_status ON training_courses_v2(status);
+      CREATE INDEX IF NOT EXISTS idx_course_type ON training_courses_v2(courseType);
+      CREATE INDEX IF NOT EXISTS idx_chapter_course ON training_chapters(courseId);
+      CREATE INDEX IF NOT EXISTS idx_chapter_sort ON training_chapters(courseId, sortOrder);
+      CREATE INDEX IF NOT EXISTS idx_review_course ON training_reviews(courseId);
+      CREATE INDEX IF NOT EXISTS idx_review_employee ON training_reviews(employeeId);
+      CREATE INDEX IF NOT EXISTS idx_note_employee ON training_notes(employeeId);
+      CREATE INDEX IF NOT EXISTS idx_note_course ON training_notes(courseId);
+      CREATE INDEX IF NOT EXISTS idx_live_session_status ON training_live_sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_live_message_session ON training_live_messages(sessionId);
+      CREATE INDEX IF NOT EXISTS idx_live_attendance_session ON training_live_attendances(sessionId);
     `);
   }
 
@@ -1167,6 +1397,179 @@ export class DatabaseService {
     ];
     for (const c of ciList) {
       this.db.prepare('INSERT INTO competency_items VALUES (@id,@name,@category,@dimension,@description,@isActive,@createdAt)').run({ ...c, isActive: 1, createdAt: now });
+    }
+
+    // ============ 培训模块 V2.0 初始数据 ============
+    
+    // 课程分类
+    const categories = [
+      { id: 'cat_1', name: '技术培训', parentId: null, icon: 'code', sortOrder: 1, description: '技术开发、运维、安全等课程' },
+      { id: 'cat_2', name: '管理培训', parentId: null, icon: 'team', sortOrder: 2, description: '领导力、项目管理等课程' },
+      { id: 'cat_3', name: '新人培训', parentId: null, icon: 'user-add', sortOrder: 3, description: '入职培训、企业文化课程' },
+      { id: 'cat_4', name: '产品培训', parentId: null, icon: 'product', sortOrder: 4, description: '产品知识、用户研究课程' },
+      { id: 'cat_5', name: '销售培训', parentId: null, icon: 'money', sortOrder: 5, description: '销售技巧、客户管理课程' },
+      { id: 'cat_6', name: '通用素质', parentId: null, icon: 'star', sortOrder: 6, description: '沟通技巧、职业素养课程' },
+      // 子分类
+      { id: 'cat_1_1', name: '前端开发', parentId: 'cat_1', icon: 'html5', sortOrder: 11, description: 'React/Vue/Angular等' },
+      { id: 'cat_1_2', name: '后端开发', parentId: 'cat_1', icon: 'server', sortOrder: 12, description: 'Java/Python/Go等' },
+      { id: 'cat_1_3', name: '移动开发', parentId: 'cat_1', icon: 'mobile', sortOrder: 13, description: 'iOS/Android/小程序' },
+    ];
+    for (const cat of categories) {
+      this.db.prepare('INSERT INTO training_categories VALUES (?,?,?,?,?,?,?,?)').run(
+        cat.id, cat.name, cat.parentId, cat.icon, cat.sortOrder, cat.description, 1, now
+      );
+    }
+
+    // 示例课程
+    const courses = [
+      {
+        id: 'course_1', title: 'React 18 核心原理与实战', subtitle: '深入理解 React 新特性与最佳实践',
+        coverUrl: 'https://picsum.photos/seed/react/400/225',
+        categoryId: 'cat_1_1', categoryName: '前端开发', courseType: 'video',
+        teacherId: 'emp-3', teacherName: '王志强',
+        description: '本课程深入讲解 React 18 的核心原理，包括并发渲染、Suspense、Server Components 等新特性，以及 Hooks 最佳实践、性能优化技巧。',
+        targetType: 'department', targetValues: JSON.stringify(['dept_2', 'dept_10']),
+        completionType: 'duration', completionValue: 80, credit: 5, durationMinutes: 180,
+        chapterCount: 6, enrollmentCount: 45, completionCount: 32, rating: 4.8, reviewCount: 28,
+        isMandatory: 1, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['React', '前端', 'Hooks']),
+      },
+      {
+        id: 'course_2', title: 'TypeScript 从入门到精通', subtitle: '类型系统与工程化实践',
+        coverUrl: 'https://picsum.photos/seed/ts/400/225',
+        categoryId: 'cat_1_1', categoryName: '前端开发', courseType: 'video',
+        teacherId: 'emp-16', teacherName: '胡淑芬',
+        description: 'TypeScript 已成为现代前端开发的标配。本课程从基础类型系统讲起，逐步深入到泛型、装饰器、工程化配置，帮助你构建类型安全的应用。',
+        targetType: 'department', targetValues: JSON.stringify(['dept_2', 'dept_10', 'dept_11']),
+        completionType: 'duration', completionValue: 80, credit: 4, durationMinutes: 150,
+        chapterCount: 5, enrollmentCount: 52, completionCount: 38, rating: 4.6, reviewCount: 35,
+        isMandatory: 0, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['TypeScript', '前端']),
+      },
+      {
+        id: 'course_3', title: '职场沟通技巧', subtitle: '高效沟通与团队协作',
+        coverUrl: 'https://picsum.photos/seed/comm/400/225',
+        categoryId: 'cat_6', categoryName: '通用素质', courseType: 'text',
+        teacherId: 'emp-8', teacherName: '吴晓燕',
+        description: '职场沟通是每个员工必备的软技能。本课程涵盖日常沟通、会议表达、书面汇报、跨部门协作等场景，提供实用的话术模板和案例分析。',
+        targetType: 'all', targetValues: JSON.stringify([]),
+        completionType: 'complete', completionValue: 100, credit: 2, durationMinutes: 60,
+        chapterCount: 4, enrollmentCount: 128, completionCount: 95, rating: 4.5, reviewCount: 42,
+        isMandatory: 1, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['沟通', '协作', '职场']),
+      },
+      {
+        id: 'course_4', title: '新员工入职培训', subtitle: '公司文化与制度全解析',
+        coverUrl: 'https://picsum.photos/seed/onboard/400/225',
+        categoryId: 'cat_3', categoryName: '新人培训', courseType: 'mixed',
+        teacherId: 'user_hr', teacherName: '人事主管',
+        description: '入职培训是每位新员工融入公司的第一步。本课程涵盖公司发展历程、企业文化、组织架构、规章制度、福利待遇、办公系统使用等内容。',
+        targetType: 'all', targetValues: JSON.stringify([]),
+        completionType: 'duration', completionValue: 100, credit: 3, durationMinutes: 90,
+        chapterCount: 5, enrollmentCount: 56, completionCount: 56, rating: 4.9, reviewCount: 48,
+        isMandatory: 1, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['入职', '新人', '必学']),
+      },
+      {
+        id: 'course_5', title: '项目管理实战', subtitle: '从需求到交付的全流程管理',
+        coverUrl: 'https://picsum.photos/seed/pm/400/225',
+        categoryId: 'cat_2', categoryName: '管理培训', courseType: 'video',
+        teacherId: 'emp-6', teacherName: '陈建国',
+        description: '本课程结合真实项目案例，讲解从需求收集、计划制定、团队协调到交付上线的完整流程，涵盖敏捷、Scrum、Kanban等主流方法论。',
+        targetType: 'position', targetValues: JSON.stringify(['pos_2', 'pos_4', 'pos_6', 'pos_8']),
+        completionType: 'duration', completionValue: 80, credit: 6, durationMinutes: 240,
+        chapterCount: 8, enrollmentCount: 35, completionCount: 20, rating: 4.7, reviewCount: 18,
+        isMandatory: 0, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['管理', '敏捷', 'Scrum']),
+      },
+      {
+        id: 'course_6', title: '产品经理必修课', subtitle: '需求分析与产品设计方法论',
+        coverUrl: 'https://picsum.photos/seed/pm/400/225',
+        categoryId: 'cat_4', categoryName: '产品培训', courseType: 'video',
+        teacherId: 'emp-5', teacherName: '刘芳芳',
+        description: '产品经理是产品的灵魂人物。本课程涵盖用户研究、需求分析、竞品分析、原型设计、PRD撰写等核心技能，帮助你成为合格的产品经理。',
+        targetType: 'department', targetValues: JSON.stringify(['dept_3']),
+        completionType: 'duration', completionValue: 80, credit: 5, durationMinutes: 200,
+        chapterCount: 7, enrollmentCount: 28, completionCount: 18, rating: 4.6, reviewCount: 15,
+        isMandatory: 0, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['产品', '需求', '设计']),
+      },
+      {
+        id: 'course_7', title: '数据安全与合规', subtitle: '企业信息安全意识培训',
+        coverUrl: 'https://picsum.photos/seed/security/400/225',
+        categoryId: 'cat_1', categoryName: '技术培训', courseType: 'text',
+        teacherId: 'emp-2', teacherName: '李雅琴',
+        description: '数据安全关乎企业命脉。本课程讲解信息安全基础知识、常见威胁与防护措施、数据合规要求（如GDPR、个人信息保护法），提升全员安全意识。',
+        targetType: 'all', targetValues: JSON.stringify([]),
+        completionType: 'complete', completionValue: 100, credit: 2, durationMinutes: 45,
+        chapterCount: 3, enrollmentCount: 200, completionCount: 185, rating: 4.4, reviewCount: 52,
+        isMandatory: 1, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['安全', '合规', '必学']),
+      },
+      {
+        id: 'course_8', title: '销售技巧提升', subtitle: '顾问式销售与客户关系管理',
+        coverUrl: 'https://picsum.photos/seed/sales/400/225',
+        categoryId: 'cat_5', categoryName: '销售培训', courseType: 'video',
+        teacherId: 'emp-7', teacherName: '周伟明',
+        description: '销售不仅是卖产品，更是卖价值。本课程从客户需求洞察、方案呈现、异议处理到成交技巧，系统提升你的销售能力。',
+        targetType: 'department', targetValues: JSON.stringify(['dept_4']),
+        completionType: 'duration', completionValue: 80, credit: 4, durationMinutes: 120,
+        chapterCount: 5, enrollmentCount: 22, completionCount: 15, rating: 4.3, reviewCount: 12,
+        isMandatory: 0, isPublic: 1, status: 'published', publishedAt: now, tags: JSON.stringify(['销售', 'CRM', '技巧']),
+      },
+    ];
+    for (const c of courses) {
+      this.db.prepare(`INSERT INTO training_courses_v2 (
+        id, title, subtitle, coverUrl, categoryId, categoryName, courseType,
+        teacherId, teacherName, description, targetType, targetValues,
+        completionType, completionValue, credit, durationMinutes,
+        chapterCount, enrollmentCount, completionCount, rating, reviewCount,
+        isMandatory, isPublic, status, publishedAt, tags, createdAt, updatedAt
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        c.id, c.title, c.subtitle, c.coverUrl, c.categoryId, c.categoryName, c.courseType,
+        c.teacherId, c.teacherName, c.description, c.targetType, c.targetValues,
+        c.completionType, c.completionValue, c.credit, c.durationMinutes,
+        c.chapterCount, c.enrollmentCount, c.completionCount, c.rating, c.reviewCount,
+        c.isMandatory, c.isPublic, c.status, c.publishedAt, c.tags, now, now
+      );
+    }
+
+    // 示例章节
+    const chapters = [
+      // React课程章节
+      { id: 'ch_1_1', courseId: 'course_1', title: 'React 18 新特性概览', chapterType: 'video', sortOrder: 1, videoUrl: '', videoDuration: 1800, description: '了解 React 18 的主要更新' },
+      { id: 'ch_1_2', courseId: 'course_1', title: '并发渲染原理', chapterType: 'video', sortOrder: 2, videoUrl: '', videoDuration: 2400, description: '深入理解 Concurrent Mode' },
+      { id: 'ch_1_3', courseId: 'course_1', title: 'Suspense 与数据获取', chapterType: 'video', sortOrder: 3, videoUrl: '', videoDuration: 2100, description: 'Suspense 的使用场景' },
+      { id: 'ch_1_4', courseId: 'course_1', title: 'Hooks 进阶技巧', chapterType: 'video', sortOrder: 4, videoUrl: '', videoDuration: 2700, description: '自定义 Hook 与 Hook 模式' },
+      { id: 'ch_1_5', courseId: 'course_1', title: '性能优化实战', chapterType: 'video', sortOrder: 5, videoUrl: '', videoDuration: 1800, description: 'Profiler 与优化策略' },
+      { id: 'ch_1_6', courseId: 'course_1', title: '课程总结与测验', chapterType: 'exam', sortOrder: 6, videoUrl: '', videoDuration: 0, description: '检验学习成果', examDuration: 60, passingScore: 80 },
+      // 职场沟通章节
+      { id: 'ch_3_1', courseId: 'course_3', title: '沟通的基本原理', chapterType: 'text', sortOrder: 1, content: '## 沟通的基本原理\n\n沟通是信息传递与理解的过程。有效的沟通需要做到：\n\n1. **明确目的** - 每次沟通前明确你想要达到的结果\n2. **选择渠道** - 根据内容选择合适的沟通方式（当面/电话/邮件/IM）\n3. **关注反馈** - 确认对方是否理解了你的意思\n\n### 常见沟通障碍\n\n- 信息衰减\n- 理解偏差\n- 情绪干扰\n- 文化差异', contentLength: 1500, sortOrder: 1 },
+      { id: 'ch_3_2', courseId: 'course_3', title: '会议沟通技巧', chapterType: 'text', sortOrder: 2, content: '## 会议沟通技巧\n\n会议是职场沟通的重要场景。\n\n### 会前准备\n\n- 明确会议目标\n- 准备讨论材料\n- 提前发送议程\n\n### 会中表达\n\n- 结论先行\n- 逻辑清晰\n- 控制时间\n\n### 会后跟进\n\n- 发送会议纪要\n- 跟踪待办事项', contentLength: 1200 },
+      // 新人培训章节
+      { id: 'ch_4_1', courseId: 'course_4', title: '公司发展历程', chapterType: 'text', sortOrder: 1, content: '## 公司发展历程\n\n飞达智能科技有限公司成立于2015年，专注于企业智能化解决方案。\n\n### 里程碑\n\n- **2015年**：公司成立\n- **2018年**：获得A轮融资\n- **2020年**：推出核心产品\n- **2023年**：用户突破100万\n- **2026年**：启动IPO准备', contentLength: 800 },
+      { id: 'ch_4_2', courseId: 'course_4', title: '企业文化解读', chapterType: 'video', sortOrder: 2, videoUrl: '', videoDuration: 1200, description: '深入了解飞达的核心价值观' },
+      { id: 'ch_4_3', courseId: 'course_4', title: '规章制度须知', chapterType: 'text', sortOrder: 3, content: '## 规章制度须知\n\n### 考勤制度\n\n- 上班时间：9:00-18:00\n- 弹性打卡：30分钟宽限\n- 请假流程：通过OA系统申请\n\n### 办公规范\n\n- 保持工位整洁\n- 注意信息安全\n- 准时参加会议', contentLength: 600 },
+      { id: 'ch_4_4', courseId: 'course_4', title: 'IT系统使用指南', chapterType: 'video', sortOrder: 4, videoUrl: '', videoDuration: 900, description: '办公系统操作演示' },
+      { id: 'ch_4_5', courseId: 'course_4', title: '入职测验', chapterType: 'exam', sortOrder: 5, examDuration: 30, passingScore: 60 },
+    ];
+    for (const ch of chapters) {
+      this.db.prepare(`INSERT INTO training_chapters (
+        id, courseId, title, description, chapterType, sortOrder, required,
+        content, contentLength, videoUrl, videoDuration,
+        examDuration, passingScore, createdAt
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        ch.id, ch.courseId, ch.title, ch.description || '', ch.chapterType, ch.sortOrder, 1,
+        ch.content || null, ch.contentLength || 0, ch.videoUrl || '', ch.videoDuration || 0,
+        ch.examDuration || null, ch.passingScore || null, now
+      );
+    }
+
+    // 示例评价
+    const reviews = [
+      { id: 'rev_1', courseId: 'course_1', employeeId: 'emp-13', employeeName: '马建新', rating: 5, content: '讲解非常清晰，深入浅出！特别是并发渲染那部分，终于理解透了。', status: 'published' },
+      { id: 'rev_2', courseId: 'course_1', employeeId: 'emp-14', employeeName: '胡淑芬', rating: 4, content: '内容很实用，性能优化的技巧可以直接用到项目中。', status: 'published' },
+      { id: 'rev_3', courseId: 'course_4', employeeId: 'emp-21', employeeName: '曾小红', rating: 5, content: '入职培训很全面，让我快速了解了公司。文化部分印象很深。', status: 'published' },
+      { id: 'rev_4', courseId: 'course_3', employeeId: 'emp-25', employeeName: '冯雅静', rating: 4, content: '学到了很多沟通技巧，特别是会议表达那部分很实用。', status: 'published' },
+    ];
+    for (const r of reviews) {
+      this.db.prepare('INSERT INTO training_reviews VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
+        r.id, r.courseId, r.employeeId, r.employeeName, r.rating, r.content,
+        null, null, 0, 0, 0, r.status, now, now
+      );
     }
 
     console.log('[Database] Seeding completed');
