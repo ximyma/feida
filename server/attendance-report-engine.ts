@@ -32,6 +32,8 @@ export interface AttendanceRecord {
   isRestDay?: number;
   isHoliday?: number;
   remark?: string;
+  scheduledStart?: string;
+  scheduledEnd?: string;
 }
 
 export interface Schedule {
@@ -264,7 +266,7 @@ function getActiveEmployees(db: DatabaseService, department?: string): Employee[
   }
 
   try {
-    const employees = db.db.prepare(sql).all(...params) as Employee[];
+    const employees = db.query(sql, params) as Employee[];
     return employees.map(e => ({
       ...e,
       employeeName: e.employeeName || e.name || '',
@@ -313,12 +315,12 @@ function getSchedules(db: DatabaseService, date: string): Map<string, Schedule> 
 function getLeaveRecords(db: DatabaseService, date: string): LeaveRecord[] {
   try {
     // 查询日期范围内的已批准请假
-    const rows = db.db.prepare(`
+    const rows = db.query(`
       SELECT * FROM leave_records
       WHERE status = 'approved'
       AND startDate <= ?
       AND endDate >= ?
-    `).all(date, date) as LeaveRecord[];
+    `, [date, date]) as LeaveRecord[];
     return rows;
   } catch {
     return [];
@@ -330,11 +332,11 @@ function getLeaveRecords(db: DatabaseService, date: string): LeaveRecord[] {
  */
 function getOvertimeRecords(db: DatabaseService, date: string): OvertimeRecord[] {
   try {
-    const rows = db.db.prepare(`
+    const rows = db.query(`
       SELECT * FROM overtime_records
       WHERE status = 'approved'
       AND date = ?
-    `).all(date) as OvertimeRecord[];
+    `, [date]) as OvertimeRecord[];
     return rows;
   } catch {
     return [];

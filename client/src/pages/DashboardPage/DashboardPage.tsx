@@ -55,14 +55,16 @@ export default function DashboardPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
     Promise.all([
       fetch('/api/dashboard/stats').then(r => r.json()),
-      fetch('/api/announcements').then(r => r.json()),
+      fetch('/api/announcements/mine').then(r => r.json()),
       fetch('/api/approval_requests').then(r => r.json()),
       fetch('/api/contracts').then(r => r.json()),
       fetch('/api/employees').then(r => r.json())
     ]).then(([s, a, ap, c, e]) => {
+      console.log('API返回的公告数据:', a);
       setStats(s);
       setAnnouncements(Array.isArray(a) ? a.slice(0, 3) : []);
       setPendingApprovals(Array.isArray(ap) ? ap.filter((x: any) => x.status === 'pending') : []);
@@ -70,11 +72,15 @@ export default function DashboardPage() {
       setEmployees(Array.isArray(e) ? e : []);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  };
 
   const currentUser = useMemo(() => {
     const userStr = sessionStorage.getItem('__current_user');
     return userStr ? JSON.parse(userStr) : null;
+  }, []);
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const today = useMemo(() => {
@@ -268,21 +274,14 @@ export default function DashboardPage() {
           {/* 公告通知 */}
           <div className="bg-card rounded-xl border border-border p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">📢 公告通知</h3>
-            {announcements.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <div className="text-3xl mb-2">📭</div>
-                <div className="text-sm">暂无公告</div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {announcements.map(a => (
-                  <div key={a.id} className="p-3 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                    <div className="font-medium text-sm">{a.title}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{a.createdAt}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="space-y-3">
+              {announcements.map(a => (
+                <div key={a.id} className="p-3 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                  <div className="font-medium text-sm">{a.title}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{a.createdAt?.slice(0, 10) || ''}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* 系统概览 */}

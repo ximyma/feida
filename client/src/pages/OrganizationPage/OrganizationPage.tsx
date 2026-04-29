@@ -66,6 +66,7 @@ export default function OrganizationPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [ranks, setRanks] = useState<Rank[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [companyName, setCompanyName] = useState('飞达科技');
   
   // 组织架构树状态
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['company']));
@@ -95,22 +96,29 @@ export default function OrganizationPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [deptRes, posRes, rankRes, empRes] = await Promise.all([
+      const [deptRes, posRes, rankRes, empRes, configRes] = await Promise.all([
         fetch('/api/departments'),
         fetch('/api/positions'),
         fetch('/api/ranks'),
-        fetch('/api/employees')
+        fetch('/api/employees'),
+        fetch('/api/system_config')
       ]);
-      const [depts, posis, rks, emps] = await Promise.all([
+      const [depts, posis, rks, emps, configs] = await Promise.all([
         deptRes.json(),
         posRes.json(),
         rankRes.json(),
-        empRes.json()
+        empRes.json(),
+        configRes.json()
       ]);
       setDepartments(Array.isArray(depts) ? depts : []);
       setPositions(Array.isArray(posis) ? posis : []);
       setRanks(Array.isArray(rks) ? rks : []);
       setEmployees(Array.isArray(emps) ? emps : []);
+      
+      const companyConfig = Array.isArray(configs) ? configs.find((c: any) => c.key === 'company_name') : null;
+      if (companyConfig && companyConfig.value) {
+        setCompanyName(companyConfig.value);
+      }
     } catch (e) {
       console.error('加载数据失败:', e);
     }
@@ -132,14 +140,14 @@ export default function OrganizationPage() {
     
     return [{
       id: 'company',
-      name: '飞达科技',
+      name: companyName,
       level: 0,
       parentId: null,
       headcountPlan: departments.reduce((sum, d) => sum + (d.headcountPlan || 0), 0),
       headcountActual: employees.filter(e => e.status === 'active').length,
       children: buildTree(null, 1)
     }];
-  }, [departments, employees]);
+  }, [departments, employees, companyName]);
 
   // ==================== 组织架构统计 ====================
   const orgStats = useMemo(() => {

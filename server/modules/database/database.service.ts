@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import * as path from 'path';
 
 export class DatabaseService {
-  private db!: Database.Database;
+  public db!: Database.Database;
 
   onModuleInit() {
     const dbDir = path.join(process.cwd(), 'data');
@@ -1060,8 +1060,9 @@ export class DatabaseService {
   }
 
   private seedDefaultData() {
-    const count = this.db.prepare('SELECT COUNT(*) as c FROM employees').get() as { c: number };
-    if (count.c > 0) return;
+    const empCount = this.db.prepare('SELECT COUNT(*) as c FROM employees').get() as { c: number };
+    const permCount = this.db.prepare('SELECT COUNT(*) as c FROM permissions').get() as { c: number };
+    if (empCount.c > 0 && permCount.c > 0) return;
     console.log('[Database] Seeding...');
 
     const now = new Date().toISOString();
@@ -1518,7 +1519,7 @@ export class DatabaseService {
         completionType, completionValue, credit, durationMinutes,
         chapterCount, enrollmentCount, completionCount, rating, reviewCount,
         isMandatory, isPublic, status, publishedAt, tags, createdAt, updatedAt
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         c.id, c.title, c.subtitle, c.coverUrl, c.categoryId, c.categoryName, c.courseType,
         c.teacherId, c.teacherName, c.description, c.targetType, c.targetValues,
         c.completionType, c.completionValue, c.credit, c.durationMinutes,
@@ -1537,7 +1538,7 @@ export class DatabaseService {
       { id: 'ch_1_5', courseId: 'course_1', title: '性能优化实战', chapterType: 'video', sortOrder: 5, videoUrl: '', videoDuration: 1800, description: 'Profiler 与优化策略' },
       { id: 'ch_1_6', courseId: 'course_1', title: '课程总结与测验', chapterType: 'exam', sortOrder: 6, videoUrl: '', videoDuration: 0, description: '检验学习成果', examDuration: 60, passingScore: 80 },
       // 职场沟通章节
-      { id: 'ch_3_1', courseId: 'course_3', title: '沟通的基本原理', chapterType: 'text', sortOrder: 1, content: '## 沟通的基本原理\n\n沟通是信息传递与理解的过程。有效的沟通需要做到：\n\n1. **明确目的** - 每次沟通前明确你想要达到的结果\n2. **选择渠道** - 根据内容选择合适的沟通方式（当面/电话/邮件/IM）\n3. **关注反馈** - 确认对方是否理解了你的意思\n\n### 常见沟通障碍\n\n- 信息衰减\n- 理解偏差\n- 情绪干扰\n- 文化差异', contentLength: 1500, sortOrder: 1 },
+      { id: 'ch_3_1', courseId: 'course_3', title: '沟通的基本原理', chapterType: 'text', sortOrder: 1, content: '## 沟通的基本原理\n\n沟通是信息传递与理解的过程。有效的沟通需要做到：\n\n1. **明确目的** - 每次沟通前明确你想要达到的结果\n2. **选择渠道** - 根据内容选择合适的沟通方式（当面/电话/邮件/IM）\n3. **关注反馈** - 确认对方是否理解了你的意思\n\n### 常见沟通障碍\n\n- 信息衰减\n- 理解偏差\n- 情绪干扰\n- 文化差异', contentLength: 1500 },
       { id: 'ch_3_2', courseId: 'course_3', title: '会议沟通技巧', chapterType: 'text', sortOrder: 2, content: '## 会议沟通技巧\n\n会议是职场沟通的重要场景。\n\n### 会前准备\n\n- 明确会议目标\n- 准备讨论材料\n- 提前发送议程\n\n### 会中表达\n\n- 结论先行\n- 逻辑清晰\n- 控制时间\n\n### 会后跟进\n\n- 发送会议纪要\n- 跟踪待办事项', contentLength: 1200 },
       // 新人培训章节
       { id: 'ch_4_1', courseId: 'course_4', title: '公司发展历程', chapterType: 'text', sortOrder: 1, content: '## 公司发展历程\n\n飞达智能科技有限公司成立于2015年，专注于企业智能化解决方案。\n\n### 里程碑\n\n- **2015年**：公司成立\n- **2018年**：获得A轮融资\n- **2020年**：推出核心产品\n- **2023年**：用户突破100万\n- **2026年**：启动IPO准备', contentLength: 800 },

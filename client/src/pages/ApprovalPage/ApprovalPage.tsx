@@ -107,7 +107,7 @@ export default function ApprovalPage() {
 
   // 加载当前用户
   useEffect(() => {
-    const stored = localStorage.getItem('currentUser');
+    const stored = sessionStorage.getItem('__current_user');
     if (stored) {
       try { setCurrentUser(JSON.parse(stored)); } catch {}
     }

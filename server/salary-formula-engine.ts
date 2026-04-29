@@ -218,8 +218,8 @@ function processMaxMinFunction(expr: string, func: 'MAX' | 'MIN'): string {
     const mathFunc = func === 'MAX' ? 'Math.max' : 'Math.min';
     
     // 处理多个参数
-    const numbers = argList.filter(a => !a.includes('[') && !a.includes('('));
-    const others = argList.filter(a => a.includes('[') || a.includes('('));
+    const numbers = argList.filter((a: string) => !a.includes('[') && !a.includes('('));
+    const others = argList.filter((a: string) => a.includes('[') || a.includes('('));
     
     if (numbers.length > 0) {
       return `${mathFunc}(${argList.join(',')})`;
@@ -629,12 +629,12 @@ function getAttendanceSummary(db: DatabaseService, employeeId: string, month: st
     const startDate = `${month}-01`;
     const endDate = getMonthEndDate(month);
     
-    const records = db.db.prepare(`
+    const records = db.query(`
       SELECT status, COUNT(*) as count
       FROM attendance_records
       WHERE employeeId = ? AND date >= ? AND date <= ?
       GROUP BY status
-    `).all(employeeId, startDate, endDate) as any[];
+    `, [employeeId, startDate, endDate]) as any[];
     
     let lateCount = 0, absentCount = 0, normalDays = 0;
     
@@ -658,11 +658,11 @@ function getOvertimeSummary(db: DatabaseService, employeeId: string, month: stri
   count: number;
 } {
   try {
-    const rows = db.db.prepare(`
+    const rows = db.query(`
       SELECT SUM(hours) as totalHours, COUNT(*) as count
       FROM overtime_records
       WHERE employeeId = ? AND date LIKE ? AND status = 'approved'
-    `).get(employeeId, `${month}%`) as any;
+    `, [employeeId, `${month}%`])[0] as any;
     
     return {
       totalHours: rows?.totalHours || 0,
@@ -681,13 +681,13 @@ function getLeaveSummary(db: DatabaseService, employeeId: string, month: string)
   byType: Record<string, number>;
 } {
   try {
-    const rows = db.db.prepare(`
+    const rows = db.query(`
       SELECT leaveType, SUM(totalDays) as days
       FROM leave_records
       WHERE employeeId = ? AND status = 'approved'
       AND ((startDate <= ? AND endDate >= ?) OR startDate LIKE ?)
       GROUP BY leaveType
-    `).all(employeeId, `${month}-31`, `${month}-01`, `${month}%`) as any[];
+    `, [employeeId, `${month}-31`, `${month}-01`, `${month}%`]) as any[];
     
     const byType: Record<string, number> = {};
     let totalDays = 0;
@@ -773,10 +773,10 @@ export async function batchCalculateSalary(
   } else {
     // 获取当月在职员工
     try {
-      employees = db.db.prepare(`
+      employees = db.query(`
         SELECT * FROM employees WHERE status = 'active'
         AND (entryDate IS NULL OR entryDate <= ?)
-      `).all(`${month}-31`) as any[];
+      `, [`${month}-31`]) as any[];
     } catch {
       employees = (db.findAll('employees') as any[]).filter((e: any) => e.status === 'active');
     }

@@ -58,10 +58,14 @@ const ASSIGNEE_OPTIONS = [
   { value: 'user', label: '指定人员' },
 ];
 
-export default function WorkflowDesigner() {
+interface WorkflowDesignerProps {
+  initialWorkflow?: any;
+}
+
+export default function WorkflowDesigner({ initialWorkflow }: WorkflowDesignerProps) {
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(initialWorkflow || null);
   const [editModal, setEditModal] = useState(false);
   const [editingNode, setEditingNode] = useState<WFNode | null>(null);
   const [nodeModal, setNodeModal] = useState(false);
@@ -139,17 +143,22 @@ export default function WorkflowDesigner() {
       const values = await form.validateFields();
       const workflow = { ...selectedWorkflow, ...values };
 
+      const payload = {
+        ...workflow,
+        nodes: JSON.stringify(workflow.nodes),
+        edges: JSON.stringify(workflow.edges),
+        status: 'published',
+      };
+
+      console.log('Saving workflow:', payload);
+
       const res = await fetch(`/api/${workflow.id ? `workflows/${workflow.id}` : 'workflows'}`, {
         method: workflow.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...workflow,
-          nodes: JSON.stringify(workflow.nodes),
-          edges: JSON.stringify(workflow.edges),
-          status: 'published',
-        }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
+      console.log('Save result:', json);
       if (json.success) {
         message.success('保存成功');
         setEditModal(false);
@@ -158,7 +167,9 @@ export default function WorkflowDesigner() {
       } else {
         message.error(json.message || '保存失败');
       }
-    } catch {}
+    } catch (err) {
+      console.error('Save error:', err);
+    }
   };
 
   // 添加节点
@@ -177,14 +188,14 @@ export default function WorkflowDesigner() {
 
     setSelectedWorkflow({ ...selectedWorkflow, nodes: [...selectedWorkflow.nodes, newNode] });
     setEditingNode(newNode);
-    setNodeForm.setFieldsValue({ name: newNode.name, assigneeType: newNode.assigneeType, assigneeExpr: newNode.assigneeExpr, timeoutHours: newNode.timeoutHours, gatewayType: newNode.gatewayType });
+    nodeForm.setFieldsValue({ name: newNode.name, assigneeType: newNode.assigneeType, assigneeExpr: newNode.assigneeExpr, timeoutHours: newNode.timeoutHours, gatewayType: newNode.gatewayType });
     setNodeModal(true);
   };
 
   // 打开节点编辑
   const openNodeEditor = (node: WFNode) => {
     setEditingNode(node);
-    setNodeForm.setFieldsValue({
+    nodeForm.setFieldsValue({
       name: node.name,
       type: node.type,
       gatewayType: node.gatewayType,
@@ -194,6 +205,21 @@ export default function WorkflowDesigner() {
       assigneeName: node.assigneeName,
       timeoutHours: node.timeoutHours,
       actions: node.actions,
+    });
+    setNodeModal(true);
+  };
+
+  // 编辑节点属性按钮点击
+  const handleEditNodeClick = () => {
+    if (!editingNode) return;
+    console.log('Editing node:', editingNode);
+    nodeForm.setFieldsValue({
+      name: editingNode.name,
+      type: editingNode.type,
+      gatewayType: editingNode.gatewayType,
+      assigneeType: editingNode.assigneeType === 'role' ? `role:${editingNode.assigneeExpr}` : editingNode.assigneeType,
+      assigneeExpr: editingNode.assigneeExpr,
+      timeoutHours: editingNode.timeoutHours,
     });
     setNodeModal(true);
   };
@@ -415,7 +441,7 @@ export default function WorkflowDesigner() {
             { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
             { title: '状态', dataIndex: 'status', key: 'status',
               render: (s: string) => <Tag color={s === 'published' ? 'green' : 'default'}>{s === 'published' ? '已发布' : '草稿'}</Tag> },
-            { title: '节点数', key: 'nodeCount', render: (_: any, r: any) => JSON.parse(r.nodes || '[]').length },
+            { title: '节点数', key: 'nodeCount', render: (_: any, r: any) => (Array.isArray(r.nodes) ? r.nodes.length : 0) },
             { title: '默认', dataIndex: 'isDefault', key: 'isDefault', render: (v: number) => v ? <Tag color="blue">默认</Tag> : null },
             {
               title: '操作', key: 'action', render: (_: any, r: any) => (
@@ -521,17 +547,7 @@ export default function WorkflowDesigner() {
           }}>
             <div style={{ fontWeight: 600, marginBottom: 12 }}>节点: {editingNode.name}</div>
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Button block size="small" icon={<EditOutlined />} onClick={() => {
-                setNodeForm.setFieldsValue({
-                  name: editingNode.name,
-                  type: editingNode.type,
-                  gatewayType: editingNode.gatewayType,
-                  assigneeType: editingNode.assigneeType === 'role' ? `role:${editingNode.assigneeExpr}` : editingNode.assigneeType,
-                  assigneeExpr: editingNode.assigneeExpr,
-                  timeoutHours: editingNode.timeoutHours,
-                });
-                setNodeModal(true);
-              }}>编辑属性</Button>
+              <Button block size="small" icon={<EditOutlined />} onClick={handleEditNodeClick}>编辑属性</Button>
               {editingNode.type !== 'start' && editingNode.type !== 'end' && (
                 <Popconfirm title="删除此节点？" onConfirm={() => { deleteNode(editingNode.id); setEditingNode(null); }}>
                   <Button block size="small" danger icon={<DeleteOutlined />}>删除节点</Button>

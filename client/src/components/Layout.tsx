@@ -34,7 +34,6 @@ import {
   UserCircle,
 } from 'lucide-react';
 
-// 一级导航配置
 const menuItems = [
   { id: 'home', to: '/', icon: LayoutDashboard, label: '首页仪表盘' },
   { id: 'org', to: '/organization', icon: Building2, label: '组织管理' },
@@ -42,60 +41,65 @@ const menuItems = [
   { id: 'selfservice', to: '/selfservice', icon: UserCircle, label: '员工自助' },
 ];
 
-// 二级导航配置
 const subMenuItems: Record<string, { label: string; to: string }[]> = {
   '/personnel': [
     { label: '人事首页', to: '/personnel' },
     { label: '字段自定义', to: '/personnel/field' },
     { label: '劳动合同', to: '/personnel/contract' },
-    { label: '员工异动', to: '/personnel/change' },
-    { label: '提醒设置', to: '/personnel/reminder' },
-    { label: '员工子集', to: '/personnel/subset' },
+    { label: '员工变动', to: '/personnel/change' },
+    { label: '提醒管理', to: '/personnel/reminder' },
+    { label: '人员子集', to: '/personnel/subset' },
     { label: '打印模板', to: '/personnel/print' },
-    { label: '在线测评', to: '/personnel/assessment' },
-    { label: '人才盘点', to: '/personnel/talent' },
+    { label: '考核评估', to: '/personnel/assessment' },
+    { label: '人才报表', to: '/personnel/talent' },
   ],
   '/salary': [
-    { label: '薪酬管理', to: '/salary' },
-    { label: '工资表查看', to: '/salary/table' },
+    { label: '薪酬首页', to: '/salary' },
+    { label: '工资表', to: '/salary/table' },
+    { label: '薪资配置', to: '/salary/config' },
+    { label: '薪资公式', to: '/salary/formula' },
     { label: '企业缴纳', to: '/salary/company' },
-    { label: '薪酬配置', to: '/salary/config' },
   ],
   '/attendance': [
     { label: '考勤首页', to: '/attendance' },
+    { label: '班次管理', to: '/attendance/shift' },
     { label: '排班管理', to: '/attendance/schedule' },
-    { label: '班次配置', to: '/attendance/shift' },
     { label: '考勤规则', to: '/attendance/rules' },
-    { label: '休假管理', to: '/attendance/leave' },
+    { label: '假期管理', to: '/attendance/leave' },
     { label: '加班管理', to: '/attendance/overtime' },
-    { label: '统计报表', to: '/attendance/statistics' },
+    { label: '考勤统计', to: '/attendance/statistics' },
+    { label: '日报查询', to: '/attendance/daily-report' },
   ],
   '/performance': [
-    { label: 'KPI指标库', to: '/performance/kpi' },
-    { label: '考核周期', to: '/performance/cycle' },
-    { label: '考核记录', to: '/performance/record' },
-    { label: '考核等级', to: '/performance/grade' },
+    { label: '绩效首页', to: '/performance' },
+    { label: 'KPI管理', to: '/performance/kpi' },
+    { label: '周期管理', to: '/performance/cycle' },
+    { label: '绩效记录', to: '/performance/record' },
+    { label: '评分等级', to: '/performance/grade' },
   ],
   '/recruitment': [
-    { label: '招聘职位', to: '/recruitment/position' },
-    { label: '简历投递', to: '/recruitment/resume' },
-    { label: '候选人列表', to: '/recruitment/candidate' },
-    { label: 'Offer记录', to: '/recruitment/offer' },
+    { label: '招聘首页', to: '/recruitment' },
+    { label: '职位管理', to: '/recruitment/position' },
+    { label: '简历管理', to: '/recruitment/resume' },
+    { label: '候选人管理', to: '/recruitment/candidate' },
+    { label: 'Offer管理', to: '/recruitment/offer' },
   ],
   '/logistics': [
+    { label: '后勤首页', to: '/logistics' },
     { label: '宿舍管理', to: '/logistics/dormitory' },
     { label: '食堂管理', to: '/logistics/canteen' },
     { label: '车辆管理', to: '/logistics/vehicle' },
-    { label: '访客登记', to: '/logistics/visitor' },
+    { label: '访客管理', to: '/logistics/visitor' },
   ],
   '/approval': [
+    { label: '审批首页', to: '/approval' },
     { label: '请假申请', to: '/approval/leave' },
     { label: '加班申请', to: '/approval/overtime' },
     { label: '离职申请', to: '/approval/resignation' },
     { label: '审批记录', to: '/approval/record' },
   ],
   '/training': [
-    { label: '培训计划', to: '/training' },
+    { label: '培训首页', to: '/training' },
     { label: '课程管理', to: '/training/course' },
   ],
   '/office': [
@@ -143,10 +147,10 @@ const newModuleLabels: Record<string, string> = {
   '/performance': '绩效管理',
   '/recruitment': '招聘管理',
   '/logistics': '后勤管理',
+  '/approval': '流程审批',
   '/training': '培训管理',
   '/office': '综合事务',
   '/selfservice': '员工自助',
-  '/approval': '流程审批',
   '/system': '系统管理',
 };
 
@@ -157,13 +161,11 @@ const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  // 从sessionStorage读取当前用户
   const currentUser = (() => {
     try { return JSON.parse(sessionStorage.getItem('__current_user') || '{}'); }
     catch { return {}; }
   })();
 
-  // 模块→权限key映射（与useSystemData中permissions定义一致）
   const MODULE_PERM: Record<string, string> = {
     '/personnel': 'p_personnel',
     '/salary': 'p_salary',
@@ -175,7 +177,6 @@ const Layout: React.FC = () => {
     '/system': 'p_system',
   };
 
-  // 员工角色映射（与useSystemData中DEFAULT_ROLES一致）
   const USER_ROLE_PERMS: Record<string, string[]> = {
     super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_system'],
     sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_system'],
@@ -185,13 +186,10 @@ const Layout: React.FC = () => {
     employee:    ['p_personnel','p_attendance','p_approval'],
   };
 
-  // 获取当前用户拥有的所有权限ID
   const userPerms = (() => {
     const roleIds: string[] = currentUser.roleIds || [];
-    // super_admin 和 sys_admin 直接映射
     if (currentUser.userType === 'super_admin') return USER_ROLE_PERMS.super_admin;
     if (currentUser.userType === 'tech_admin') return USER_ROLE_PERMS.sys_admin;
-    // employee类型用户查roleIds
     if (roleIds.length > 0) {
       const roleMap: Record<string, string> = {
         role_super_admin: 'super_admin', role_sys_admin: 'sys_admin',
@@ -208,13 +206,11 @@ const Layout: React.FC = () => {
     return [];
   })();
 
-  // 判断用户是否有某模块的读取权限
   const hasModule = (path: string): boolean => {
     const perm = MODULE_PERM[path];
     return perm ? userPerms.includes(perm) : true;
   };
 
-  // 判断是否为超级管理员或系统管理员（可看系统管理）
   const isAdmin = currentUser.userType === 'super_admin' || currentUser.userType === 'tech_admin';
 
   const handleLogout = () => {
@@ -230,12 +226,10 @@ const Layout: React.FC = () => {
     return initial;
   });
 
-  // 移动端时自动关闭侧边栏
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  // 路由切换时滚动到顶部
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
@@ -299,7 +293,7 @@ const Layout: React.FC = () => {
           <ChevronDown className={`w-4 h-4 transition-all duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
 
-        <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
           <div className="ml-6 mt-1 space-y-0.5">
             {subs.map((sub) => (
               <NavLink
@@ -326,7 +320,6 @@ const Layout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* 移动端遮罩层 */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm transition-opacity duration-300 lg:hidden"
@@ -334,13 +327,11 @@ const Layout: React.FC = () => {
         />
       )}
 
-      {/* 侧边栏 */}
       <aside
         className={`fixed top-0 left-0 h-screen w-64 bg-sidebar flex flex-col z-50 transition-transform duration-300 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Logo 区域 */}
         <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center shadow-lg shadow-sidebar-primary/30">
@@ -353,7 +344,6 @@ const Layout: React.FC = () => {
           </div>
         </div>
 
-        {/* 关闭按钮（移动端） */}
         <button
           onClick={closeSidebar}
           className="absolute top-4 right-4 p-1 rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-colors lg:hidden"
@@ -361,36 +351,23 @@ const Layout: React.FC = () => {
           <X className="w-5 h-5" />
         </button>
 
-        {/* 导航菜单 */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
           {menuItems.map(renderNavItem)}
 
-          {/* 分隔线 */}
           <div className="h-px bg-gradient-to-r from-transparent via-sidebar-border to-transparent my-3" />
 
-          {/* 人事 */}
           {hasModule('/personnel') && renderNewModuleNav('/personnel')}
-          {/* 考勤 */}
           {hasModule('/attendance') && renderNewModuleNav('/attendance')}
-          {/* 薪酬（管理员可见） */}
           {hasModule('/salary') && renderNewModuleNav('/salary')}
-          {/* 绩效（管理员可见） */}
           {hasModule('/performance') && renderNewModuleNav('/performance')}
-          {/* 招聘（管理员可见） */}
           {hasModule('/recruitment') && renderNewModuleNav('/recruitment')}
-          {/* 后勤（管理员可见） */}
           {hasModule('/logistics') && renderNewModuleNav('/logistics')}
-          {/* 综合事务 */}
           {hasModule('/office') && renderNewModuleNav('/office')}
-          {/* 培训管理 */}
           {hasModule('/training') && renderNewModuleNav('/training')}
-          {/* 审批 */}
           {hasModule('/approval') && renderNewModuleNav('/approval')}
-          {/* 系统管理（仅管理员可见） */}
           {isAdmin && renderNewModuleNav('/system')}
         </nav>
 
-        {/* 用户信息 */}
         <div className="p-4 border-t border-sidebar-border">
           {(() => {
             try {
@@ -430,22 +407,15 @@ const Layout: React.FC = () => {
                 </div>
               );
             } catch {
-              return (
-                <div className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-sidebar-primary to-primary flex items-center justify-center text-white text-sm font-medium">HR</div>
-                  <div><p className="text-white text-sm font-medium">未登录</p></div>
-                </div>
-              );
+              return null;
             }
           })()}
         </div>
       </aside>
 
-      {/* 主内容区 */}
-      <main className="flex-1 lg:ml-64">
-        {/* 移动端顶部导航栏 */}
-        <header className="lg:hidden sticky top-0 z-30 bg-background border-b border-border px-4 py-3">
-          <div className="flex items-center gap-3">
+      <main className="flex-1 lg:ml-64 min-h-screen">
+        <header className="fixed top-0 right-0 left-0 lg:left-64 h-12 bg-white/80 backdrop-blur-md border-b border-border z-30">
+          <div className="h-full px-6 flex items-center justify-between">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 rounded-lg hover:bg-muted transition-colors"

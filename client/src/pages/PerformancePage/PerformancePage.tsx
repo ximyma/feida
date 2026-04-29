@@ -95,7 +95,7 @@ export default function PerformancePage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/kpis').then(r => r.json()).catch(() => []),
-      fetch('/api/performances').then(r => r.json()).catch(() => []),
+      fetch('/api/performance_records').then(r => r.json()).catch(() => []),
       fetch('/api/performance_cycles').then(r => r.json()).catch(() => []),
     ]).then(([kpiData, perfData, cycleData]) => {
       setKpis(Array.isArray(kpiData) ? kpiData : []);
@@ -108,7 +108,7 @@ export default function PerformancePage() {
   const refreshData = () => {
     Promise.all([
       fetch('/api/kpis').then(r => r.json()).catch(() => []),
-      fetch('/api/performances').then(r => r.json()).catch(() => []),
+      fetch('/api/performance_records').then(r => r.json()).catch(() => []),
       fetch('/api/performance_cycles').then(r => r.json()).catch(() => []),
     ]).then(([kpiData, perfData, cycleData]) => {
       setKpis(Array.isArray(kpiData) ? kpiData : []);

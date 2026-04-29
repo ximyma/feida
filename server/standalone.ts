@@ -25,9 +25,17 @@ import {
   generateHistoricalReports,
 } from './attendance-report-engine';
 import {
+  getPendingApprovals,
+  createApprovalRequest,
+  processApproval,
+  getApprovalHistory,
+  createApprovalFlow,
+} from './approval-engine';
+import {
   calculateSalary,
   batchCalculateSalary,
   validateFormula,
+  evaluateFormula,
   getDefaultSalaryItems,
   calculateTax,
   calculateInsurance,
@@ -660,7 +668,6 @@ function apiRouter() {
         // 没有日报，实时生成
         const result = await generateDailyAttendanceReport(db, today);
         res.json({
-          date: today,
           generated: false,
           ...result,
         });
@@ -775,7 +782,7 @@ function apiRouter() {
         leaveDays: testData?.leaveDays || 0,
       };
       const result = evaluateFormula(formula, testContext);
-      res.json({ success: true, ...result });
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ success: false, message: e.message });
     }
@@ -877,7 +884,7 @@ function apiRouter() {
             grossSalary: r.grossSalary,
             netSalary: r.netSalary,
             tax: r.tax,
-            companyTotal: Object.values(r.companyContributions).reduce((a: number, b: number) => a + b, 0) as number,
+            companyTotal: (Object.values(r.companyContributions) as number[]).reduce((a, b) => a + b, 0),
             status: 'draft',
             createdAt: new Date().toISOString(),
           };
@@ -1180,12 +1187,8 @@ function apiRouter() {
   // GET /announcements/mine - my announcements with read status
   router.get('/announcements/mine', (req, res) => {
     try {
-      const { employeeId } = req.query as any;
-      const raw = (db as any).db.prepare('SELECT * FROM announcements WHERE status = ? ORDER BY isTop DESC, isPinned DESC, createdAt DESC').all('published') as any[];
-      const readIds = employeeId
-        ? ((db as any).db.prepare('SELECT announcementId FROM announcement_reads WHERE employeeId = ?').all(employeeId) as any[]).map((r: any) => r.announcementId)
-        : [];
-      res.json(raw.map((a: any) => ({ ...a, isRead: readIds.includes(a.id) })));
+      const raw = (db as any).db.prepare('SELECT * FROM announcements ORDER BY createdAt DESC').all() as any[];
+      res.json(raw);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1665,8 +1668,10 @@ function apiRouter() {
 
   // ============ 原有 CRUD API ============
 
-  router.get('/:table', (req, res) => {
+  router.get('/:table', (req, res, next) => {
     const { table } = req.params;
+    const RESERVED_ROUTES = new Set(['workflows', 'approval', 'workflow']);
+    if (RESERVED_ROUTES.has(table)) { return next(); }
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
     const skipKeys = new Set(['_', 'limit', 'offset', 'page', 'pageSize', 'sort', 'order', 'fields']);
     const filters = Object.fromEntries(Object.entries(req.query).filter(([k]) => !skipKeys.has(k)));
@@ -1688,8 +1693,10 @@ function apiRouter() {
     res.json(db.findById(table, id) || { error: 'Not found' });
   });
 
-  router.post('/:table', (req, res) => {
+  router.post('/:table', (req, res, next) => {
     const { table } = req.params;
+    const RESERVED_ROUTES = new Set(['workflows', 'approval', 'workflow']);
+    if (RESERVED_ROUTES.has(table)) { return next(); }
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
     const rawBody = req.body;
     if (!rawBody.id) rawBody.id = `${table.slice(0,3)}_${Date.now()}`;
@@ -1706,10 +1713,48 @@ function apiRouter() {
     res.json(db.insert(table, data));
   });
 
-  router.put('/:table/:id', (req, res) => {
+  router.put('/:table/:id', (req, res, next) => {
     const { table, id } = req.params;
+    
+    if (table === 'workflows') {
+      try {
+        const { name, code, description, nodes, edges, status, isDefault, formConfigId, variables } = req.body;
+        
+        const existing = (db as any).db.prepare('SELECT * FROM workflow_definitions WHERE id = ?').get(id);
+        if (!existing) {
+          res.json({ success: false, message: '工作流不存在' });
+          return;
+        }
+        
+        const nodesJson = typeof nodes === 'string' ? nodes : JSON.stringify(nodes || []);
+        const edgesJson = typeof edges === 'string' ? edges : JSON.stringify(edges || []);
+        const variablesJson = typeof variables === 'string' ? variables : JSON.stringify(variables || {});
+        
+        const now = new Date().toISOString();
+        const newVersion = (existing.version || 1) + 1;
+        
+        (db as any).db.prepare(`UPDATE workflow_definitions SET 
+          name = ?, code = ?, description = ?, version = ?, status = ?, 
+          isDefault = ?, formConfigId = ?, nodes = ?, edges = ?, variables = ?, updatedAt = ?
+          WHERE id = ?`).run(
+          name, code, description || '', newVersion, status || existing.status,
+          isDefault ?? existing.isDefault, formConfigId || null,
+          nodesJson, edgesJson, variablesJson, now, id
+        );
+        
+        const updated = (db as any).db.prepare('SELECT * FROM workflow_definitions WHERE id = ?').get(id);
+        res.json({ success: true, data: updated });
+        return;
+      } catch (e: any) {
+        res.json({ success: false, message: e.message });
+        return;
+      }
+    }
+    
+    const RESERVED_ROUTES = new Set(['approval', 'workflow']);
+    if (RESERVED_ROUTES.has(table)) { return next(); }
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
-    // Only update fields that exist in the target table
+    
     let data: Record<string, any> = { ...req.body };
     try {
       const tableInfo = db.query(`PRAGMA table_info(${table})`);
@@ -1839,17 +1884,24 @@ function apiRouter() {
       const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const now = new Date().toISOString();
       
-      db.query(`INSERT INTO workflow_definitions 
-        (id, name, code, description, version, status, isDefault, formConfigId, nodes, edges, variables, createdBy, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          id, name, code, description || '', 1, status || 'draft', isDefault || 0,
-          formConfigId || null, nodesJson, edgesJson, variablesJson, req.body.createdBy || 'admin', now, now
-        ]
-      );
+      const newDef = db.insert('workflow_definitions', {
+        id,
+        name,
+        code,
+        description: description || '',
+        version: 1,
+        status: status || 'draft',
+        isDefault: isDefault || 0,
+        formConfigId: formConfigId || null,
+        nodes: nodesJson,
+        edges: edgesJson,
+        variables: variablesJson,
+        createdBy: req.body.createdBy || 'admin',
+        createdAt: now,
+        updatedAt: now,
+      });
       
-      const newDef = db.query('SELECT * FROM workflow_definitions WHERE id = ?', [id]);
-      res.json({ success: true, data: newDef[0] });
+      res.json({ success: true, data: newDef });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
     }
@@ -2844,7 +2896,7 @@ function apiRouter() {
     try {
       const { employeeId } = req.query as any;
       
-      const stats = {
+      const stats: Record<string, any> = {
         totalCourses: ((db as any).db.prepare(
           "SELECT COUNT(*) as c FROM training_courses_v2 WHERE status = 'published'"
         ).get() as any).c,
@@ -3688,7 +3740,301 @@ function apiRouter() {
     }
   });
 
-  return router;
+  // ============ 数据库管理 API ============
+
+// 数据库初始化（保留核心数据，清空业务数据）
+router.post('/db/initialize', (req, res) => {
+  try {
+    const now = new Date().toISOString();
+    
+    const safeTables = [
+      'permissions', 'roles', 'users', 'system_config',
+      'departments', 'positions', 'ranks', 'shift_types',
+      'check_locations', 'attendance_rules', 'leave_rule_configs',
+      'training_categories', 'workflow_templates',
+      'attendance_devices', 'field_definitions', 'reminders',
+      'salary_items', 'location_allowances', 'insurance_schemes',
+      'assessment_tools', 'competency_items', 'competency_levels',
+      'competency_models', 'model_competencies', 'kpis', 'performance_grades'
+    ];
+
+    const allTables = db.query("SELECT name FROM sqlite_master WHERE type='table'") as any[];
+    const tablesToClear = allTables
+      .filter(t => !safeTables.includes(t.name))
+      .filter(t => !t.name.startsWith('sqlite_'))
+      .map(t => t.name);
+
+    // 清空所有非核心表
+    for (const table of tablesToClear) {
+      try {
+        (db as any).db.prepare(`DELETE FROM ${table}`).run();
+      } catch { /* 忽略可能的外键约束错误 */ }
+    }
+
+    // 重置自增计数器
+    for (const table of allTables.map(t => t.name)) {
+      try {
+        (db as any).db.prepare(`DELETE FROM sqlite_sequence WHERE name = ?`).run(table);
+      } catch {}
+    }
+
+    // 更新管理员用户的登录时间
+    (db as any).db.prepare('UPDATE users SET lastLoginAt = NULL, lastLoginIp = NULL').run();
+
+    // 记录操作日志
+    (db as any).db.prepare(`INSERT INTO audit_logs (id, userId, username, action, module, detail, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      `audit_${Date.now()}`, 'system', 'system', 'db_initialize', 'system', '数据库初始化完成，保留核心数据', now
+    );
+
+    res.json({ success: true, message: '数据库初始化完成', clearedTables: tablesToClear.length });
+  } catch (e: any) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
+// 数据库压缩（VACUUM）
+router.post('/db/compress', (req, res) => {
+  try {
+    const dbPath = path.join(process.cwd(), 'data', 'ehr.db');
+    const beforeSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+    
+    // 执行 VACUUM 操作
+    (db as any).db.prepare('VACUUM').run();
+    
+    const afterSize = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+    const savedBytes = beforeSize - afterSize;
+    
+    res.json({ 
+      success: true, 
+      message: '数据库压缩完成',
+      beforeSize: formatSize(beforeSize),
+      afterSize: formatSize(afterSize),
+      savedSpace: formatSize(savedBytes)
+    });
+  } catch (e: any) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
+// 数据库迁移到 PostgreSQL
+router.post('/db/migrate/postgres', async (req, res) => {
+  try {
+    const { host, port, database, username, password } = req.body;
+    
+    if (!host || !database || !username) {
+      res.json({ success: false, message: '请提供完整的数据库连接信息' });
+      return;
+    }
+
+    // 检查 pg 模块是否可用
+    let pg;
+    try {
+      pg = require('pg');
+    } catch {
+      res.json({ success: false, message: '未安装 PostgreSQL 驱动，请先安装: npm install pg' });
+      return;
+    }
+
+    const client = new pg.Client({
+      host,
+      port: port || 5432,
+      database,
+      user: username,
+      password: password || ''
+    });
+
+    try {
+      await client.connect();
+    } catch (e: any) {
+      res.json({ success: false, message: `连接失败: ${e.message}` });
+      return;
+    }
+
+    try {
+      await migrateToPostgres(db, client);
+      await client.end();
+      
+      res.json({ 
+        success: true, 
+        message: '数据迁移完成' 
+      });
+    } catch (e: any) {
+      await client.end();
+      res.json({ success: false, message: `迁移失败: ${e.message}` });
+    }
+  } catch (e: any) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
+// 数据库迁移到 MySQL
+router.post('/db/migrate/mysql', async (req, res) => {
+  try {
+    const { host, port, database, username, password } = req.body;
+    
+    if (!host || !database || !username) {
+      res.json({ success: false, message: '请提供完整的数据库连接信息' });
+      return;
+    }
+
+    let mysql;
+    try {
+      mysql = require('mysql2/promise');
+    } catch {
+      res.json({ success: false, message: '未安装 MySQL 驱动，请先安装: npm install mysql2' });
+      return;
+    }
+
+    let connection;
+    try {
+      connection = await mysql.createConnection({
+        host,
+        port: port || 3306,
+        database,
+        user: username,
+        password: password || '',
+        multipleStatements: true
+      });
+    } catch (e: any) {
+      res.json({ success: false, message: `连接失败: ${e.message}` });
+      return;
+    }
+
+    try {
+      await migrateToMySQL(db, connection);
+      await connection.end();
+      
+      res.json({ 
+        success: true, 
+        message: '数据迁移完成' 
+      });
+    } catch (e: any) {
+      await connection.end();
+      res.json({ success: false, message: `迁移失败: ${e.message}` });
+    }
+  } catch (e: any) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
+// 迁移到 PostgreSQL 的核心逻辑
+async function migrateToPostgres(sqliteDb: any, pgClient: any) {
+  const tables = sqliteDb.query("SELECT name FROM sqlite_master WHERE type='table'") as any[];
+  
+  for (const tableInfo of tables) {
+    const tableName = tableInfo.name;
+    if (tableName.startsWith('sqlite_')) continue;
+    
+    // 获取表结构
+    const columns = sqliteDb.query(`PRAGMA table_info(${tableName})`) as any[];
+    
+    // 创建 PostgreSQL 表
+    const pgColumns = columns.map(col => {
+      let type = mapSqliteTypeToPostgres(col.type);
+      const constraints: string[] = [];
+      if (col.pk === 1) constraints.push('PRIMARY KEY');
+      if (col.notnull === 1) constraints.push('NOT NULL');
+      if (col.dflt_value !== null) constraints.push(`DEFAULT ${col.dflt_value}`);
+      return `"${col.name}" ${type} ${constraints.join(' ')}`;
+    });
+    
+    await pgClient.query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
+    await pgClient.query(`CREATE TABLE "${tableName}" (${pgColumns.join(', ')})`);
+    
+    // 获取数据并插入
+    const rows = sqliteDb.findAll(tableName);
+    if (rows.length > 0) {
+      const colNames = columns.map(c => `"${c.name}"`).join(', ');
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+      
+      for (const row of rows as any[]) {
+        const values = columns.map(col => {
+          const val = row[col.name];
+          if (val === null || val === undefined) return null;
+          if (typeof val === 'object') return JSON.stringify(val);
+          return val;
+        });
+        await pgClient.query(`INSERT INTO "${tableName}" (${colNames}) VALUES (${placeholders})`, values);
+      }
+    }
+  }
+}
+
+// 迁移到 MySQL 的核心逻辑
+async function migrateToMySQL(sqliteDb: any, connection: any) {
+  const tables = sqliteDb.query("SELECT name FROM sqlite_master WHERE type='table'") as any[];
+  
+  for (const tableInfo of tables) {
+    const tableName = tableInfo.name;
+    if (tableName.startsWith('sqlite_')) continue;
+    
+    const columns = sqliteDb.query(`PRAGMA table_info(${tableName})`) as any[];
+    
+    const mysqlColumns = columns.map(col => {
+      let type = mapSqliteTypeToMySQL(col.type);
+      let constraints = '';
+      if (col.pk === 1) constraints += ' PRIMARY KEY';
+      if (col.notnull === 1) constraints += ' NOT NULL';
+      return `\`${col.name}\` ${type}${constraints}`;
+    });
+    
+    await connection.execute(`DROP TABLE IF EXISTS \`${tableName}\``);
+    await connection.execute(`CREATE TABLE \`${tableName}\` (${mysqlColumns.join(', ')})`);
+    
+    const rows = sqliteDb.findAll(tableName);
+    if (rows.length > 0) {
+      const colNames = columns.map(c => `\`${c.name}\``).join(', ');
+      const placeholders = columns.map(() => '?').join(', ');
+      
+      for (const row of rows as any[]) {
+        const values = columns.map(col => {
+          const val = row[col.name];
+          if (val === null || val === undefined) return null;
+          if (typeof val === 'object') return JSON.stringify(val);
+          return val;
+        });
+        await connection.execute(`INSERT INTO \`${tableName}\` (${colNames}) VALUES (${placeholders})`, values);
+      }
+    }
+  }
+}
+
+function mapSqliteTypeToPostgres(type: string): string {
+  const upperType = type.toUpperCase();
+  if (upperType.includes('INT')) return 'INTEGER';
+  if (upperType.includes('TEXT')) return 'TEXT';
+  if (upperType.includes('VARCHAR')) return 'TEXT';
+  if (upperType.includes('REAL')) return 'DOUBLE PRECISION';
+  if (upperType.includes('FLOAT')) return 'DOUBLE PRECISION';
+  if (upperType.includes('BOOL')) return 'BOOLEAN';
+  if (upperType.includes('DATE')) return 'DATE';
+  if (upperType.includes('TIME')) return 'TIME';
+  return 'TEXT';
+}
+
+function mapSqliteTypeToMySQL(type: string): string {
+  const upperType = type.toUpperCase();
+  if (upperType.includes('INT')) return 'INT';
+  if (upperType.includes('TEXT')) return 'TEXT';
+  if (upperType.includes('VARCHAR')) {
+    const match = type.match(/VARCHAR\((\d+)\)/);
+    return match ? `VARCHAR(${match[1]})` : 'TEXT';
+  }
+  if (upperType.includes('REAL')) return 'FLOAT';
+  if (upperType.includes('FLOAT')) return 'FLOAT';
+  if (upperType.includes('BOOL')) return 'TINYINT(1)';
+  if (upperType.includes('DATE')) return 'DATE';
+  if (upperType.includes('TIME')) return 'TIME';
+  return 'TEXT';
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+return router;
 }
 
 // 辅助：从外部设备同步打卡记录（上班打卡时调用）
