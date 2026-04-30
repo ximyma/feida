@@ -1567,7 +1567,7 @@ export class DatabaseService {
       { id: 'rev_4', courseId: 'course_3', employeeId: 'emp-25', employeeName: '冯雅静', rating: 4, content: '学到了很多沟通技巧，特别是会议表达那部分很实用。', status: 'published' },
     ];
     for (const r of reviews) {
-      this.db.prepare('INSERT INTO training_reviews VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
+      this.db.prepare('INSERT INTO training_reviews VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
         r.id, r.courseId, r.employeeId, r.employeeName, r.rating, r.content,
         null, null, 0, 0, 0, r.status, now, now
       );

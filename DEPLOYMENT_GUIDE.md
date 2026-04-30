@@ -175,8 +175,11 @@ npm run build
 
 # 使用 pkg 打包
 pkg . --config pkg.config.json --out-path dist
-```
 
+pkg . --target node22-win-x64 --out-path dist
+```
+npx @yao-pkg/pkg . --target node22-win-x64 --out-path dist
+npm install -g @yao-pkg/pkg
 ### 4.4 打包产物
 
 打包成功后，生成可执行文件：
