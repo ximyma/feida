@@ -469,7 +469,7 @@ async function runCodeAgent(messages, options = {}) {
   const tools = getCodeAgentTools();
   if (!tools) return { error: '代码助手工具集未加载' };
   
-  const maxIterations = options.maxIterations || 10;
+  const maxIterations = options.maxIterations || 15;
   const allMessages = [...messages];
   let finalContent = '';
   const steps = [];
@@ -478,51 +478,49 @@ async function runCodeAgent(messages, options = {}) {
   
   // Ollama 模型不支持标准 function calling，用 JSON 格式引导
   const ollamaToolGuide = isOllama ? `\n\n【工具调用规则 - 必须遵守】
-当用户要求查询数据、搜索代码、执行操作时，你必须回复纯 JSON 格式的工具调用（一行，不包含其他文字）：
+用户要求查询数据、搜索代码、执行操作时，回复纯 JSON（不含其他文字）：
 {"tool":"工具名","params":{"参数":"值"}}
 
-示例 - 查所有表：
-{"tool":"sql_query","params":{"sql":"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name","confirm":true}}
+【SQLite 正确语法】
+- 列出所有表：{"tool":"sql_query","params":{"sql":"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name","confirm":true}}
+- 查看表结构：{"tool":"sql_query","params":{"sql":"PRAGMA table_info('表名')","confirm":true}}
+- 查看表数据：{"tool":"sql_query","params":{"sql":"SELECT * FROM 表名 LIMIT 10","confirm":true}}
+- ⚠️ 不要用 SHOW TABLES / DESCRIBE / PRAGMA table_info(*) 这些错误语法！
 
-示例 - 查某表结构：
-{"tool":"sql_query","params":{"sql":"PRAGMA table_info(表名)","confirm":true}}
+【错误重试】工具返回 error 时必须分析原因，换正确 SQL 重试！禁止放弃后给建议！
 
-示例 - 搜索代码：
-{"tool":"grep","params":{"pattern":"搜索关键词"}}
-
-可用工具：
-sql_query: {"sql":"SQL语句","confirm":true}
+其他工具：
+sql_query: {"sql":"SQL","confirm":true}
 grep: {"pattern":"搜索模式"}
 read_file: {"file_path":"路径"}
 glob: {"pattern":"文件模式"}
-bash: {"command":"命令"}
-write_file: {"file_path":"路径","content":"内容"}
-patch: {"file_path":"路径","old_string":"旧文本","new_string":"新文本"}
-
-⚠️ 工具调用必须用 JSON！不要给建议或解释后再加 JSON，直接输出 JSON！` : '';
+bash: {"command":"命令"}` : '';
   
   for (let i = 0; i < maxIterations; i++) {
-    const toolHint = `你是一个可以执行实际操作的技术助手。你必须使用工具来获取真实数据，绝对不能编造或猜测。
-当前项目是飞达HR系统，使用 SQLite 数据库（文件 data/ehr.db）。
+    const toolHint = `你是一个可以执行实际操作的技术助手。你必须使用工具获取真实数据，不能编造或猜测。
+当前项目是飞达HR系统，数据库是 SQLite（文件 data/ehr.db）。
 
-当用户要求以下操作时，必须立即调用对应工具：
-- 查询数据、表结构 → 使用 sql_query 工具（例如查询所有表名：SELECT name FROM sqlite_master WHERE type='table'）
-- 搜索代码 → 使用 grep 工具
-- 查看文件 → 使用 read_file 工具
-- 查找文件 → 使用 glob 工具
-- 执行命令 → 使用 bash 工具
-- 修改文件 → 使用 write_file 或 patch 工具
+【SQLite 数据库操作 - 重要】
+- 列出所有表名：SELECT name FROM sqlite_master WHERE type='table' ORDER BY name
+- 查看表结构：PRAGMA table_info('表名')   注意：PRAGMA 需要单引号括表名
+- 查看表数据：SELECT * FROM 表名 LIMIT 10
+- sql_query 工具必须传 confirm:true
+- 不要用 SHOW TABLES 或 DESCRIBE（那是MySQL语法！）
+- 不要用 PRAGMA table_info(*)（PRAGMA不接受通配符！）
+
+【错误重试规则 - 极其重要】
+如果工具返回 SQL 语法错误，必须分析错误原因，换一种正确的 SQL 重试。
+例如"near \"(\": syntax error" → 说明 PRAGMA table_info(*) 语法错误 → 改用 "SELECT name FROM sqlite_master WHERE type='table'" 重试。
+禁止在失败后放弃并给建议！必须重试直到成功！
 
 可用工具：
-- sql_query: 执行SQL（参数：sql, confirm:true。查询所有表名：sql="SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"）
-- grep: 搜索代码（参数：pattern）
-- read_file: 读取文件（参数：file_path）
-- glob: 查找文件（参数：pattern）
-- bash: 执行命令（参数：command）
-- write_file: 写文件（参数：file_path, content）
-- patch: 修改文件（参数：file_path, old_string, new_string）
-
-你必须使用工具获取真实结果，然后基于结果回答。禁止使用"你可以尝试执行...命令"这类猜测性回复。` + ollamaToolGuide;
+- sql_query: 执行SQL（sql, confirm:true）
+- grep: 搜索代码（pattern）
+- read_file: 读取文件（file_path）
+- glob: 查找文件（pattern）
+- bash: 执行命令（command）
+- write_file: 写文件（file_path, content）
+- patch: 修改文件（file_path, old_string, new_string）` + ollamaToolGuide;
     
     const reqBody = {
       model: cfg ? cfg.model : 'deepseek-chat',

@@ -10,7 +10,14 @@ const path = require('path');
 const { execSync, exec } = require('child_process');
 
 // ========== 安全配置 ==========
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+const PROJECT_ROOT = (() => {
+  // 兼容两种加载路径：server/code-agent-tools.js 和 dist/server/code-agent-tools.js
+  let root = path.resolve(__dirname, '..');
+  if (!fs.existsSync(path.join(root, 'package.json'))) {
+    root = path.resolve(__dirname, '..', '..');
+  }
+  return root;
+})();
 const ALLOWED_PATHS = [PROJECT_ROOT, path.resolve(PROJECT_ROOT, 'data'), path.resolve(PROJECT_ROOT, 'client'), path.resolve(PROJECT_ROOT, 'server')];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const BASH_TIMEOUT = 30000; // 30s
