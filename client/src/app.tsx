@@ -160,7 +160,7 @@ export default function App() {
       {/* 网站前台（无需登录） */}
       <Route path="/site" element={<SiteHomePage />} />
       <Route path="/site/articles" element={<ErrorBoundary fallbackName="网站栏目-文章列表"><ArticleListPageV2 /></ErrorBoundary>} />
-      <Route path="/site/article/:id" element={<ArticleDetailPageV2 />} />
+      <Route path="/site/article/:id" element={<ErrorBoundary fallbackName="文章详情"><ArticleDetailPageV2 /></ErrorBoundary>} />
 
       {/* 商城前台（无需登录）增强版 */}
       <Route path="/shop" element={<ShopHomePageV2 />} />
