@@ -170,9 +170,15 @@ async function chatCompletionStreamFull(messages, options = {}) {
         buffer += chunk.toString();
         const lines = buffer.split('\n'); buffer = lines.pop() || '';
         for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue;
-          const j = line.slice(6).trim(); if (j === '[DONE]') continue;
-          try { const p = JSON.parse(j); const c = p.choices?.[0]?.delta?.content || p.message?.content || ''; if (c) fullContent += c; } catch {}
+          if (!line.trim()) continue;
+          if (line.startsWith('data: ')) {
+            // OpenAI SSE 格式
+            const j = line.slice(6).trim(); if (j === '[DONE]') continue;
+            try { const p = JSON.parse(j); const c = p.choices?.[0]?.delta?.content || ''; if (c) fullContent += c; } catch {}
+          } else {
+            // Ollama JSON 行格式 ({"message":{"content":"..."},"done":false})
+            try { const p = JSON.parse(line); const c = p.message?.content || ''; if (c) fullContent += c; } catch {}
+          }
         }
       });
       res.on('end', () => { resolve({ content: fullContent, model: config.model }); });
@@ -466,15 +472,27 @@ async function runCodeAgent(messages, options = {}) {
   const maxIterations = options.maxIterations || 10;
   const allMessages = [...messages];
   let finalContent = '';
+  const cfg = resolveModelConfig(options.model);
+  const isOllama = cfg.providerType === 'ollama';
+  
+  // Ollama 模型不支持标准 function calling，用 JSON 格式引导
+  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则】当需要使用工具时，你的回复必须是纯 JSON 格式（不要包含其他文字），格式如下：
+{"tool":"工具名","params":{"参数":"值"}}
+可用工具及其参数：
+- read_file: {"file_path":"路径", "offset":行号（可选）, "limit":行数（可选）}
+- write_file: {"file_path":"路径", "content":"内容"}
+- patch: {"file_path":"路径", "old_string":"旧文本", "new_string":"新文本"}
+- grep: {"pattern":"搜索模式", "path":"目录（可选）"}
+- glob: {"pattern":"文件模式"}
+- bash: {"command":"命令"}
+- sql_query: {"sql":"SQL语句", "confirm":true}
+当你不需要使用工具时，直接用中文回复。` : '';
   
   for (let i = 0; i < maxIterations; i++) {
-    const systemMsg = allMessages.find(m => m.role === 'system');
-    // 注入工具使用指导
     const toolHint = `你是一个代码助手，可以读写项目文件、搜索代码、执行命令、查询数据库。
 可用工具：read_file(读文件), write_file(写文件), patch(修改文件), grep(搜索代码), glob(查找文件), bash(执行命令), sql_query(查询数据库)。
-当需要查看/修改代码或数据时，直接调用对应工具。执行后根据结果继续对话。`;
+当需要查看/修改代码或数据时，直接调用对应工具。执行后根据结果继续对话。` + ollamaToolGuide;
     
-    const cfg = resolveModelConfig(options.model);
     const reqBody = {
       model: cfg ? cfg.model : 'deepseek-chat',
       messages: [
@@ -482,46 +500,64 @@ async function runCodeAgent(messages, options = {}) {
         { role: 'system', content: (allMessages[0]?.content || '') + '\n\n' + toolHint },
         ...allMessages.slice(1)
       ],
-      tools: tools.TOOL_DEFINITIONS,
-      tool_choice: 'auto',
       max_tokens: options.maxTokens || 4096,
       temperature: options.temperature !== undefined ? options.temperature : 0.3,
     };
-    
-    const response = await chatCompletionDirect(reqBody, cfg);
-    if (!response || !response.choices || !response.choices.length) {
-      finalContent = 'AI 无响应';
-      break;
+    // 仅 OpenAI 兼容模型传 tools 参数
+    if (!isOllama) {
+      reqBody.tools = tools.TOOL_DEFINITIONS;
+      reqBody.tool_choice = 'auto';
     }
     
-    const choice = response.choices[0];
-    const msg = choice.message;
+    const response = await chatCompletionDirect(reqBody, cfg);
     
+    // 统一响应格式：OpenAI 是 choices[0].message，Ollama 是 message
+    let msg = null;
+    if (response.choices && response.choices.length > 0) {
+      msg = response.choices[0].message; // OpenAI 格式
+    } else if (response.message) {
+      msg = response.message; // Ollama 格式
+    }
+    
+    if (!msg) { finalContent = 'AI 无响应'; break; }
+    
+    // OpenAI 标准 tool_calls
     if (msg.tool_calls && msg.tool_calls.length > 0) {
-      // 执行工具调用
       allMessages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
-      
       for (const tc of msg.tool_calls) {
         const fnName = tc.function.name;
         let fnParams = {};
         try { fnParams = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
-        
         const toolResult = tools.execute(fnName, fnParams);
-        
-        allMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: JSON.stringify(toolResult, null, 2).slice(0, 4000)
-        });
+        allMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult, null, 2).slice(0, 4000) });
       }
-      continue; // 继续循环让 LLM 处理工具结果
+      continue;
+    }
+    
+    // Ollama JSON 格式工具调用解析
+    if (isOllama && msg.content) {
+      const content = msg.content.trim();
+      const jsonMatch = content.match(/^\{[\s\S]*\}$/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.tool && typeof parsed.tool === 'string') {
+            const fnName = parsed.tool;
+            const fnParams = parsed.params || {};
+            allMessages.push({ role: 'assistant', content: `调用工具: ${fnName}` });
+            const toolResult = tools.execute(fnName, fnParams);
+            allMessages.push({ role: 'user', content: `工具 ${fnName} 执行结果：\n${JSON.stringify(toolResult, null, 2).slice(0, 4000)}` });
+            continue;
+          }
+        } catch { /* 不是有效 JSON，当作普通回复 */ }
+      }
     }
     
     finalContent = msg.content || '';
     break;
   }
   
-  return { content: finalContent || '达到最大执行次数，请简化你的请求。', iterations: Math.min(maxIterations, allMessages.filter(m => m.role === 'tool').length) };
+  return { content: finalContent || '达到最大执行次数，请简化你的请求。', iterations: allMessages.filter(m => m.role === 'tool' || m.content?.startsWith?.('工具 ')).length };
 }
 
 // 直接调用 LLM（支持 tools/function calling，兼容 OpenAI 和 Ollama）
@@ -537,7 +573,7 @@ async function chatCompletionDirect(reqBody, cfg) {
     const timeout = isOllama ? 600000 : 120000;
     
     if (isOllama) {
-      endpoint = cfg.base_url + '/api/chat';
+      endpoint = (cfg.baseURL || cfg.base_url || 'http://localhost:11434') + '/api/chat';
       postBody = JSON.stringify({
         model: cfg.model, messages: reqBody.messages,
         tools: reqBody.tools || [],
@@ -546,14 +582,14 @@ async function chatCompletionDirect(reqBody, cfg) {
       });
       authHeaders = {};
     } else {
-      endpoint = cfg.base_url + '/v1/chat/completions';
+      endpoint = (cfg.baseURL || cfg.base_url || 'https://api.deepseek.com') + '/v1/chat/completions';
       postBody = JSON.stringify({
         model: cfg.model, messages: reqBody.messages,
         tools: reqBody.tools, tool_choice: reqBody.tool_choice || 'auto',
         temperature: reqBody.temperature || 0.3, max_tokens: reqBody.max_tokens || 4096,
         stream: false,
       });
-      authHeaders = { 'Authorization': `Bearer ${cfg.apiKey || ''}` };
+      authHeaders = { 'Authorization': `Bearer ${cfg.apiKey || cfg.api_key || ''}` };
     }
     
     const url = new URL(endpoint);
