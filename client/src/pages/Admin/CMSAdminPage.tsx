@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox } from 'antd';
+import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload } from 'antd';
 import { Plus, Edit, Delete, FolderOpen, FileText, MessageSquare, Settings, Sparkles, SpellCheck, Upload as UploadIcon } from 'lucide-react';
 import RichTextEditor from '../../components/RichTextEditor';
 import usePermission from '../../hooks/usePermission';
