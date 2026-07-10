@@ -47,6 +47,8 @@ export default function AISettingsPage() {
   };
   const saveModel = async () => {
     const v = await modelForm.validateFields();
+    // 掩码值或空key不传，保持旧值
+    if (v.api_key === '***' || v.api_key === '') delete v.api_key;
     if (editing) { await fetch(`/api/ai/models/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) }); }
     else { await fetch('/api/ai/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) }); }
     message.success('已保存'); setModalOpen(false); modelForm.resetFields(); loadModels();
@@ -106,7 +108,7 @@ export default function AISettingsPage() {
     { title: '状态', width: 100, render: (_: any, r: ModelConfig) => <Space><Switch checked={r.is_active===1} onChange={v=>toggleActive(r,v)} size="small" />{testResult[r.id]&&<Tag color={testResult[r.id]==='OK'?'green':'red'}>{testResult[r.id]}</Tag>}</Space> },
     { title: '操作', width: 160, render: (_: any, r: ModelConfig) => <Space>
       <Button size="small" type="link" icon={<Zap size={14}/>} loading={testing[r.id]} onClick={()=>testModel(r)}>测试</Button>
-      <Button size="small" type="link" icon={<Edit size={14}/>} onClick={()=>{setEditing(r);modelForm.setFieldsValue(r);setModalOpen(true)}} />
+      <Button size="small" type="link" icon={<Edit size={14}/>} onClick={()=>{const v={...r};if(v.api_key==='***')v.api_key='';setEditing(r);modelForm.setFieldsValue(v);setModalOpen(true)}} />
       <Popconfirm title="确认删除？" onConfirm={()=>delModel(r.id)}><Button size="small" type="link" danger icon={<Delete size={14}/>} /></Popconfirm>
     </Space> },
   ];

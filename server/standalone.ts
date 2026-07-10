@@ -2025,7 +2025,7 @@ function apiRouter() {
       const data: any = { updated_at: new Date().toISOString() };
       if (name !== undefined) data.name = name;
       if (base_url !== undefined) data.base_url = base_url;
-      if (api_key !== undefined) data.api_key = api_key;
+      if (api_key !== undefined && api_key !== '***' && api_key !== '') data.api_key = api_key;
       if (model !== undefined) data.model = model;
       if (provider_type !== undefined) data.provider_type = provider_type;
       if (is_active !== undefined) data.is_active = is_active;
