@@ -78,6 +78,16 @@ export default function ArticleDetailPage() {
         navigate('/site/articles');
         return;
       }
+      // 确保 tags_list 是数组（后端可能返回 JSON 字符串）
+      if (data.tags_list && typeof data.tags_list === 'string') {
+        try { data.tags_list = JSON.parse(data.tags_list); } catch { data.tags_list = []; }
+      }
+      if (!Array.isArray(data.tags_list)) data.tags_list = [];
+      // 同样处理 images_list
+      if (data.images_list && typeof data.images_list === 'string') {
+        try { data.images_list = JSON.parse(data.images_list); } catch { data.images_list = []; }
+      }
+      if (!Array.isArray(data.images_list)) data.images_list = [];
       setArticle(data);
     } catch (e) {
       message.error('加载文章失败');
