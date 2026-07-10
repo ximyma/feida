@@ -2,6 +2,7 @@ import React from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { I18nProvider } from './i18n';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import NotFound from './pages/NotFound/NotFound';
 import LoginPage from './pages/LoginPage/LoginPage';
 import DashboardPage from './pages/DashboardPage/DashboardPage';
@@ -158,7 +159,7 @@ export default function App() {
 
       {/* 网站前台（无需登录） */}
       <Route path="/site" element={<SiteHomePage />} />
-      <Route path="/site/articles" element={<ArticleListPageV2 />} />
+      <Route path="/site/articles" element={<ErrorBoundary fallbackName="网站栏目-文章列表"><ArticleListPageV2 /></ErrorBoundary>} />
       <Route path="/site/article/:id" element={<ArticleDetailPageV2 />} />
 
       {/* 商城前台（无需登录）增强版 */}
@@ -316,8 +317,8 @@ export default function App() {
         <Route path="/finance/payments" element={<PaymentsPage />} />
 
         {/* 网站与商城管理后台 */}
-        <Route path="/admin/shop" element={<ShopAdminPage />} />
-        <Route path="/admin/cms" element={<CMSAdminPage />} />
+        <Route path="/admin/shop" element={<ErrorBoundary fallbackName="商城后台"><ShopAdminPage /></ErrorBoundary>} />
+        <Route path="/admin/cms" element={<ErrorBoundary fallbackName="CMS后台-栏目管理"><CMSAdminPage /></ErrorBoundary>} />
 
         {/* 质量管理 */}
         <Route path="/quality" element={<QualityPage />} />

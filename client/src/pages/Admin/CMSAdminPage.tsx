@@ -7,7 +7,6 @@ import usePermission from '../../hooks/usePermission';
 import { useI18n } from '../../i18n';
 
 const { TextArea } = Input;
-const { TreeNode } = Tree;
 
 interface Channel {
   id: string;
@@ -466,24 +465,6 @@ export default function CMSAdminPage() {
     }
   };
 
-  const renderTreeNodes = (data: Channel[]) => {
-    return data.map(item => (
-      <TreeNode
-        key={item.id}
-        title={
-          <span>
-            <FolderOpen size={14} style={{ marginRight: 8 }} />
-            {item.name}
-            {!item.is_show && <Tag size="small" style={{ marginLeft: 8 }}>隐藏</Tag>}
-          </span>
-        }
-        dataRef={item}
-      >
-        {item.children && renderTreeNodes(item.children)}
-      </TreeNode>
-    ));
-  };
-
   const channelColumns = [
     { title: '栏目名称', dataIndex: 'name', key: 'name' },
     { title: '编码', dataIndex: 'code', key: 'code' },
@@ -612,9 +593,10 @@ export default function CMSAdminPage() {
                 style={{ minHeight: 400 }}
               >
                 {channels.length > 0 && (
-                  <Tree showLine defaultExpandAll onSelect={() => {}}>
-                    {renderTreeNodes(channels)}
-                  </Tree>
+                  <Tree showLine defaultExpandAll onSelect={() => {}} treeData={channels.map(item => ({
+                    key: item.id,
+                    title: <span><FolderOpen size={14} style={{ marginRight: 8 }} />{item.name}{!item.is_show && <Tag size="small" style={{ marginLeft: 8 }}>隐藏</Tag>}</span>,
+                  }))} />
                 )}
               </Card>
             </Col>
