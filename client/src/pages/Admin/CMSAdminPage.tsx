@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload } from 'antd';
+import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload, Empty } from 'antd';
 import { Plus, Edit, Delete, FolderOpen, FileText, MessageSquare, Settings, Sparkles, SpellCheck, Upload as UploadIcon } from 'lucide-react';
 import RichTextEditor from '../../components/RichTextEditor';
 import usePermission from '../../hooks/usePermission';
@@ -589,14 +589,18 @@ export default function CMSAdminPage() {
             <Col span={6}>
               <Card
                 title={t('栏目结构')}
-                extra={can('cms:channel:manage') ? <Button size="small" type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>{t('添加')}</Button> : null}
+                extra={can('cms:channel:manage') ? <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>{t('添加栏目')}</Button> : null}
                 style={{ minHeight: 400 }}
               >
-                {channels.length > 0 && (
+                {channels.length > 0 ? (
                   <Tree showLine defaultExpandAll onSelect={() => {}} treeData={channels.map(item => ({
                     key: item.id,
-                    title: <span><FolderOpen size={14} style={{ marginRight: 8 }} />{item.name}{!item.is_show && <Tag size="small" style={{ marginLeft: 8 }}>隐藏</Tag>}</span>,
+                    title: <span><FolderOpen size={14} style={{ marginRight: 8 }} />{item.name}{!item.is_show && <Tag style={{ marginLeft: 8, fontSize: 10 }}>隐藏</Tag>}</span>,
                   }))} />
+                ) : (
+                  <Empty description="暂无栏目数据" style={{ marginTop: 40 }}>
+                    {can('cms:channel:manage') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>添加第一个栏目</Button>}
+                  </Empty>
                 )}
               </Card>
             </Col>
@@ -646,11 +650,22 @@ export default function CMSAdminPage() {
               <Button size="small" type={articleFilter==='deleted'?'primary':'default'} onClick={()=>setArticleFilter('deleted')} style={{marginLeft:4}}>回收站</Button>
             </Col>
           </Row>
-          <Table
-            dataSource={articles} columns={articleColumns} rowKey="id" loading={loading}
-            rowSelection={{ selectedRowKeys, onChange: (keys: any) => setSelectedRowKeys(keys as string[]) }}
-            pagination={{ pageSize: 10 }}
-          />
+          {!loading && articles.length === 0 ? (
+            <Empty description={articleFilter === 'all' ? '暂无文章，点击下方按钮开始创作' : (articleFilter === 'review' ? '暂无待审核文章' : '回收站为空')} style={{ marginTop: 40 }}>
+              {articleFilter === 'all' && can('cms:article:create') && (
+                <Space>
+                  <Button type="primary" icon={<Plus size={14} />} onClick={handleAddArticle}>写第一篇文章</Button>
+                  <Button icon={<FileText size={14} />} onClick={() => (document.getElementById('cms-word-input') as HTMLInputElement)?.click()}>从Word导入</Button>
+                </Space>
+              )}
+            </Empty>
+          ) : (
+            <Table
+              dataSource={articles} columns={articleColumns} rowKey="id" loading={loading}
+              rowSelection={{ selectedRowKeys, onChange: (keys: any) => setSelectedRowKeys(keys as string[]) }}
+              pagination={{ pageSize: 10 }}
+            />
+          )}
         </TabPane>
 
         <TabPane tab={<span><MessageSquare size={14} /> {t('评论管理')}</span>} key="comments">
