@@ -472,7 +472,7 @@ async function runCodeAgent(messages, options = {}) {
   const maxIterations = options.maxIterations || 10;
   const allMessages = [...messages];
   let finalContent = '';
-  const steps: Array<{tool: string, params: any, result: any, error?: string}> = [];
+  const steps = [];
   const cfg = resolveModelConfig(options.model);
   const isOllama = cfg.providerType === 'ollama';
   
