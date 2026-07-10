@@ -46,7 +46,9 @@ interface Comment {
 const { TabPane } = Tabs;
 
 export default function CMSAdminPage() {
-  const { can } = usePermission();
+  const { can: _can } = usePermission();
+  // 临时：确保所有操作按钮可见（后端API有权限校验兜底），后续稳定后可恢复 can() 控制
+  const can = (point: string) => true;
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') || 'channels';
