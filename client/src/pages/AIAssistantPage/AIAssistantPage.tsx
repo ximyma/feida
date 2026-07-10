@@ -231,7 +231,19 @@ export default function AIAssistantPage() {
         // 移除加载提示
         setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
         if (data.success && data.data) {
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: data.data.content || '代码助手无响应', timestamp: Date.now() }]);
+          const { content, steps } = data.data;
+          // 显示工具执行过程
+          if (steps && steps.length > 0) {
+            steps.forEach((s: any) => {
+              setMessages(prev => [...prev, {
+                id: 's_' + Date.now() + Math.random(),
+                role: 'tool' as const,
+                content: `🔧 执行工具: **${s.tool}**\n\n参数: \`${JSON.stringify(s.params)}\`\n\n结果: ${typeof s.result === 'string' ? s.result : '```\n' + JSON.stringify(s.result, null, 2).slice(0, 1500) + '\n```'}`,
+                timestamp: Date.now()
+              }]);
+            });
+          }
+          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: content || '代码助手无响应', timestamp: Date.now() }]);
         } else {
           setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '代码助手调用失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
         }

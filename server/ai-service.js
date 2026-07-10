@@ -472,6 +472,7 @@ async function runCodeAgent(messages, options = {}) {
   const maxIterations = options.maxIterations || 10;
   const allMessages = [...messages];
   let finalContent = '';
+  const steps: Array<{tool: string, params: any, result: any, error?: string}> = [];
   const cfg = resolveModelConfig(options.model);
   const isOllama = cfg.providerType === 'ollama';
   
@@ -531,6 +532,7 @@ async function runCodeAgent(messages, options = {}) {
         let fnParams = {};
         try { fnParams = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
         const toolResult = tools.execute(fnName, fnParams);
+        steps.push({ tool: fnName, params: fnParams, result: toolResult });
         allMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult, null, 2).slice(0, 4000) });
       }
       continue;
@@ -548,6 +550,7 @@ async function runCodeAgent(messages, options = {}) {
             const fnParams = parsed.params || {};
             allMessages.push({ role: 'assistant', content: `调用工具: ${fnName}` });
             const toolResult = tools.execute(fnName, fnParams);
+            steps.push({ tool: fnName, params: fnParams, result: toolResult });
             allMessages.push({ role: 'user', content: `工具 ${fnName} 执行结果：\n${JSON.stringify(toolResult, null, 2).slice(0, 4000)}` });
             continue;
           }
@@ -571,7 +574,7 @@ async function runCodeAgent(messages, options = {}) {
     break;
   }
   
-  return { content: finalContent || '达到最大执行次数，请简化你的请求。', iterations: allMessages.filter(m => m.role === 'tool' || m.content?.startsWith?.('工具 ')).length };
+  return { content: finalContent || '达到最大执行次数，请简化你的请求。', steps, iterations: steps.length };
 }
 
 // 直接调用 LLM（支持 tools/function calling，兼容 OpenAI 和 Ollama）
