@@ -114,7 +114,7 @@ async function chatCompletion(messages, options = {}) {
       options: { temperature: config.temperature, num_predict: config.maxTokens },
       stream: false,
     });
-    const resp = await httpPost(config.baseURL + '/api/chat', body, {});
+    const resp = await httpPost(config.baseURL + '/api/chat', body, {}, 600000);
     const data = JSON.parse(resp);
     if (data.error) throw new Error(data.error);
     return { content: data.message?.content || '', model: data.model };
@@ -157,11 +157,12 @@ async function chatCompletionStreamFull(messages, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(endpoint);
     const client = urlObj.protocol === 'https:' ? https : http;
+    const timeout = isOllama ? 600000 : 120000;
     const req = client.request({
       hostname: urlObj.hostname, port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
       path: urlObj.pathname + urlObj.search, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...authHeaders },
-      timeout: config.streamTimeout || 120000,
+      timeout,
     }, (res) => {
       if (res.statusCode >= 400) { let d = ''; res.on('data', c => d += c); res.on('end', () => reject(new Error(d.substring(0, 300)))); return; }
       let fullContent = '', buffer = '';
@@ -187,7 +188,7 @@ async function chatCompletionStreamFull(messages, options = {}) {
 // HTTP 工具
 // ============================================================
 
-function httpPost(url, body, headers = {}) {
+function httpPost(url, body, headers = {}, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const client = urlObj.protocol === 'https:' ? https : http;
@@ -195,7 +196,7 @@ function httpPost(url, body, headers = {}) {
       hostname: urlObj.hostname, port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
       path: urlObj.pathname + urlObj.search, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
-      timeout: 120000,
+      timeout: timeoutMs,
     };
     const req = client.request(opts, (res) => {
       let d = '';
@@ -523,30 +524,47 @@ async function runCodeAgent(messages, options = {}) {
   return { content: finalContent || '达到最大执行次数，请简化你的请求。', iterations: Math.min(maxIterations, allMessages.filter(m => m.role === 'tool').length) };
 }
 
-// 直接调用 LLM（不走 chatCompletion，因为需要传 tools）
+// 直接调用 LLM（支持 tools/function calling，兼容 OpenAI 和 Ollama）
 async function chatCompletionDirect(reqBody, cfg) {
+  if (!cfg) cfg = resolveModelConfig({});
+  const isOllama = cfg.providerType === 'ollama';
+  
   return new Promise((resolve, reject) => {
     const http = require('http');
     const https = require('https');
     
-    const url = new URL(cfg ? (cfg.base_url + '/chat/completions') : 'https://api.deepseek.com/chat/completions');
-    const isHttps = url.protocol === 'https:';
-    const transport = isHttps ? https : http;
+    let endpoint, postBody, authHeaders;
+    const timeout = isOllama ? 600000 : 120000;
     
-    const apiKey = cfg ? cfg.api_key : (process.env.DEEPSEEK_API_KEY || '');
+    if (isOllama) {
+      endpoint = cfg.base_url + '/api/chat';
+      postBody = JSON.stringify({
+        model: cfg.model, messages: reqBody.messages,
+        tools: reqBody.tools || [],
+        options: { temperature: reqBody.temperature || 0.3, num_predict: reqBody.max_tokens || 4096 },
+        stream: false,
+      });
+      authHeaders = {};
+    } else {
+      endpoint = cfg.base_url + '/v1/chat/completions';
+      postBody = JSON.stringify({
+        model: cfg.model, messages: reqBody.messages,
+        tools: reqBody.tools, tool_choice: reqBody.tool_choice || 'auto',
+        temperature: reqBody.temperature || 0.3, max_tokens: reqBody.max_tokens || 4096,
+        stream: false,
+      });
+      authHeaders = { 'Authorization': `Bearer ${cfg.apiKey || ''}` };
+    }
     
-    const postData = JSON.stringify(reqBody);
+    const url = new URL(endpoint);
+    const transport = url.protocol === 'https:' ? https : http;
     const options = {
       hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
       path: url.pathname + url.search,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData),
-        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-      },
-      timeout: 120000,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postBody), ...authHeaders },
+      timeout,
     };
     
     const req = transport.request(options, (res) => {
@@ -558,8 +576,8 @@ async function chatCompletionDirect(reqBody, cfg) {
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-    req.write(postData);
+    req.on('timeout', () => { req.destroy(); reject(new Error(isOllama ? 'Ollama模型加载超时（10分钟），请确认模型已下载并可用' : '请求超时')); });
+    req.write(postBody);
     req.end();
   });
 }

@@ -207,31 +207,43 @@ export default function AIAssistantPage() {
 
     await saveMessage('user', text);
 
+    // 收集对话上下文（必须在代码助手模式之前声明，避免 TDZ 错误）
+    const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
+
     // ===== 代码助手模式 =====
     if (agentMode === 'code') {
       try {
+        // 显示加载提示
+        setMessages(prev => [...prev, { id: 'a_loading', role: 'assistant', content: '🔄 代码助手正在工作中...\n如果是本地 Ollama 模型，首次加载可能需要 3-5 分钟，请耐心等待。', timestamp: Date.now() }]);
         const codeMessages = [
           { role: 'system', content: `你是飞达项目的代码助手。项目路径: D:\\feida。你可以使用以下工具：read_file(读文件)、write_file(写文件)、patch(修改文件)、grep(搜索代码)、glob(查找文件)、bash(执行命令)、sql_query(查询数据库)。当用户要求修改代码、查询数据、执行操作时，直接调用工具。操作完成后用中文回复结果。` },
           ...allMessages.map(m => ({ role: m.role, content: m.content })),
         ];
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时（ollama 首次加载慢）
         const res = await fetch('/api/ai/code-agent/run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages: codeMessages, options: { maxIterations: 10, temperature: 0.3 } }),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
+        // 移除加载提示
+        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
         if (data.success && data.data) {
           setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: data.data.content || '代码助手无响应', timestamp: Date.now() }]);
         } else {
           setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '代码助手调用失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
         }
-      } catch (e: any) { setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '网络异常：' + e.message, timestamp: Date.now() }]); }
+      } catch (e: any) {
+        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
+        const errMsg = e.name === 'AbortError' ? '请求超时（10分钟）。本地 Ollama 模型加载可能过长，请确认模型已加载后重试。' : ('网络异常：' + e.message);
+        setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: errMsg, timestamp: Date.now() }]);
+      }
       setLoading(false);
       return;
     }
     // =========================
-
-    // 收集对话上下文
-    const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
 
     try {
       const toolPrompt = buildToolSystemPrompt();
