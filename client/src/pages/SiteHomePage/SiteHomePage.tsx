@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Row, Col, Carousel, Spin, Tag } from 'antd';
 import { ArrowRight, Clock, Eye, ShoppingCart } from 'lucide-react';
+import AICustomerService from '../../components/AICustomerService';
 
 interface Banner { id: string; title: string; image_url: string; link_url: string; sort_order: number; }
 interface Article { id: string; title: string; summary?: string; image_url?: string; channel_name?: string; channel_id?: string; author?: string; view_count: number; publish_time?: string; is_top?: number; tags_list?: string[]; }
@@ -68,6 +69,7 @@ export default function SiteHomePage() {
             <Link to="/site" style={{ color: '#1890ff', fontWeight: 'bold' }}>首页</Link>
             <Link to="/site/articles" style={{ color: '#fff' }}>文章</Link>
             <Link to="/site/guestbook" style={{ color: '#fff' }}>留言板</Link>
+            <Link to="/site/contact" style={{ color: '#fff' }}>联系我们</Link>
             <Link to="/shop" style={{ color: '#fff' }}>商城</Link>
           </div>
         </div>
@@ -183,6 +185,7 @@ export default function SiteHomePage() {
       <div style={{ background: '#001529', color: '#fff', padding: '40px 0', textAlign: 'center' }}>
         <p style={{ margin: 0 }}>© 2026 飞达智能科技 · 网站前台</p>
       </div>
+      <AICustomerService />
     </div>
   );
 }

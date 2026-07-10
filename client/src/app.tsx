@@ -130,6 +130,7 @@ import SiteHomePage from './pages/SiteHomePage/SiteHomePage';
 import ArticleListPageV2 from './pages/SiteHomePage/ArticleListPageV2';
 import ArticleDetailPageV2 from './pages/SiteHomePage/ArticleDetailPageV2';
 import GuestbookPage from './pages/SiteHomePage/GuestbookPage';
+import SiteContactPage from './pages/SiteHomePage/SiteContactPage';
 import ShopHomePageV2 from './pages/ShopHomePage/ShopHomePageV2';
 import ShopContactPage from './pages/ShopHomePage/ShopContactPage';
 import ProductDetailPageV2 from './pages/ShopHomePage/ProductDetailPageV2';
@@ -164,6 +165,7 @@ export default function App() {
       <Route path="/site/articles" element={<ErrorBoundary fallbackName="网站栏目-文章列表"><ArticleListPageV2 /></ErrorBoundary>} />
       <Route path="/site/article/:id" element={<ErrorBoundary fallbackName="文章详情"><ArticleDetailPageV2 /></ErrorBoundary>} />
       <Route path="/site/guestbook" element={<ErrorBoundary fallbackName="留言板"><GuestbookPage /></ErrorBoundary>} />
+      <Route path="/site/contact" element={<ErrorBoundary fallbackName="联系我们"><SiteContactPage /></ErrorBoundary>} />
 
       {/* 商城前台（无需登录）增强版 */}
       <Route path="/shop" element={<ShopHomePageV2 />} />

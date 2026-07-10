@@ -4,6 +4,7 @@ import { Row, Col, Card, Carousel, Input, Select, Tag, Spin, Empty, Pagination, 
 import { ShoppingCart, Heart, Search, Filter, Menu as MenuIcon, User, ChevronRight, Star, Flame, Package, Clock, Truck, Tag as TagIcon } from 'lucide-react';
 import { useShop } from './ShopContext';
 import LoginModal from './LoginModal';
+import AICustomerService from '../../components/AICustomerService';
 
 interface Goods {
   id: string;
@@ -583,6 +584,7 @@ export default function ShopHomePageV2() {
       `}</style>
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onLogin={(u) => setShopUser(u)} />
+      <AICustomerService />
     </div>
   );
 }
