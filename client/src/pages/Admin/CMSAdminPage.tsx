@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload, Empty } from 'antd';
+import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload, Empty, Alert } from 'antd';
 import { Plus, Edit, Delete, FolderOpen, FileText, MessageSquare, Settings, Sparkles, SpellCheck, Upload as UploadIcon } from 'lucide-react';
 import RichTextEditor from '../../components/RichTextEditor';
 import usePermission from '../../hooks/usePermission';
@@ -585,6 +585,13 @@ export default function CMSAdminPage() {
     <div className="cms-admin">
       <Tabs activeKey={activeTab} onChange={(key) => { setActiveTab(key); setSearchParams(key === 'channels' ? {} : { tab: key }); }}>
         <TabPane tab={<span><FolderOpen size={14} /> {t('栏目管理')}</span>} key="channels">
+          {can('cms:channel:manage') && (
+            <Alert
+              message="栏目操作指南"
+              description={<span>点击右上角 <Tag color="blue">添加栏目</Tag> 按钮创建栏目。创建后，右侧表格每行有 <Tag color="green">编辑</Tag> 和 <Tag color="red">删除</Tag> 按钮。拖拽表格行可排序。</span>}
+              type="info" showIcon closable style={{ marginBottom: 16 }}
+            />
+          )}
           <Row gutter={16}>
             <Col span={6}>
               <Card
@@ -623,6 +630,13 @@ export default function CMSAdminPage() {
         </TabPane>
 
         <TabPane tab={<span><FileText size={14} /> {t('文章管理')}</span>} key="articles">
+          {can('cms:article:create') && (
+            <Alert
+              message="文章操作指南"
+              description={<span>点击下方 <Tag color="blue">添加文章</Tag> 按钮写文章。表格每行有 <Tag color="green">编辑</Tag> · <Tag>移动</Tag> · <Tag>复制</Tag> · <Tag color="red">删除</Tag> 按钮。勾选多行后可批量替换、删除、导出。支持 <Tag>Word导入</Tag> 和 <Tag>导入JSON</Tag>。</span>}
+              type="info" showIcon closable style={{ marginBottom: 16 }}
+            />
+          )}
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col span={12}>
               {can('cms:article:create') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddArticle}>{t('添加文章')}</Button>}
