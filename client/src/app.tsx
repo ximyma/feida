@@ -192,7 +192,7 @@ export default function App() {
         <Route path="/personnel/contract" element={<ContractManagementPage />} />
         <Route path="/personnel/change" element={<EmployeeChangePage />} />
         <Route path="/personnel/reminder" element={<ReminderManagementPage />} />
-        <Route path="/personnel/subset" element={<EmployeeSubsetPage />} />
+        <Route path="/personnel/subset" element={<ErrorBoundary fallbackName="员工子集"><EmployeeSubsetPage /></ErrorBoundary>} />
         <Route path="/personnel/print" element={<PrintTemplatePage />} />
         <Route path="/personnel/assessment" element={<AssessmentPage />} />
         <Route path="/personnel/talent" element={<TalentReportPage />} />
@@ -210,7 +210,7 @@ export default function App() {
         {/* 薪酬管理 */}
         <Route path="/salary" element={<SalaryPage />} />
         <Route path="/salary/table" element={<SalaryTablePage />} />
-        <Route path="/salary/config" element={<SalaryConfigPage />} />
+        <Route path="/salary/config" element={<ErrorBoundary fallbackName="薪酬配置"><SalaryConfigPage /></ErrorBoundary>} />
         <Route path="/salary/formula" element={<SalaryFormulaPage />} />
         <Route path="/salary/company" element={<CompanyContributionPage />} />
 

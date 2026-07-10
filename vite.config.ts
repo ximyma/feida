@@ -27,5 +27,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist/client'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          antd: ['antd', '@ant-design/icons'],
+          tiptap: ['@tiptap/core', '@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-table', '@tiptap/extension-youtube', '@tiptap/extension-link', '@tiptap/extension-image'],
+          lucide: ['lucide-react'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
   },
 });

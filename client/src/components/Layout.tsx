@@ -46,7 +46,6 @@ const menuItems = [
   { id: 'org', to: '/organization', icon: Building2, label: '组织管理' },
   { id: 'product', to: '/product', icon: Package, label: '产品档案' },
   { id: 'statistics', to: '/statistics', icon: BarChart3, label: '数据统计' },
-  { id: 'selfservice', to: '/selfservice', icon: UserCircle, label: '员工自助' },
 ];
 
 const subMenuItems: Record<string, { label: string; to: string; key?: string }[]> = {
