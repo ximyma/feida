@@ -476,17 +476,19 @@ async function runCodeAgent(messages, options = {}) {
   const isOllama = cfg.providerType === 'ollama';
   
   // Ollama 模型不支持标准 function calling，用 JSON 格式引导
-  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则】当需要使用工具时，你的回复必须是纯 JSON 格式（不要包含其他文字），格式如下：
+  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则】
+当需要读取文件、搜索代码、执行命令、查询数据库时，你的回复必须是纯 JSON 格式（一行，不要包含其他文字）：
 {"tool":"工具名","params":{"参数":"值"}}
-可用工具及其参数：
-- read_file: {"file_path":"路径", "offset":行号（可选）, "limit":行数（可选）}
+可用工具：
+- read_file: {"file_path":"路径"}
 - write_file: {"file_path":"路径", "content":"内容"}
 - patch: {"file_path":"路径", "old_string":"旧文本", "new_string":"新文本"}
-- grep: {"pattern":"搜索模式", "path":"目录（可选）"}
+- grep: {"pattern":"搜索模式"}
 - glob: {"pattern":"文件模式"}
 - bash: {"command":"命令"}
 - sql_query: {"sql":"SQL语句", "confirm":true}
-当你不需要使用工具时，直接用中文回复。` : '';
+
+【重要】当你不需要使用工具时（如打招呼、解释概念、总结结果），必须用纯中文自然语言回复，绝对不能使用 JSON 格式！` : '';
   
   for (let i = 0; i < maxIterations; i++) {
     const toolHint = `你是一个代码助手，可以读写项目文件、搜索代码、执行命令、查询数据库。
@@ -554,6 +556,18 @@ async function runCodeAgent(messages, options = {}) {
     }
     
     finalContent = msg.content || '';
+    // 后处理：如果回复是 JSON 格式但没有被解析为工具调用，提取可读内容
+    if (isOllama && finalContent.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(finalContent.trim());
+        // 提取常见字段：result > answer > content > message > 原值
+        if (parsed.result) finalContent = parsed.result;
+        else if (parsed.answer) finalContent = parsed.answer;
+        else if (parsed.content) finalContent = parsed.content;
+        else if (parsed.message && typeof parsed.message === 'string') finalContent = parsed.message;
+        else if (parsed.error) finalContent = '错误：' + parsed.error;
+      } catch { /* 保留原值 */ }
+    }
     break;
   }
   
