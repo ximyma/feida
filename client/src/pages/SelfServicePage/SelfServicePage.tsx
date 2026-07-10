@@ -366,12 +366,12 @@ export default function SelfServicePage() {
       <Row gutter={16}>
         <Col span={4}>
           <Card size="small">
-            <Statistic title="本月出勤" value={attendance.length} suffix="天" valueStyle={{ color: '#52c41a' }} />
+            <Statistic title="本月出勤" value={attendance.length} suffix="天" styles={{ content: { color: '#52c41a' } }} />
           </Card>
         </Col>
         <Col span={4}>
           <Card size="small">
-            <Statistic title="待办事项" value={todos.length} suffix="项" valueStyle={{ color: todos.length > 0 ? '#faad14' : '#52c41a' }} />
+            <Statistic title="待办事项" value={todos.length} suffix="项" styles={{ content: { color: todos.length > 0 ? '#faad14' : '#52c41a' } }} />
           </Card>
         </Col>
         <Col span={4}>
@@ -381,7 +381,7 @@ export default function SelfServicePage() {
         </Col>
         <Col span={4}>
           <Card size="small">
-            <Statistic title="本月薪资" value={salaryRecords[0]?.netSalary || 0} prefix="¥" precision={0} valueStyle={{ color: '#1677ff' }} />
+            <Statistic title="本月薪资" value={salaryRecords[0]?.netSalary || 0} prefix="¥" precision={0} styles={{ content: { color: '#1677ff' } }} />
           </Card>
         </Col>
         <Col span={4}>
@@ -391,7 +391,7 @@ export default function SelfServicePage() {
         </Col>
         <Col span={4}>
           <Card size="small">
-            <Statistic title="未读消息" value={notifications.filter(n => !n.isRead).length} suffix="条" valueStyle={{ color: '#f5222d' }} />
+            <Statistic title="未读消息" value={notifications.filter(n => !n.isRead).length} suffix="条" styles={{ content: { color: '#f5222d' } }} />
           </Card>
         </Col>
       </Row>

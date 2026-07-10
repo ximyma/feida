@@ -3,8 +3,10 @@ import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Popconfirm, message, Tabs, Statistic, Row, Col,
   Divider, Progress, InputNumber, Descriptions, Alert, Tooltip,
-  Collapse, Radio, Checkbox, Steps, Result, QRCode, Badge
+  Collapse, Radio, Checkbox, Steps, Result, QRCode, Badge, Typography
 } from 'antd';
+const { Text } = Typography;
+const { TextArea } = Input;
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined,
   TeamOutlined, TrophyOutlined, StarOutlined, RadarChartOutlined,

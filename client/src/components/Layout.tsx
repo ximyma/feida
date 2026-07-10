@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAppConfig } from '../contexts/AppConfigContext';
+import AIFloatingButton from './AIFloatingButton/AIFloatingButton';
+import { useI18n, LanguageSwitcher } from '../i18n';
 import {
   LayoutDashboard,
   Building2,
@@ -32,16 +34,22 @@ import {
   Eye,
   BookOpen,
   UserCircle,
+  Package,
+  Globe,
+  DollarSign,
+  ShoppingCart,
+  Sparkles,
 } from 'lucide-react';
 
 const menuItems = [
   { id: 'home', to: '/', icon: LayoutDashboard, label: '首页仪表盘' },
   { id: 'org', to: '/organization', icon: Building2, label: '组织管理' },
+  { id: 'product', to: '/product', icon: Package, label: '产品档案' },
   { id: 'statistics', to: '/statistics', icon: BarChart3, label: '数据统计' },
   { id: 'selfservice', to: '/selfservice', icon: UserCircle, label: '员工自助' },
 ];
 
-const subMenuItems: Record<string, { label: string; to: string }[]> = {
+const subMenuItems: Record<string, { label: string; to: string; key?: string }[]> = {
   '/personnel': [
     { label: '人事首页', to: '/personnel' },
     { label: '字段自定义', to: '/personnel/field' },
@@ -107,6 +115,102 @@ const subMenuItems: Record<string, { label: string; to: string }[]> = {
     { label: '文档管理', to: '/office/document' },
     { label: '问卷调查', to: '/office/survey' },
   ],
+  '/product': [
+    { label: '产品首页', to: '/product' },
+    { label: '颜色库', to: '/product/colors' },
+    { label: '尺码管理', to: '/product/sizes' },
+    { label: '品类管理', to: '/product/categories' },
+    { label: '款号管理', to: '/product/styles' },
+    { label: '款色管理', to: '/product/style-colors' },
+    { label: 'SKU管理', to: '/product/skus' },
+    { label: '箱型管理', to: '/product/box-types' },
+    { label: '编码规则', to: '/product/coding-rules' },
+    { label: '配码规则', to: '/product/size-ratios' },
+  ],
+  '/plm': [
+    { label: '工艺管理', to: '/plm' },
+    { label: '物料属性', to: '/plm/material-attributes' },
+    { label: '物料主数据', to: '/plm/materials' },
+    { label: '工序库', to: '/plm/processes' },
+    { label: '工艺路线', to: '/plm/process-routes' },
+    { label: '部件库', to: '/plm/components' },
+    { label: 'BOM管理', to: '/plm/boms' },
+    { label: '损耗规则', to: '/plm/scrap-rules' },
+    { label: '大底资料库', to: '/plm/soles' },
+    { label: '季节物料库', to: '/plm/season-materials' },
+  ],
+  '/warehouse': [
+    { label: '仓储管理', to: '/warehouse' },
+    { label: '仓库档案', to: '/warehouse/warehouses' },
+    { label: '货位管理', to: '/warehouse/locations' },
+    { label: '库存查询', to: '/warehouse/inventory' },
+    { label: '入库管理', to: '/warehouse/stock-in' },
+    { label: '出库管理', to: '/warehouse/stock-out' },
+    { label: '库存盘点', to: '/warehouse/stock-check' },
+    { label: '库存调拨', to: '/warehouse/transfer' },
+    { label: '条码管理', to: '/warehouse/barcodes' },
+  ],
+  '/sales': [
+    { label: '销售管理', to: '/sales' },
+    { label: '客户分组', to: '/sales/customer-groups' },
+    { label: '客户档案', to: '/sales/customers' },
+    { label: '销售订单', to: '/sales/orders' },
+    { label: '发货管理', to: '/sales/deliveries' },
+    { label: '退货管理', to: '/sales/returns' },
+  ],
+  '/purchase': [
+    { label: '采购管理', to: '/purchase' },
+    { label: '供应商分组', to: '/purchase/supplier-groups' },
+    { label: '供应商档案', to: '/purchase/suppliers' },
+    { label: '采购订单', to: '/purchase/orders' },
+    { label: '采购入库', to: '/purchase/receipts' },
+  ],
+  '/production': [
+    { label: '生产管理', to: '/production' },
+    { label: '工作中心', to: '/production/work-centers' },
+    { label: '生产计划', to: '/production/plans' },
+    { label: '生产工单', to: '/production/work-orders' },
+    { label: '报工管理', to: '/production/reporting' },
+  ],
+  '/finance': [
+    { label: '财务管理', to: '/finance' },
+    { label: '科目管理', to: '/finance/accounts' },
+    { label: '凭证管理', to: '/finance/journal-entries' },
+    { label: '应收发票', to: '/finance/ar-invoices' },
+    { label: '应付发票', to: '/finance/ap-invoices' },
+    { label: '收付款管理', to: '/finance/payments' },
+  ],
+  '/dashboard': [
+    { label: '数据中心', to: '/dashboard' },
+  ],
+  '/cms': [
+    { label: '网站管理', to: '/admin/cms', key: 'cms-home' },
+    { label: '文章管理', to: '/admin/cms?tab=articles', key: 'cms-articles' },
+    { label: 'Banner管理', to: '/admin/cms?tab=banners', key: 'cms-banners' },
+    { label: '评论管理', to: '/admin/cms?tab=comments', key: 'cms-comments' },
+    { label: '网站配置', to: '/admin/cms?tab=config', key: 'cms-config' },
+    { label: '🌐 访问网站', to: '/site', key: 'public-site' },
+  ],
+  '/shop-admin': [
+    { label: '商城管理', to: '/admin/shop', key: 'shop-home' },
+    { label: '商品管理', to: '/admin/shop?tab=goods', key: 'shop-goods' },
+    { label: '订单管理', to: '/admin/shop?tab=orders', key: 'shop-orders' },
+    { label: '🛒 访问商城', to: '/shop', key: 'public-shop' },,
+    { label: '评价管理', to: '/admin/shop?tab=reviews', key: 'shop-reviews' },
+  ],
+  '/ai': [
+    { label: 'AI助手', to: '/ai-assistant', key: 'ai-chat' },
+    { label: '知识库', to: '/ai-knowledge', key: 'ai-knowledge' },
+    { label: 'BI分析', to: '/ai-bianalytics', key: 'ai-analytics' },
+    { label: '智能预警', to: '/ai-alerts', key: 'ai-alerts' },
+  ],
+  '/quality': [
+    { label: '质量管理', to: '/quality' },
+    { label: '质量标准', to: '/quality/standards' },
+    { label: '质量检验', to: '/quality/inspections' },
+    { label: '缺陷管理', to: '/quality/defects' },
+    { label: '纠正措施', to: '/quality/corrective-actions' },
+  ],
   '/selfservice': [
     { label: '员工自助', to: '/selfservice' },
   ],
@@ -116,6 +220,7 @@ const subMenuItems: Record<string, { label: string; to: string }[]> = {
     { label: '角色权限', to: '/system/roles' },
     { label: '系统配置', to: '/system/config' },
     { label: 'APP设置', to: '/system/app-settings' },
+    { label: 'AI配置', to: '/system/ai-settings' },
     { label: '数据管理', to: '/system/data' },
     { label: '审计日志', to: '/system/logs' },
     { label: '登录日志', to: '/system/login-logs' },
@@ -123,6 +228,7 @@ const subMenuItems: Record<string, { label: string; to: string }[]> = {
     { label: '钉钉集成', to: '/system/dingtalk' },
     { label: 'API文档', to: '/system/api-doc' },
     { label: '任务管理', to: '/system/tasks' },
+  { label: '插件管理', to: '/system/plugins', key: 'plugins' },
   ],
 };
 
@@ -138,6 +244,17 @@ const newModuleIcons: Record<string, React.ElementType> = {
   '/office': FileText,
   '/selfservice': UserCircle,
   '/system': Shield,
+  '/plm': GitBranch,
+  '/warehouse': Package,
+  '/sales': TrendingUp,
+  '/purchase': ShoppingCart,
+  '/production': Settings,
+  '/finance': DollarSign,
+  '/website': Globe,
+  '/cms': Globe,
+  '/shop-admin': ShoppingCart,
+  '/ai': Sparkles,
+  '/quality': Shield,
 };
 
 const newModuleLabels: Record<string, string> = {
@@ -152,12 +269,24 @@ const newModuleLabels: Record<string, string> = {
   '/office': '综合事务',
   '/selfservice': '员工自助',
   '/system': '系统管理',
+  '/plm': '工艺管理',
+  '/warehouse': '仓储管理',
+  '/sales': '销售管理',
+  '/purchase': '采购管理',
+  '/production': '生产管理',
+  '/finance': '财务管理',
+  '/website': '网站商城',
+  '/cms': '网站管理',
+  '/shop-admin': '商城管理',
+  '/ai': 'AI智能',
+  '/quality': '质量管理',
 };
 
 const Layout: React.FC = () => {
   const { config } = useAppConfig();
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -174,12 +303,28 @@ const Layout: React.FC = () => {
     '/recruitment': 'p_recruitment',
     '/logistics': 'p_logistics',
     '/approval': 'p_approval',
+    '/training': 'p_training',
+    '/office': 'p_office',
+    '/product': 'p_product',
+    '/plm': 'p_plm',
+    '/warehouse': 'p_warehouse',
+    '/sales': 'p_sales',
+    '/purchase': 'p_purchase',
+    '/production': 'p_production',
+    '/finance': 'p_finance',
+    '/dashboard': 'p_dashboard',
+    '/website': 'p_website',
+    '/cms': 'p_website',
+    '/shop-admin': 'p_website',
+    '/ai': 'p_website',
+    '/quality': 'p_quality',
+    '/selfservice': 'p_selfservice',
     '/system': 'p_system',
   };
 
   const USER_ROLE_PERMS: Record<string, string[]> = {
-    super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_system'],
-    sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_system'],
+    super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_system'],
+    sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_system'],
     hr_admin:    ['p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_approval'],
     hr_staff:    ['p_personnel','p_attendance','p_salary','p_approval'],
     dept_manager:['p_org','p_personnel','p_attendance','p_approval'],
@@ -187,7 +332,20 @@ const Layout: React.FC = () => {
   };
 
   const userPerms = (() => {
-    const roleIds: string[] = currentUser.roleIds || [];
+    const roleIdsRaw = currentUser.roleIds;
+    let roleIds: string[] = [];
+    
+    // 解析roleIds（可能是JSON字符串或数组）
+    if (typeof roleIdsRaw === 'string') {
+      try {
+        roleIds = JSON.parse(roleIdsRaw);
+      } catch {
+        roleIds = [];
+      }
+    } else if (Array.isArray(roleIdsRaw)) {
+      roleIds = roleIdsRaw;
+    }
+    
     if (currentUser.userType === 'super_admin') return USER_ROLE_PERMS.super_admin;
     if (currentUser.userType === 'tech_admin') return USER_ROLE_PERMS.sys_admin;
     if (roleIds.length > 0) {
@@ -220,8 +378,10 @@ const Layout: React.FC = () => {
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    ['/personnel','/salary','/attendance','/performance','/recruitment','/logistics','/approval','/system'].forEach(p => {
-      initial[p] = location.pathname.startsWith(p);
+    ['/personnel','/salary','/attendance','/performance','/recruitment','/logistics','/approval','/product','/system','/cms','/shop-admin','/ai'].forEach(p => {
+      initial[p] = location.pathname.startsWith(p) ||
+        (p === '/cms' && location.pathname.startsWith('/admin/cms')) ||
+        (p === '/shop-admin' && location.pathname.startsWith('/admin/shop'));
     });
     return initial;
   });
@@ -241,7 +401,11 @@ const Layout: React.FC = () => {
     }));
   };
 
-  const isModuleActive = (path: string) => location.pathname.startsWith(path);
+  const isModuleActive = (path: string) => {
+    if (path === '/cms') return location.pathname.startsWith('/admin/cms');
+    if (path === '/shop-admin') return location.pathname.startsWith('/admin/shop');
+    return location.pathname.startsWith(path);
+  };
 
   const closeSidebar = () => setSidebarOpen(false);
 
@@ -262,7 +426,7 @@ const Layout: React.FC = () => {
       {({ isActive }) => (
         <>
           <item.icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-105'} ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`} />
-          <span className="flex-1 text-sm">{item.label}</span>
+          <span className="flex-1 text-sm">{t(item.label)}</span>
           {isActive && (
             <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
           )}
@@ -289,7 +453,7 @@ const Layout: React.FC = () => {
           }`}
         >
           <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-105'} ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`} />
-          <span className="flex-1 text-sm text-left">{label}</span>
+          <span className="flex-1 text-sm text-left">{t(label)}</span>
           <ChevronDown className={`w-4 h-4 transition-all duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
 
@@ -297,7 +461,7 @@ const Layout: React.FC = () => {
           <div className="ml-6 mt-1 space-y-0.5">
             {subs.map((sub) => (
               <NavLink
-                key={sub.to}
+                key={sub.key || sub.to}
                 to={sub.to}
                 onClick={closeSidebar}
                 className={({ isActive }) =>
@@ -309,7 +473,7 @@ const Layout: React.FC = () => {
                 }
               >
                 <div className={`w-1.5 h-1.5 rounded-full transition-all duration-200 ${location.pathname === sub.to ? 'bg-white scale-125' : 'bg-white/40'}`} />
-                {sub.label}
+                {t(sub.label)}
               </NavLink>
             ))}
           </div>
@@ -365,10 +529,22 @@ const Layout: React.FC = () => {
           {hasModule('/office') && renderNewModuleNav('/office')}
           {hasModule('/training') && renderNewModuleNav('/training')}
           {hasModule('/approval') && renderNewModuleNav('/approval')}
+          {hasModule('/plm') && renderNewModuleNav('/plm')}
+          {hasModule('/warehouse') && renderNewModuleNav('/warehouse')}
+          {hasModule('/sales') && renderNewModuleNav('/sales')}
+          {hasModule('/purchase') && renderNewModuleNav('/purchase')}
+          {hasModule('/production') && renderNewModuleNav('/production')}
+          {hasModule('/finance') && renderNewModuleNav('/finance')}
+          {hasModule('/cms') && renderNewModuleNav('/cms')}
+          {hasModule('/shop-admin') && renderNewModuleNav('/shop-admin')}
+          {hasModule('/ai') && renderNewModuleNav('/ai')}
+          {hasModule('/quality') && renderNewModuleNav('/quality')}
+          {hasModule('/selfservice') && renderNewModuleNav('/selfservice')}
           {isAdmin && renderNewModuleNav('/system')}
         </nav>
 
         <div className="p-4 border-t border-sidebar-border">
+          <LanguageSwitcher />
           {(() => {
             try {
               const user = JSON.parse(sessionStorage.getItem('__current_user') || '{}');
@@ -414,29 +590,22 @@ const Layout: React.FC = () => {
       </aside>
 
       <main className="flex-1 lg:ml-64 min-h-screen">
-        <header className="fixed top-0 right-0 left-0 lg:left-64 h-12 bg-white/80 backdrop-blur-md border-b border-border z-30">
-          <div className="h-full px-6 flex items-center justify-between">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
-            >
-              <Menu className="w-5 h-5 text-foreground" />
-            </button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-sidebar flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-semibold text-foreground">{config.appName}</span>
-            </div>
-          </div>
-        </header>
+        {/* Mobile-only sidebar toggle */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="lg:hidden fixed top-3 left-3 z-30 p-2 rounded-lg bg-white shadow-md hover:bg-muted transition-colors"
+        >
+          <Menu className="w-5 h-5 text-foreground" />
+        </button>
 
-        <div className="p-6 max-w-[1600px] mx-auto">
-          <div className="min-h-[calc(100vh-48px)]">
+        <div className="p-6 pt-6 max-w-[1600px] mx-auto">
+          <div className="min-h-screen">
             <Outlet />
           </div>
         </div>
       </main>
+
+      <AIFloatingButton />
     </div>
   );
 };

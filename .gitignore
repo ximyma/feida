@@ -10,8 +10,8 @@ env/
 dist/
 build/
 *.local
-release
-
+shopxo
+cms
 
 # Environment
 .env
@@ -81,6 +81,8 @@ env/
 data/
 *.sqlite
 *.sqlite3
+*.zip
+*.rar
 
 # Temp files
 *.tmp
@@ -92,3 +94,25 @@ dd*chat.txt
 
 # Backup
 backup/
+
+# ===== 发布洁净规则（v1.0.0） =====
+
+# 内部 agent 记忆 / 技能（非程序本体）
+.workbuddy/
+
+# 陈旧的就地编译产物（构建输出统一到 dist/）
+server/standalone.js
+server/approval-engine.js
+server/permission-middleware.js
+
+# 草稿 / 内部规划参考文档（非用户文档；cms/shopxo 为上游参照源码已排除）
+aims.txt
+erps.txt
+faneed.txt
+培训模块升级计划_V2.0.md
+系统更新升级方案.md
+网站和商城功能完善升级方案_v4.0.md
+FEATURE_PLAN.md
+PROJECT-STATUS.md
+TASK-SUMMARY_2026-04-20_21-10.md
+CMS和Shop功能对照审计报告.md

@@ -1,6 +1,7 @@
 {
   "name": "feida-hr-system",
-  "version": "3.0.0",
+  "version": "1.0.0",
+  "description": "飞达智能HR系统 - AI-Powered Human Resource Management System",
   "private": true,
   "bin": "dist/server/standalone.js",
   "scripts": {
@@ -8,7 +9,7 @@
     "dev:server": "tsx watch server/standalone.ts",
     "dev:client": "vite --config vite.config.ts",
     "build": "npm run build:server && npm run build:client",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "tsc -p tsconfig.server.json && node -e \"require('fs').cpSync('server/ai-service.js','dist/server/ai-service.js')\"",
     "build:client": "vite build --config vite.config.ts",
     "start": "node dist/server/standalone.js",
     "type:check": "tsc --noEmit"
@@ -16,26 +17,35 @@
   "pkg": {
     "assets": [
       "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
-      "dist/client/**/*"   
+      "dist/client/**/*"
     ]
   },
   "dependencies": {
+    "@ant-design/icons": "^5.6.1",
+    "@tiptap/extension-table": "^3.22.4",
+    "@tiptap/extension-youtube": "^3.22.4",
     "@types/multer": "^2.1.0",
+    "antd": "^5.29.3",
     "better-sqlite3": "^12.9.0",
     "build": "^0.1.4",
     "clsx": "^2.0.1",
     "dayjs": "^1.11.15",
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.6",
+    "es-toolkit": "^1.49.0",
     "express": "^4.21.0",
     "flv.js": "^1.6.2",
     "hls.js": "^1.6.16",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.554.0",
+    "mammoth": "^1.12.0",
     "multer": "^2.1.1",
+    "mysql2": "^3.22.6",
+    "pg": "^8.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.30.0",
+    "sharp": "^0.35.3",
     "sql.js": "^1.14.1",
     "tailwind-merge": "^3.4.0"
   },
@@ -123,6 +133,4 @@
     "zod": "^3.25.76",
     "zustand": "^5.0.8"
   }
-
-
 }

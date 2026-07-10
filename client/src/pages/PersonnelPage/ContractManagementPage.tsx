@@ -7,6 +7,10 @@ interface Employee {
   department: string;
   position: string;
   status: string;
+  birthday?: string;
+  hireDate?: string;
+  phone?: string;
+  email?: string;
 }
 
 interface Contract {

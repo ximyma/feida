@@ -7,7 +7,7 @@ import {
 import {
   DollarOutlined, CalculatorOutlined, SaveOutlined, PlayCircleOutlined,
   FileTextOutlined, SettingOutlined, CheckCircleOutlined, WarningOutlined,
-  FunctionOutlined, CodeOutlined, DeleteOutlined, EditOutlined
+  FunctionOutlined, CodeOutlined, DeleteOutlined, EditOutlined, PlusOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 

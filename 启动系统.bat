@@ -1,34 +1,45 @@
 @echo off
-chcp 65001 >nul
-title 飞达智能HR系统
+title Feida Smart HR System v1.0.0
 echo ========================================
-echo       飞达智能HR系统 - 启动中
+echo   Feida Smart HR System v1.0.0
+echo   AI-Powered HR / CMS / Shop Platform
 echo ========================================
 echo.
 
-REM 检查 Node.js 是否安装
-where node >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Node.js
+REM Check if node_modules exists
+if not exist "node_modules\" (
+    echo [INFO] Installing dependencies...
+    call npm install --legacy-peer-deps
+    if %errorlevel% neq 0 (
+        echo [ERROR] npm install failed
+        pause
+        exit /b 1
+    )
     echo.
-    echo 请先安装 Node.js 22
-    echo 下载地址: https://nodejs.org/zh-cn/download/
-    echo.
-    pause
-    exit /b 1
 )
 
-REM 检查 Node 版本
-for /f "tokens=*" %%i in ('node -v') do set NODE_VERSION=%%i
-echo Node.js 版本: %NODE_VERSION%
+REM Check if built
+if not exist "dist\server\standalone.js" (
+    echo [INFO] Building project...
+    call npm run build
+    if %errorlevel% neq 0 (
+        echo [ERROR] Build failed - try: npm run dev
+        pause
+        exit /b 1
+    )
+    echo.
+)
+
+echo Starting server...
+echo Web  : http://localhost:3000
+echo API  : http://localhost:3000/api
 echo.
 
-REM 启动系统
-echo 正在启动服务器...
-node server\standalone.js
+node dist\server\standalone.js
 
 if %errorlevel% neq 0 (
     echo.
-    echo [错误] 启动失败，请检查日志
+    echo [ERROR] Server failed to start
+    echo Try running: npm run dev
     pause
 )

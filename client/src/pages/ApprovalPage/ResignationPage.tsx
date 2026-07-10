@@ -61,6 +61,7 @@ export default function ResignationPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<string>('');
   const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewing, setViewing] = useState<IRecord | null>(null);

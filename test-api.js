@@ -1,5 +1,7 @@
-const http = require('http');
-const urls = [
+// 培训模块 API 冒烟测试（使用 BASE，默认 http://localhost:3400）
+const BASE = process.env.BASE || 'http://localhost:3400';
+
+const endpoints = [
   '/api/training_plans?limit=2',
   '/api/training_courses?limit=2',
   '/api/training_classes?limit=2',
@@ -7,29 +9,26 @@ const urls = [
   '/api/assessment_templates?limit=2',
 ];
 
-function fetch(url) {
-  return new Promise((res, rej) => {
-    http.get('http://localhost:3000' + url, r => {
-      let d = '';
-      r.on('data', c => d += c);
-      r.on('end', () => res({ url, status: r.statusCode, data: d }));
-    }).on('error', e => res({ url, error: e.message }));
-  });
+let pass = 0, fail = 0;
+function ok(cond, msg) {
+  if (cond) { pass++; console.log('  ✅ ' + msg); }
+  else { fail++; console.log('  ❌ ' + msg); }
 }
 
-Promise.all(urls.map(fetch)).then(results => {
-  results.forEach(r => {
-    console.log('\n' + r.url);
-    if (r.error) { console.log('  ERROR:', r.error); return; }
-    console.log('  Status:', r.status);
+(async () => {
+  console.log('# API 冒烟测试 @ ' + BASE);
+  for (const ep of endpoints) {
     try {
-      const j = JSON.parse(r.data);
-      if (Array.isArray(j)) {
-        console.log('  Count:', j.length);
-        if (j.length > 0) console.log('  Fields:', Object.keys(j[0]).join(', '));
-      } else {
-        console.log('  Keys:', Object.keys(j).join(', '));
-      }
-    } catch(e) { console.log('  Raw:', r.data.slice(0, 200)); }
-  });
-});
+      const r = await fetch(BASE + ep);
+      ok(r.status === 200, ep + ' -> HTTP ' + r.status);
+      const j = await r.json().catch(() => null);
+      ok(Array.isArray(j), ep + ' 返回 JSON 数组');
+      if (Array.isArray(j)) console.log('     条数: ' + j.length);
+    } catch (e) {
+      fail++;
+      console.log('  ❌ ' + ep + ' 请求异常: ' + e.message);
+    }
+  }
+  console.log(`\n结果: ${pass} 通过 / ${fail} 失败`);
+  process.exit(fail ? 1 : 0);
+})();

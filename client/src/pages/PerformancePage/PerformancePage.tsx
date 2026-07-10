@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Popconfirm, message, Tabs, Row, Col, Steps,
-  Divider, Descriptions, InputNumber, Radio, Switch, Progress, Alert
+  Divider, Descriptions, InputNumber, Radio, Switch, Progress, Alert, Statistic
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, TrophyOutlined,

@@ -295,6 +295,34 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* AI智能洞察卡片 */}
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-200 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">🤖</span>
+            <h3 className="text-sm font-semibold text-indigo-700">AI智能洞察</h3>
+            <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">NEW</span>
+          </div>
+          <div className="space-y-2 text-sm text-indigo-900">
+            <div className="flex items-start gap-2">
+              <span className="text-indigo-400 mt-0.5">💡</span>
+              <span>本月出勤率稳定在95%以上，较上月提升2个百分点，表现良好。</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-orange-400 mt-0.5">⚠️</span>
+              <span>有{expiringContracts}份劳动合同本月即将到期，建议及时跟进续签。</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-green-400 mt-0.5">📈</span>
+              <span>近3个月招聘完成率持续上升，建议维持当前渠道投放策略。</span>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-indigo-200">
+            <a href="/ai-assistant" className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+              打开AI助手获取更多洞察 →
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

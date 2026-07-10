@@ -12,26 +12,38 @@ export default function RoleManagePage() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [sites, setSites] = useState<any[]>([]);
+  const [selectedSites, setSelectedSites] = useState<string[]>(['*']);
 
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [r, p] = await Promise.all([
+      const [r, p, s] = await Promise.all([
         fetch(`/api/${TABLE}`).then(r => r.json()),
         fetch('/api/permissions').then(r => r.json()),
+        fetch('/api/rbac/sites').then(r => r.json()).catch(() => []),
       ]);
       setRoles(Array.isArray(r) ? r : []);
       setPermissions(Array.isArray(p) ? p : []);
+      setSites(Array.isArray(s) ? s : []);
     } catch (e) { console.error(e); }
     setLoading(false);
+  };
+
+  const parseSites = (v: any): string[] => {
+    try {
+      const a = Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v) : []);
+      return Array.isArray(a) && a.length ? a : ['*'];
+    } catch { return ['*']; }
   };
 
   const handleAdd = () => {
     setEditingItem(null);
     setForm({ name: '', code: '', type: 'custom', description: '', isActive: true });
     setSelectedPerms([]);
+    setSelectedSites(['*']);
     setDialogOpen(true);
   };
 
@@ -42,12 +54,23 @@ export default function RoleManagePage() {
       const perms = Array.isArray(item.permissionIds) ? item.permissionIds : (typeof item.permissionIds === 'string' ? JSON.parse(item.permissionIds) : []);
       setSelectedPerms(perms);
     } catch { setSelectedPerms([]); }
+    setSelectedSites(parseSites(item.siteScope));
     setDialogOpen(true);
+  };
+
+  // 切换站点：选择'全部站点'与具体站点互斥
+  const toggleSite = (code: string) => {
+    if (code === '*') { setSelectedSites(['*']); return; }
+    setSelectedSites(prev => {
+      const base = prev.filter(s => s !== '*');
+      const next = base.includes(code) ? base.filter(s => s !== code) : [...base, code];
+      return next.length ? next : ['*'];
+    });
   };
 
   const handleSave = async () => {
     try {
-      const body: Record<string, any> = { ...form, permissionIds: JSON.stringify(selectedPerms) };
+      const body: Record<string, any> = { ...form, permissionIds: JSON.stringify(selectedPerms), siteScope: JSON.stringify(selectedSites.length ? selectedSites : ['*']) };
       if (editingItem) {
         await fetch(`/api/${TABLE}/${editingItem.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       } else {
@@ -122,7 +145,8 @@ export default function RoleManagePage() {
                   ))}
                   {perms.length > 5 && <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">+{perms.length - 5}</span>}
                 </div>
-                <p className="text-xs text-gray-400 mb-3">{perms.length} 个权限</p>
+                <p className="text-xs text-gray-400 mb-1">{perms.length} 个权限</p>
+                <p className="text-xs text-gray-400 mb-3">站点：{parseSites(r.siteScope).includes('*') ? '全部站点' : parseSites(r.siteScope).map((c: string) => (sites.find((s: any) => s.code === c)?.name || c)).join('、')}</p>
                 <div className="flex gap-2">
                   <button onClick={() => handleEdit(r)} className="px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200">编辑权限</button>
                   {r.type !== 'system' && (
@@ -169,6 +193,21 @@ export default function RoleManagePage() {
                     <option value="true">启用</option>
                     <option value="false">禁用</option>
                   </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>站点范围（站点级权限 scope）</label>
+                <div className="flex flex-wrap gap-2 mt-2 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer text-sm transition-colors ${selectedSites.includes('*') ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100 border border-transparent'}`}>
+                    <input type="checkbox" checked={selectedSites.includes('*')} onChange={() => toggleSite('*')} className="rounded" />
+                    全部站点
+                  </label>
+                  {sites.map((s: any) => (
+                    <label key={s.code} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer text-sm transition-colors ${selectedSites.includes(s.code) ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100 border border-transparent'}`}>
+                      <input type="checkbox" checked={selectedSites.includes(s.code)} onChange={() => toggleSite(s.code)} className="rounded" />
+                      {s.name}
+                    </label>
+                  ))}
                 </div>
               </div>
               <div>

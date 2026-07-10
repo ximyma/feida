@@ -458,7 +458,7 @@ export default function AttendancePage() {
             <div>
               <label className="text-sm text-muted-foreground">状态</label>
               <Select value={editingRecord.status} style={{ width: '100%' }} onChange={v => setEditingRecord({ ...editingRecord, status: v })} className="mt-1">
-                {Object.entries(statusMap).map(([key, val]) => <Option key={key} value={key}>{val.icon} {val.label}</Option>)}
+                {Object.entries(statusMap).map(([key, val]) => <Select.Option key={key} value={key}>{val.icon} {val.label}</Select.Option>)}
               </Select>
             </div>
             <div>

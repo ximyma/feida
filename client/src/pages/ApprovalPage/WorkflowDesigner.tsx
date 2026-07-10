@@ -259,7 +259,7 @@ export default function WorkflowDesigner({ initialWorkflow }: WorkflowDesignerPr
   // 打开连线编辑
   const openEdgeEditor = (edge: WFEdge) => {
     setEditingEdge(edge);
-    setEdgeForm.setFieldsValue({ label: edge.label, conditionExpr: edge.conditionExpr, isDefault: edge.isDefault });
+    edgeForm.setFieldsValue({ label: edge.label, conditionExpr: edge.conditionExpr, isDefault: edge.isDefault });
     setEdgeModal(true);
   };
 

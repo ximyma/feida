@@ -20,7 +20,6 @@ const VideoPlayer = React.lazy(() => import('./components/VideoPlayer'));
 // 动态导入 TextReader
 const TextReader = React.lazy(() => import('./components/TextReader'));
 import type { TabsProps } from 'antd';
-import moment from 'moment';
 
 const { TextArea } = Input;
 const { Option } = Select;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
+import { I18nProvider } from './i18n';
 import Layout from './components/Layout';
 import NotFound from './pages/NotFound/NotFound';
 import LoginPage from './pages/LoginPage/LoginPage';
@@ -58,6 +59,7 @@ import AuditLogPage from './pages/SystemPage/AuditLogPage';
 import LoginLogPage from './pages/SystemPage/LoginLogPage/LoginLogPage';
 import AppSettingsPage from './pages/SystemPage/AppSettingsPage/AppSettingsPage';
 import WeChatSettingsPage from './pages/SystemPage/WeChatSettingsPage/WeChatSettingsPage';
+import PluginManagePage from './pages/SystemPage/PluginManagePage';
 import DingTalkSettingsPage from './pages/SystemPage/DingTalkSettingsPage/DingTalkSettingsPage';
 import ApiDocPage from './pages/SystemPage/ApiDocPage/ApiDocPage';
 import TaskManagePage from './pages/SystemPage/TaskManagePage/TaskManagePage';
@@ -67,6 +69,80 @@ import AnnouncementPage from './pages/OfficePage/AnnouncementPage';
 import DocumentPage from './pages/OfficePage/DocumentPage';
 import SurveyPage from './pages/OfficePage/SurveyPage';
 import SelfServicePage from './pages/SelfServicePage/SelfServicePage';
+import ProductPage from './pages/ProductPage/ProductPage';
+import ColorsPage from './pages/ProductPage/ColorsPage';
+import SizesPage from './pages/ProductPage/SizesPage';
+import CategoriesPage from './pages/ProductPage/CategoriesPage';
+import StylesPage from './pages/ProductPage/StylesPage';
+import StyleColorsPage from './pages/ProductPage/StyleColorsPage';
+import SKUsPage from './pages/ProductPage/SKUsPage';
+import BoxTypesPage from './pages/ProductPage/BoxTypesPage';
+import CodingRulesPage from './pages/ProductPage/CodingRulesPage';
+import SizeRatiosPage from './pages/ProductPage/SizeRatiosPage';
+import PLMPage from './pages/ProductPage/PLMPage';
+import MaterialAttributesPage from './pages/ProductPage/MaterialAttributesPage';
+import MaterialsPage from './pages/ProductPage/MaterialsPage';
+import ProcessesPage from './pages/ProductPage/ProcessesPage';
+import ProcessRoutesPage from './pages/ProductPage/ProcessRoutesPage';
+import ComponentsPage from './pages/ProductPage/ComponentsPage';
+import BOMsPage from './pages/ProductPage/BOMsPage';
+import ScrapRulesPage from './pages/ProductPage/ScrapRulesPage';
+import SolesPage from './pages/ProductPage/SolesPage';
+import SeasonMaterialsPage from './pages/ProductPage/SeasonMaterialsPage';
+import WarehousePage from './pages/WarehousePage/WarehousePage';
+import WarehousesPage from './pages/WarehousePage/WarehousesPage';
+import LocationsPage from './pages/WarehousePage/LocationsPage';
+import InventoryPage from './pages/WarehousePage/InventoryPage';
+import StockInPage from './pages/WarehousePage/StockInPage';
+import StockOutPage from './pages/WarehousePage/StockOutPage';
+import StockCheckPage from './pages/WarehousePage/StockCheckPage';
+import TransferPage from './pages/WarehousePage/TransferPage';
+import BarcodesPage from './pages/WarehousePage/BarcodesPage';
+import SalesPage from './pages/SalesPage/SalesPage';
+import CustomerGroupsPage from './pages/SalesPage/CustomerGroupsPage';
+import CustomersPage from './pages/SalesPage/CustomersPage';
+import SalesOrdersPage from './pages/SalesPage/SalesOrdersPage';
+import DeliveriesPage from './pages/SalesPage/DeliveriesPage';
+import ReturnsPage from './pages/SalesPage/ReturnsPage';
+import PurchasePage from './pages/PurchasePage/PurchasePage';
+import SupplierGroupsPage from './pages/PurchasePage/SupplierGroupsPage';
+import SuppliersPage from './pages/PurchasePage/SuppliersPage';
+import PurchaseOrdersPage from './pages/PurchasePage/PurchaseOrdersPage';
+import PurchaseReceiptsPage from './pages/PurchasePage/PurchaseReceiptsPage';
+import ProductionPage from './pages/ProductionPage/ProductionPage';
+import WorkCentersPage from './pages/ProductionPage/WorkCentersPage';
+import ProductionPlansPage from './pages/ProductionPage/ProductionPlansPage';
+import WorkOrdersPage from './pages/ProductionPage/WorkOrdersPage';
+import ReportingPage from './pages/ProductionPage/ReportingPage';
+import FinancePage from './pages/FinancePage/FinancePage';
+import AccountsPage from './pages/FinancePage/AccountsPage';
+import JournalEntriesPage from './pages/FinancePage/JournalEntriesPage';
+import ARInvoicesPage from './pages/FinancePage/ARInvoicesPage';
+import APInvoicesPage from './pages/FinancePage/APInvoicesPage';
+import PaymentsPage from './pages/FinancePage/PaymentsPage';
+import QualityPage from './pages/QualityPage/QualityPage';
+import StandardsPage from './pages/QualityPage/StandardsPage';
+import InspectionsPage from './pages/QualityPage/InspectionsPage';
+import DefectsPage from './pages/QualityPage/DefectsPage';
+import CorrectiveActionsPage from './pages/QualityPage/CorrectiveActionsPage';
+import SiteHomePage from './pages/SiteHomePage/SiteHomePage';
+import ArticleListPageV2 from './pages/SiteHomePage/ArticleListPageV2';
+import ArticleDetailPageV2 from './pages/SiteHomePage/ArticleDetailPageV2';
+import ShopHomePageV2 from './pages/ShopHomePage/ShopHomePageV2';
+import ProductDetailPageV2 from './pages/ShopHomePage/ProductDetailPageV2';
+import CartPage from './pages/ShopHomePage/CartPage';
+import ShopUserCenter from './pages/ShopHomePage/ShopUserCenter';
+import ShopFavoritesPage from './pages/ShopHomePage/ShopFavoritesPage';
+import ShopOrdersPage from './pages/ShopHomePage/ShopOrdersPage';
+import CheckoutPage from './pages/ShopHomePage/CheckoutPage';
+import PayPage from './pages/ShopHomePage/PayPage';
+import ShopAdminPage from './pages/Admin/ShopAdminPage';
+import CMSAdminPage from './pages/Admin/CMSAdminPage';
+import AIAssistantPage from './pages/AIAssistantPage/AIAssistantPage';
+import AIKnowledgePage from './pages/AIKnowledgePage/AIKnowledgePage';
+import AIBIAnalyticsPage from './pages/AIBIAnalyticsPage/AIBIAnalyticsPage';
+import AIAlertsPage from './pages/AIAlertsPage/AIAlertsPage';
+import AISettingsPage from './pages/SystemPage/AISettingsPage/AISettingsPage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const currentUser = sessionStorage.getItem('__current_user');
@@ -76,8 +152,29 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <I18nProvider>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* 网站前台（无需登录） */}
+      <Route path="/site" element={<SiteHomePage />} />
+      <Route path="/site/articles" element={<ArticleListPageV2 />} />
+      <Route path="/site/article/:id" element={<ArticleDetailPageV2 />} />
+
+      {/* 商城前台（无需登录）增强版 */}
+      <Route path="/shop" element={<ShopHomePageV2 />} />
+      <Route path="/shop/goods/:id" element={<ProductDetailPageV2 />} />
+      <Route path="/shop/category/:id" element={<ShopHomePageV2 />} />
+      <Route path="/shop/brand/:id" element={<ShopHomePageV2 />} />
+      <Route path="/shop/search" element={<ShopHomePageV2 />} />
+      <Route path="/shop/cart" element={<CartPage />} />
+      <Route path="/shop/checkout" element={<CheckoutPage />} />
+      <Route path="/shop/pay/:id" element={<PayPage />} />
+      <Route path="/shop/user" element={<ShopUserCenter />} />
+      <Route path="/shop/favorites" element={<ShopFavoritesPage />} />
+      <Route path="/shop/orders" element={<ShopOrdersPage />} />
+      <Route path="/shop/order/:id" element={<ShopOrdersPage />} />
+
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route index element={<DashboardPage />} />
         <Route path="/organization" element={<OrganizationPage />} />
@@ -153,6 +250,82 @@ export default function App() {
         {/* 员工自助 */}
         <Route path="/selfservice" element={<SelfServicePage />} />
 
+        {/* 产品基础档案 */}
+        <Route path="/product" element={<ProductPage />} />
+        <Route path="/product/colors" element={<ColorsPage />} />
+        <Route path="/product/sizes" element={<SizesPage />} />
+        <Route path="/product/categories" element={<CategoriesPage />} />
+        <Route path="/product/styles" element={<StylesPage />} />
+        <Route path="/product/style-colors" element={<StyleColorsPage />} />
+        <Route path="/product/skus" element={<SKUsPage />} />
+        <Route path="/product/box-types" element={<BoxTypesPage />} />
+        <Route path="/product/coding-rules" element={<CodingRulesPage />} />
+        <Route path="/product/size-ratios" element={<SizeRatiosPage />} />
+
+        {/* 工艺管理/PLM */}
+        <Route path="/plm" element={<PLMPage />} />
+        <Route path="/plm/material-attributes" element={<MaterialAttributesPage />} />
+        <Route path="/plm/materials" element={<MaterialsPage />} />
+        <Route path="/plm/processes" element={<ProcessesPage />} />
+        <Route path="/plm/process-routes" element={<ProcessRoutesPage />} />
+        <Route path="/plm/components" element={<ComponentsPage />} />
+        <Route path="/plm/boms" element={<BOMsPage />} />
+        <Route path="/plm/scrap-rules" element={<ScrapRulesPage />} />
+        <Route path="/plm/soles" element={<SolesPage />} />
+        <Route path="/plm/season-materials" element={<SeasonMaterialsPage />} />
+
+        {/* 仓储物流管理 */}
+        <Route path="/warehouse" element={<WarehousePage />} />
+        <Route path="/warehouse/warehouses" element={<WarehousesPage />} />
+        <Route path="/warehouse/locations" element={<LocationsPage />} />
+        <Route path="/warehouse/inventory" element={<InventoryPage />} />
+        <Route path="/warehouse/stock-in" element={<StockInPage />} />
+        <Route path="/warehouse/stock-out" element={<StockOutPage />} />
+        <Route path="/warehouse/stock-check" element={<StockCheckPage />} />
+        <Route path="/warehouse/transfer" element={<TransferPage />} />
+        <Route path="/warehouse/barcodes" element={<BarcodesPage />} />
+
+        {/* 销售管理 */}
+        <Route path="/sales" element={<SalesPage />} />
+        <Route path="/sales/customer-groups" element={<CustomerGroupsPage />} />
+        <Route path="/sales/customers" element={<CustomersPage />} />
+        <Route path="/sales/orders" element={<SalesOrdersPage />} />
+        <Route path="/sales/deliveries" element={<DeliveriesPage />} />
+        <Route path="/sales/returns" element={<ReturnsPage />} />
+
+        {/* 采购管理 */}
+        <Route path="/purchase" element={<PurchasePage />} />
+        <Route path="/purchase/supplier-groups" element={<SupplierGroupsPage />} />
+        <Route path="/purchase/suppliers" element={<SuppliersPage />} />
+        <Route path="/purchase/orders" element={<PurchaseOrdersPage />} />
+        <Route path="/purchase/receipts" element={<PurchaseReceiptsPage />} />
+
+        {/* 生产现场管理 */}
+        <Route path="/production" element={<ProductionPage />} />
+        <Route path="/production/work-centers" element={<WorkCentersPage />} />
+        <Route path="/production/plans" element={<ProductionPlansPage />} />
+        <Route path="/production/work-orders" element={<WorkOrdersPage />} />
+        <Route path="/production/reporting" element={<ReportingPage />} />
+
+        {/* 财务管理 */}
+        <Route path="/finance" element={<FinancePage />} />
+        <Route path="/finance/accounts" element={<AccountsPage />} />
+        <Route path="/finance/journal-entries" element={<JournalEntriesPage />} />
+        <Route path="/finance/ar-invoices" element={<ARInvoicesPage />} />
+        <Route path="/finance/ap-invoices" element={<APInvoicesPage />} />
+        <Route path="/finance/payments" element={<PaymentsPage />} />
+
+        {/* 网站与商城管理后台 */}
+        <Route path="/admin/shop" element={<ShopAdminPage />} />
+        <Route path="/admin/cms" element={<CMSAdminPage />} />
+
+        {/* 质量管理 */}
+        <Route path="/quality" element={<QualityPage />} />
+        <Route path="/quality/standards" element={<StandardsPage />} />
+        <Route path="/quality/inspections" element={<InspectionsPage />} />
+        <Route path="/quality/defects" element={<DefectsPage />} />
+        <Route path="/quality/corrective-actions" element={<CorrectiveActionsPage />} />
+
         {/* 系统管理 */}
         <Route path="/system" element={<SystemOverviewPage />} />
         <Route path="/system/users" element={<UserManagePage />} />
@@ -166,9 +339,21 @@ export default function App() {
         <Route path="/system/dingtalk" element={<DingTalkSettingsPage />} />
         <Route path="/system/api-doc" element={<ApiDocPage />} />
         <Route path="/system/tasks" element={<TaskManagePage />} />
+        <Route path="/system/plugins" element={<PluginManagePage />} />
+
+        {/* AI智能功能 */}
+        <Route path="/ai-assistant" element={<AIAssistantPage />} />
+        <Route path="/ai-knowledge" element={<AIKnowledgePage />} />
+        <Route path="/ai-bianalytics" element={<AIBIAnalyticsPage />} />
+        <Route path="/ai-alerts" element={<AIAlertsPage />} />
+
+        {/* AI系统设置 */}
+        <Route path="/system/ai-settings" element={<AISettingsPage />} />
+
       </Route>
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </I18nProvider>
   );
 }

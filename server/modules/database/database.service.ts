@@ -12,6 +12,8 @@ export class DatabaseService {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.createTables();
+    this.migrateColumns();
+    this.migrateShopProductFks();
     this.seedDefaultData();
     console.log(`[Database] SQLite at ${dbPath}`);
   }
@@ -432,6 +434,32 @@ export class DatabaseService {
         date TEXT NOT NULL, mealType TEXT,
         cost REAL DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS meal_menus (
+        id TEXT PRIMARY KEY,
+        canteenId TEXT, date TEXT NOT NULL,
+        mealType TEXT DEFAULT 'lunch',       -- breakfast/lunch/dinner
+        name TEXT NOT NULL,
+        dishes TEXT DEFAULT '',              -- JSON array of dish names
+        price REAL DEFAULT 0,
+        status TEXT DEFAULT 'draft',          -- draft/published/archived
+        calories INTEGER DEFAULT 0,
+        imageUrl TEXT DEFAULT '',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS meal_orders (
+        id TEXT PRIMARY KEY,
+        menuId TEXT NOT NULL,
+        employeeId TEXT NOT NULL,
+        employeeName TEXT,
+        department TEXT,
+        date TEXT NOT NULL,
+        mealType TEXT,
+        quantity INTEGER DEFAULT 1,
+        totalPrice REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',        -- pending/confirmed/cancelled
+        remark TEXT DEFAULT '',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
       CREATE TABLE IF NOT EXISTS vehicles (
         id TEXT PRIMARY KEY, plateNumber TEXT NOT NULL, vehicleType TEXT,
         brand TEXT, model TEXT, color TEXT,
@@ -455,6 +483,788 @@ export class DatabaseService {
         badgeNo TEXT, status TEXT DEFAULT 'visiting',
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- 仓储物流管理
+      CREATE TABLE IF NOT EXISTS warehouses (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'raw',              -- raw:原材料仓, wip:半成品仓, finished:成品仓, tool:工具仓
+        location TEXT,
+        area REAL DEFAULT 0,
+        capacity REAL DEFAULT 0,
+        manager_id TEXT,
+        manager_name TEXT,
+        status TEXT DEFAULT 'active',
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        code TEXT NOT NULL,
+        row_no TEXT,
+        shelf_no TEXT,
+        level_no TEXT,
+        area REAL DEFAULT 0,
+        capacity REAL DEFAULT 0,
+        status TEXT DEFAULT 'available',     -- available:可用, occupied:占用, reserved:预留
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(warehouse_id, code)
+      );
+
+      CREATE TABLE IF NOT EXISTS inventory (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        location_id TEXT REFERENCES locations(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        material_id TEXT REFERENCES materials(id),
+        qty REAL DEFAULT 0,
+        locked_qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        batch_no TEXT,
+        expiry_date TEXT,
+        cost_price REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS inventory_transactions (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        location_id TEXT REFERENCES locations(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        material_id TEXT REFERENCES materials(id),
+        type TEXT NOT NULL,                  -- in:入库, out:出库, transfer:调拨, adjust:调整
+        qty REAL NOT NULL,
+        unit TEXT DEFAULT '双',
+        cost_price REAL DEFAULT 0,
+        source_doc_id TEXT,                  -- 来源单据ID（如采购单、销售订单、生产工单）
+        source_doc_type TEXT,                -- 来源单据类型
+        batch_no TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS stock_checks (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        location_id TEXT REFERENCES locations(id),
+        status TEXT DEFAULT 'draft',         -- draft:草稿, in_progress:盘点中, completed:已完成
+        check_date TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS stock_check_items (
+        id TEXT PRIMARY KEY,
+        check_id TEXT REFERENCES stock_checks(id),
+        inventory_id TEXT REFERENCES inventory(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        material_id TEXT REFERENCES materials(id),
+        system_qty REAL DEFAULT 0,
+        actual_qty REAL DEFAULT 0,
+        diff_qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS barcodes (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        type TEXT DEFAULT 'sku',             -- sku:产品条码, material:物料条码, location:货位条码
+        target_id TEXT,                      -- 关联的SKU/物料/货位ID
+        warehouse_id TEXT REFERENCES warehouses(id),
+        location_id TEXT REFERENCES locations(id),
+        batch_no TEXT,
+        expiry_date TEXT,
+        qty REAL DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS transfer_orders (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        from_warehouse_id TEXT REFERENCES warehouses(id),
+        to_warehouse_id TEXT REFERENCES warehouses(id),
+        from_location_id TEXT REFERENCES locations(id),
+        to_location_id TEXT REFERENCES locations(id),
+        status TEXT DEFAULT 'pending',       -- pending:待审批, approved:已审批, completed:已完成
+        transfer_date TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS transfer_order_items (
+        id TEXT PRIMARY KEY,
+        transfer_id TEXT REFERENCES transfer_orders(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        material_id TEXT REFERENCES materials(id),
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        remark TEXT
+      );
+
+      -- 销售管理
+      CREATE TABLE IF NOT EXISTS customer_groups (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        discount REAL DEFAULT 1,
+        credit_limit REAL DEFAULT 0,
+        payment_terms TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        short_name TEXT,
+        group_id TEXT REFERENCES customer_groups(id),
+        contact_person TEXT,
+        phone TEXT,
+        mobile TEXT,
+        email TEXT,
+        address TEXT,
+        province TEXT,
+        city TEXT,
+        district TEXT,
+        tax_no TEXT,
+        bank_name TEXT,
+        bank_account TEXT,
+        credit_limit REAL DEFAULT 0,
+        available_credit REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sales_orders (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        customer_id TEXT REFERENCES customers(id),
+        customer_name TEXT,
+        contact_person TEXT,
+        contact_phone TEXT,
+        order_date TEXT,
+        delivery_date TEXT,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        shipping_address TEXT,
+        payment_method TEXT,
+        payment_status TEXT DEFAULT 'unpaid',
+        total_amount REAL DEFAULT 0,
+        discount REAL DEFAULT 0,
+        paid_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',         -- pending:待审核, approved:已审核, production:生产中, shipping:发货中, completed:已完成, cancelled:已取消
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS sales_order_items (
+        id TEXT PRIMARY KEY,
+        order_id TEXT REFERENCES sales_orders(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        style_id TEXT REFERENCES product_styles(id),
+        color_id TEXT REFERENCES product_colors(id),
+        size_id TEXT REFERENCES product_sizes(id),
+        color_code TEXT,
+        size_code TEXT,
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        unit_price REAL DEFAULT 0,
+        amount REAL DEFAULT 0,
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS deliveries (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        order_id TEXT REFERENCES sales_orders(id),
+        warehouse_id TEXT REFERENCES warehouses(id),
+        delivery_date TEXT,
+        carrier TEXT,
+        tracking_no TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待发货, shipped:已发货, delivered:已签收
+        total_qty REAL DEFAULT 0,
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        shipped_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS delivery_items (
+        id TEXT PRIMARY KEY,
+        delivery_id TEXT REFERENCES deliveries(id),
+        order_item_id TEXT REFERENCES sales_order_items(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        batch_no TEXT,
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS returns (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        order_id TEXT REFERENCES sales_orders(id),
+        delivery_id TEXT REFERENCES deliveries(id),
+        customer_id TEXT REFERENCES customers(id),
+        return_date TEXT,
+        reason TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待审核, approved:已审核, completed:已完成
+        total_amount REAL DEFAULT 0,
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS return_items (
+        id TEXT PRIMARY KEY,
+        return_id TEXT REFERENCES returns(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        unit_price REAL DEFAULT 0,
+        amount REAL DEFAULT 0,
+        reason TEXT,
+        remark TEXT
+      );
+
+      -- 采购管理
+      CREATE TABLE IF NOT EXISTS supplier_groups (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        short_name TEXT,
+        group_id TEXT REFERENCES supplier_groups(id),
+        contact_person TEXT,
+        phone TEXT,
+        mobile TEXT,
+        email TEXT,
+        address TEXT,
+        province TEXT,
+        city TEXT,
+        district TEXT,
+        tax_no TEXT,
+        bank_name TEXT,
+        bank_account TEXT,
+        payment_terms TEXT,
+        status TEXT DEFAULT 'active',
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        supplier_id TEXT REFERENCES suppliers(id),
+        supplier_name TEXT,
+        contact_person TEXT,
+        contact_phone TEXT,
+        order_date TEXT,
+        delivery_date TEXT,
+        warehouse_id TEXT REFERENCES warehouses(id),
+        payment_method TEXT,
+        payment_status TEXT DEFAULT 'unpaid',
+        total_amount REAL DEFAULT 0,
+        discount REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',         -- pending:待审核, approved:已审核, received:已收货, completed:已完成, cancelled:已取消
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id TEXT PRIMARY KEY,
+        order_id TEXT REFERENCES purchase_orders(id),
+        material_id TEXT REFERENCES materials(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        unit_price REAL DEFAULT 0,
+        amount REAL DEFAULT 0,
+        delivery_qty REAL DEFAULT 0,
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_receipts (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        order_id TEXT REFERENCES purchase_orders(id),
+        supplier_id TEXT REFERENCES suppliers(id),
+        warehouse_id TEXT REFERENCES warehouses(id),
+        receipt_date TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待审核, approved:已审核
+        total_qty REAL DEFAULT 0,
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_receipt_items (
+        id TEXT PRIMARY KEY,
+        receipt_id TEXT REFERENCES purchase_receipts(id),
+        order_item_id TEXT REFERENCES purchase_order_items(id),
+        material_id TEXT REFERENCES materials(id),
+        sku_id TEXT REFERENCES product_skus(id),
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        batch_no TEXT,
+        remark TEXT
+      );
+
+      -- 生产现场管理
+      CREATE TABLE IF NOT EXISTS production_plans (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        style_id TEXT REFERENCES product_styles(id),
+        style_code TEXT,
+        style_name TEXT,
+        planned_qty REAL DEFAULT 0,
+        start_date TEXT,
+        end_date TEXT,
+        status TEXT DEFAULT 'draft',         -- draft:草稿, approved:已审核, in_progress:进行中, completed:已完成
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS production_work_orders (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        plan_id TEXT REFERENCES production_plans(id),
+        plan_code TEXT,
+        style_id TEXT REFERENCES product_styles(id),
+        style_code TEXT,
+        style_name TEXT,
+        process_id TEXT REFERENCES processes(id),
+        process_code TEXT,
+        process_name TEXT,
+        work_center_id TEXT,
+        work_center_name TEXT,
+        scheduled_qty REAL DEFAULT 0,
+        actual_qty REAL DEFAULT 0,
+        start_date TEXT,
+        end_date TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待派工, dispatched:已派工, in_progress:进行中, completed:已完成, cancelled:已取消
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        dispatched_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS work_order_operations (
+        id TEXT PRIMARY KEY,
+        work_order_id TEXT REFERENCES production_work_orders(id),
+        seq_no INTEGER DEFAULT 0,
+        operation_id TEXT REFERENCES operations(id),
+        operation_code TEXT,
+        operation_name TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待执行, in_progress:进行中, completed:已完成
+        worker_id TEXT,
+        worker_name TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        actual_qty REAL DEFAULT 0,
+        scrap_qty REAL DEFAULT 0,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS work_centers (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'sewing',           -- cutting:裁剪, sewing:缝纫, finishing:整烫, packaging:包装
+        status TEXT DEFAULT 'active',
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 财务管理
+      CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'asset',             -- asset:资产, liability:负债, equity:权益, income:收入, expense:费用
+        parent_id TEXT,
+        level INTEGER DEFAULT 1,
+        balance REAL DEFAULT 0,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        entry_date TEXT,
+        reference_type TEXT,                   -- sales_order, purchase_order, receipt, payment
+        reference_id TEXT,
+        description TEXT,
+        total_debit REAL DEFAULT 0,
+        total_credit REAL DEFAULT 0,
+        status TEXT DEFAULT 'draft',           -- draft:草稿, posted:已过账
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        posted_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS journal_items (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT REFERENCES journal_entries(id),
+        account_id TEXT REFERENCES accounts(id),
+        account_code TEXT,
+        account_name TEXT,
+        debit REAL DEFAULT 0,
+        credit REAL DEFAULT 0,
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS ar_invoices (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        customer_id TEXT REFERENCES customers(id),
+        customer_name TEXT,
+        order_id TEXT REFERENCES sales_orders(id),
+        order_code TEXT,
+        invoice_date TEXT,
+        due_date TEXT,
+        total_amount REAL DEFAULT 0,
+        paid_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'unpaid',          -- unpaid:未付款, partial:部分付款, paid:已付清, overdue:逾期
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ap_invoices (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        supplier_id TEXT REFERENCES suppliers(id),
+        supplier_name TEXT,
+        order_id TEXT REFERENCES purchase_orders(id),
+        order_code TEXT,
+        invoice_date TEXT,
+        due_date TEXT,
+        total_amount REAL DEFAULT 0,
+        paid_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'unpaid',          -- unpaid:未付款, partial:部分付款, paid:已付清, overdue:逾期
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        type TEXT DEFAULT 'receive',           -- receive:收款, pay:付款
+        customer_id TEXT REFERENCES customers(id),
+        supplier_id TEXT REFERENCES suppliers(id),
+        invoice_id TEXT,
+        payment_date TEXT,
+        amount REAL DEFAULT 0,
+        payment_method TEXT,
+        bank_account TEXT,
+        remark TEXT,
+        operator_id TEXT,
+        operator_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS cost_entries (
+        id TEXT PRIMARY KEY,
+        order_id TEXT REFERENCES production_work_orders(id),
+        style_id TEXT REFERENCES product_styles(id),
+        material_cost REAL DEFAULT 0,
+        labor_cost REAL DEFAULT 0,
+        overhead_cost REAL DEFAULT 0,
+        total_cost REAL DEFAULT 0,
+        unit_cost REAL DEFAULT 0,
+        quantity REAL DEFAULT 0,
+        cost_date TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 网站管理与商城
+      CREATE TABLE IF NOT EXISTS web_articles (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        slug TEXT UNIQUE,
+        content TEXT,
+        summary TEXT,
+        category TEXT,
+        tags TEXT,
+        author TEXT,
+        status TEXT DEFAULT 'draft',           -- draft:草稿, published:已发布
+        view_count INTEGER DEFAULT 0,
+        publish_date TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS web_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE,
+        description TEXT,
+        parent_id TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS web_banners (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        image_url TEXT,
+        link_url TEXT,
+        position TEXT DEFAULT 'home',          -- home:首页, product:产品页
+        sort_order INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        start_date TEXT,
+        end_date TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_products (
+        id TEXT PRIMARY KEY,
+        style_id TEXT REFERENCES product_styles(id),
+        style_code TEXT,
+        style_name TEXT,
+        sku TEXT UNIQUE,
+        price REAL DEFAULT 0,
+        sale_price REAL,
+        stock_qty INTEGER DEFAULT 0,
+        images TEXT,
+        description TEXT,
+        category TEXT,
+        tags TEXT,
+        status TEXT DEFAULT 'active',          -- active:上架, inactive:下架
+        sort_order INTEGER DEFAULT 0,
+        view_count INTEGER DEFAULT 0,
+        sale_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_cart_items (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        product_id TEXT,
+        sku TEXT,
+        quantity INTEGER DEFAULT 1,
+        price REAL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_orders (
+        id TEXT PRIMARY KEY,
+        order_no TEXT UNIQUE NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        user_phone TEXT,
+        user_email TEXT,
+        shipping_address TEXT,
+        total_amount REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        pay_amount REAL DEFAULT 0,
+        pay_method TEXT,
+        pay_status TEXT DEFAULT 'unpaid',      -- unpaid:未支付, paid:已支付
+        order_status TEXT DEFAULT 'pending',   -- pending:待处理, confirmed:已确认, shipped:已发货, completed:已完成, cancelled:已取消
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        paid_at TEXT,
+        shipped_at TEXT,
+        tracking_no TEXT DEFAULT '',
+        tracking_company TEXT DEFAULT ''
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_order_items (
+        id TEXT PRIMARY KEY,
+        order_id TEXT REFERENCES shop_orders(id),
+        product_id TEXT REFERENCES shop_products(id),
+        sku TEXT,
+        product_name TEXT,
+        quantity INTEGER DEFAULT 1,
+        price REAL,
+        amount REAL,
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_reviews (
+        id TEXT PRIMARY KEY,
+        product_id TEXT REFERENCES shop_products(id),
+        order_id TEXT,
+        user_id TEXT,
+        user_name TEXT,
+        rating INTEGER DEFAULT 5,
+        content TEXT,
+        images TEXT,
+        status TEXT DEFAULT 'pending',         -- pending:待审核, approved:已审核
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- AI模型配置 (支持无限自定义模型)
+      CREATE TABLE IF NOT EXISTS ai_model_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        api_key TEXT DEFAULT '',
+        model TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        provider_type TEXT DEFAULT 'openai',       -- openai:OpenAI兼容, ollama:Ollama
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      -- AI知识库系统 (多知识库支持)
+      CREATE TABLE IF NOT EXISTS ai_knowledge_bases (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        icon TEXT DEFAULT 'book',
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS ai_knowledge (
+        id TEXT PRIMARY KEY,
+        kb_id TEXT DEFAULT 'default',
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        content TEXT NOT NULL,
+        tags TEXT DEFAULT '',
+        source_type TEXT DEFAULT 'manual',       -- manual:手动输入, file:文件导入
+        source_file TEXT DEFAULT '',             -- 源文件名
+        source_size INTEGER DEFAULT 0,           -- 源文件大小(bytes)
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (kb_id) REFERENCES ai_knowledge_bases(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS ai_knowledge_documents (
+        id TEXT PRIMARY KEY,
+        kb_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        file_type TEXT DEFAULT 'txt',            -- txt/pdf/docx/xlsx/md/csv/html
+        file_size INTEGER DEFAULT 0,
+        file_path TEXT DEFAULT '',
+        content TEXT DEFAULT '',
+        chunk_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',           -- pending/parsing/completed/error
+        error_msg TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (kb_id) REFERENCES ai_knowledge_bases(id)
+      );
+
+      -- 质量管理
+      CREATE TABLE IF NOT EXISTS quality_standards (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'product',            -- product:产品, process:工序, material:物料
+        description TEXT,
+        items TEXT,                             -- JSON格式的检验项目列表
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS quality_inspections (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        type TEXT DEFAULT 'incoming',           -- incoming:来料检验, in_process:过程检验, final:成品检验
+        reference_type TEXT,                    -- purchase_receipt, work_order, product
+        reference_id TEXT,
+        reference_code TEXT,
+        inspector TEXT,
+        inspection_date TEXT,
+        total_items INTEGER DEFAULT 0,
+        passed_items INTEGER DEFAULT 0,
+        failed_items INTEGER DEFAULT 0,
+        result TEXT DEFAULT 'pending',          -- pending:待检, passed:合格, failed:不合格, partial:部分合格
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS quality_inspection_items (
+        id TEXT PRIMARY KEY,
+        inspection_id TEXT REFERENCES quality_inspections(id),
+        standard_id TEXT,
+        item_name TEXT,
+        standard_value TEXT,
+        actual_value TEXT,
+        result TEXT DEFAULT 'pending',          -- pending:待检, passed:合格, failed:不合格
+        remark TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS quality_defects (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        inspection_id TEXT REFERENCES quality_inspections(id),
+        defect_type TEXT,                       -- appearance:外观, dimension:尺寸, function:功能, material:材质
+        defect_level TEXT DEFAULT 'minor',      -- minor:轻微, major:重大, critical:严重
+        description TEXT,
+        quantity INTEGER DEFAULT 1,
+        cause TEXT,
+        solution TEXT,
+        status TEXT DEFAULT 'open',             -- open:待处理, processing:处理中, closed:已关闭
+        responsible_person TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        closed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS quality_corrective_actions (
+        id TEXT PRIMARY KEY,
+        defect_id TEXT REFERENCES quality_defects(id),
+        action_type TEXT,                       -- correction:纠正, preventive:预防, improvement:改进
+        description TEXT,
+        responsible_person TEXT,
+        due_date TEXT,
+        status TEXT DEFAULT 'pending',          -- pending:待执行, in_progress:进行中, completed:已完成
+        completed_date TEXT,
+        effect_evaluation TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS announcements (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT,
         type TEXT DEFAULT 'notice', priority TEXT DEFAULT 'normal',
@@ -724,19 +1534,30 @@ export class DatabaseService {
         createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
       -- 增强版工作流引擎表（v2.0）
-      CREATE TABLE IF NOT EXISTS workflow_definitions (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT UNIQUE,
-        description TEXT, version INTEGER DEFAULT 1,
-        status TEXT DEFAULT 'draft', isDefault INTEGER DEFAULT 0,
-        formConfigId TEXT, nodes TEXT DEFAULT '[]',
-        edges TEXT DEFAULT '[]', variables TEXT DEFAULT '{}',
-        createdBy TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT
-      );
-      CREATE TABLE IF NOT EXISTS workflow_form_configs (
+            CREATE TABLE IF NOT EXISTS workflow_form_configs (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT UNIQUE,
         module TEXT, fields TEXT DEFAULT '[]',
         layout TEXT DEFAULT 'default', createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- 工作流定义
+      CREATE TABLE IF NOT EXISTS workflow_definitions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        description TEXT,
+        isDefault INTEGER DEFAULT 0,
+        nodes TEXT DEFAULT '[]',
+        edges TEXT DEFAULT '[]',
+        variables TEXT DEFAULT '[]',
+        version INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'active',
+        formConfigId TEXT,
+        createdBy TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS workflow_instances (
         id TEXT PRIMARY KEY, definitionId TEXT NOT NULL,
         businessId TEXT NOT NULL, businessType TEXT NOT NULL,
@@ -1056,19 +1877,1521 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_live_session_status ON training_live_sessions(status);
       CREATE INDEX IF NOT EXISTS idx_live_message_session ON training_live_messages(sessionId);
       CREATE INDEX IF NOT EXISTS idx_live_attendance_session ON training_live_attendances(sessionId);
+
+      -- ============ 产品基础档案（第一期）============
+
+      -- 颜色库
+      CREATE TABLE IF NOT EXISTS colors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        pantone_code TEXT,
+        custom_code TEXT,
+        hex_color TEXT,
+        image_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 尺码库
+      CREATE TABLE IF NOT EXISTS sizes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 尺码组
+      CREATE TABLE IF NOT EXISTS size_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 尺码组-尺码关联
+      CREATE TABLE IF NOT EXISTS size_group_items (
+        id TEXT PRIMARY KEY,
+        size_group_id TEXT NOT NULL,
+        size_id TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        FOREIGN KEY (size_group_id) REFERENCES size_groups(id),
+        FOREIGN KEY (size_id) REFERENCES sizes(id),
+        UNIQUE(size_group_id, size_id)
+      );
+
+      -- 产品品类
+      CREATE TABLE IF NOT EXISTS product_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        parent_id TEXT,
+        type TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 款号（产品SPU）
+      CREATE TABLE IF NOT EXISTS product_styles (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        category_id TEXT,
+        brand TEXT,
+        season TEXT,
+        year INTEGER,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 款色（款号+颜色，产品SPU+颜色变体）
+      CREATE TABLE IF NOT EXISTS product_style_colors (
+        id TEXT PRIMARY KEY,
+        style_id TEXT NOT NULL,
+        color_id TEXT NOT NULL,
+        image_url_1 TEXT,
+        image_url_2 TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (style_id) REFERENCES product_styles(id),
+        FOREIGN KEY (color_id) REFERENCES colors(id),
+        UNIQUE(style_id, color_id)
+      );
+
+      -- 款号码制（款号使用哪个尺码组）
+      CREATE TABLE IF NOT EXISTS product_style_size_configs (
+        id TEXT PRIMARY KEY,
+        style_id TEXT NOT NULL,
+        size_group_id TEXT NOT NULL,
+        FOREIGN KEY (style_id) REFERENCES product_styles(id),
+        FOREIGN KEY (size_group_id) REFERENCES size_groups(id)
+      );
+
+      -- 箱型
+      CREATE TABLE IF NOT EXISTS box_types (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        qty_per_box INTEGER,
+        gross_weight REAL,
+        length REAL,
+        width REAL,
+        height REAL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 产品SKU（款色+尺码）
+      CREATE TABLE IF NOT EXISTS product_skus (
+        id TEXT PRIMARY KEY,
+        style_id TEXT NOT NULL,
+        style_color_id TEXT NOT NULL,
+        size_id TEXT NOT NULL,
+        sku_code TEXT UNIQUE,
+        barcode TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (style_id) REFERENCES product_styles(id),
+        FOREIGN KEY (style_color_id) REFERENCES product_style_colors(id),
+        FOREIGN KEY (size_id) REFERENCES sizes(id)
+      );
+
+      -- 编码规则
+      CREATE TABLE IF NOT EXISTS coding_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        category_id TEXT,
+        expression TEXT NOT NULL,
+        prefix TEXT,
+        sequence_digits INTEGER DEFAULT 4,
+        current_sequence INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 配码规则
+      CREATE TABLE IF NOT EXISTS size_ratios (
+        id TEXT PRIMARY KEY,
+        style_id TEXT NOT NULL,
+        size_group_id TEXT NOT NULL,
+        size_id TEXT NOT NULL,
+        ratio INTEGER DEFAULT 1,
+        FOREIGN KEY (style_id) REFERENCES product_styles(id),
+        FOREIGN KEY (size_group_id) REFERENCES size_groups(id),
+        FOREIGN KEY (size_id) REFERENCES sizes(id)
+      );
+
+      -- =============================================
+      -- 第二期：工艺管理/PLM（鞋服行业核心模块）
+      -- =============================================
+
+      -- 物料属性类型（原材料、半成品、成品、辅料等）
+      CREATE TABLE IF NOT EXISTS material_attributes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 物料主数据库
+      CREATE TABLE IF NOT EXISTS materials (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        category_id TEXT REFERENCES product_categories(id),
+        attribute_id TEXT REFERENCES material_attributes(id),
+        color_id TEXT REFERENCES colors(id),
+        size_id TEXT REFERENCES sizes(id),
+        unit TEXT DEFAULT '双',
+        spec TEXT,
+        gross_weight REAL,
+        net_weight REAL,
+        image_url_1 TEXT,
+        image_url_2 TEXT,
+        default_supplier_id TEXT,
+        safety_stock REAL DEFAULT 0,
+        max_stock REAL,
+        min_order_qty REAL DEFAULT 1,
+        lead_time INTEGER DEFAULT 7,
+        price REAL DEFAULT 0,
+        season TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 工序库
+      CREATE TABLE IF NOT EXISTS processes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        process_type TEXT,
+        standard_time REAL DEFAULT 0,
+        piece_rate REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        department TEXT,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 工艺路线
+      CREATE TABLE IF NOT EXISTS process_routes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        description TEXT,
+        is_default INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 工艺路线-工序关联
+      CREATE TABLE IF NOT EXISTS process_route_items (
+        id TEXT PRIMARY KEY,
+        route_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        standard_time REAL,
+        piece_rate REAL,
+        description TEXT,
+        FOREIGN KEY (route_id) REFERENCES process_routes(id),
+        FOREIGN KEY (process_id) REFERENCES processes(id)
+      );
+
+      -- 部件库（鞋面、鞋底、内里等）
+      CREATE TABLE IF NOT EXISTS components (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        category TEXT,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- BOM（物料清单）- 支持开发BOM和技术BOM
+      CREATE TABLE IF NOT EXISTS boms (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        bom_type TEXT NOT NULL DEFAULT 'technical',
+        product_style_id TEXT REFERENCES product_styles(id),
+        product_sku_id TEXT REFERENCES product_skus(id),
+        version TEXT DEFAULT 'V1.0',
+        status TEXT DEFAULT 'draft',
+        approved_by TEXT,
+        approved_at TEXT,
+        created_by TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- BOM明细行
+      CREATE TABLE IF NOT EXISTS bom_items (
+        id TEXT PRIMARY KEY,
+        bom_id TEXT NOT NULL,
+        material_id TEXT REFERENCES materials(id),
+        component_id TEXT,
+        qty REAL NOT NULL DEFAULT 1,
+        unit TEXT DEFAULT '双',
+        scrap_rate REAL DEFAULT 0,
+        loss_rate REAL DEFAULT 0,
+        supply_type TEXT DEFAULT 'purchase',
+        size_id TEXT REFERENCES sizes(id),
+        color_id TEXT REFERENCES colors(id),
+        remark TEXT,
+        FOREIGN KEY (bom_id) REFERENCES boms(id)
+      );
+
+      -- 损耗规则
+      CREATE TABLE IF NOT EXISTS scrap_rules (
+        id TEXT PRIMARY KEY,
+        rule_type TEXT NOT NULL,
+        target_id TEXT,
+        target_type TEXT,
+        order_qty_min REAL DEFAULT 0,
+        order_qty_max REAL DEFAULT 999999,
+        material_loss_rate REAL DEFAULT 0,
+        process_loss_rate REAL DEFAULT 0,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 大底资料库（制鞋行业专项）
+      CREATE TABLE IF NOT EXISTS soles (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        sole_type TEXT,
+        material TEXT,
+        color TEXT,
+        mold_no TEXT,
+        supplier_id TEXT,
+        unit_price REAL DEFAULT 0,
+        unit TEXT DEFAULT '双',
+        lead_time INTEGER DEFAULT 7,
+        image_url TEXT,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 季节物料库
+      CREATE TABLE IF NOT EXISTS season_materials (
+        id TEXT PRIMARY KEY,
+        season TEXT NOT NULL,
+        material_id TEXT NOT NULL,
+        season_year INTEGER,
+        remark TEXT,
+        FOREIGN KEY (material_id) REFERENCES materials(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_color_active ON colors(is_active);
+      CREATE INDEX IF NOT EXISTS idx_size_active ON sizes(is_active);
+      CREATE INDEX IF NOT EXISTS idx_size_category ON sizes(category);
+      CREATE INDEX IF NOT EXISTS idx_style_code ON product_styles(code);
+      CREATE INDEX IF NOT EXISTS idx_style_status ON product_styles(status);
+      CREATE INDEX IF NOT EXISTS idx_sku_code ON product_skus(sku_code);
+      CREATE INDEX IF NOT EXISTS idx_coding_target ON coding_rules(target_type);
+
+      -- ============ ShopXO电商系统核心表 ============
+
+      -- 商品分类（多级分类树）
+      CREATE TABLE IF NOT EXISTS shop_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        icon TEXT,
+        image_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        is_home INTEGER DEFAULT 0,
+        description TEXT,
+        seo_title TEXT,
+        seo_keywords TEXT,
+        seo_description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 品牌
+      CREATE TABLE IF NOT EXISTS shop_brands (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        logo TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        website TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        is_show INTEGER DEFAULT 1,
+        category_ids TEXT DEFAULT '[]',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商品主表
+      CREATE TABLE IF NOT EXISTS shop_goods (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category_id TEXT DEFAULT '',
+        brand_id TEXT DEFAULT '',
+        sku TEXT DEFAULT '',
+        price REAL DEFAULT 0,
+        original_price REAL DEFAULT 0,
+        cost_price REAL DEFAULT 0,
+        stock INTEGER DEFAULT 0,
+        virtual_stock INTEGER DEFAULT 0,
+        sales_count INTEGER DEFAULT 0,
+        view_count INTEGER DEFAULT 0,
+        favorite_count INTEGER DEFAULT 0,
+        comment_count INTEGER DEFAULT 0,
+        images TEXT DEFAULT '[]',
+        main_image TEXT DEFAULT '',
+        video_url TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        spec_data TEXT DEFAULT '{}',
+        param_data TEXT DEFAULT '{}',
+        seo_title TEXT DEFAULT '',
+        seo_keywords TEXT DEFAULT '',
+        seo_description TEXT DEFAULT '',
+        weight REAL DEFAULT 0,
+        volume REAL DEFAULT 0,
+        unit TEXT DEFAULT '件',
+        barcode TEXT DEFAULT '',
+        is_hot INTEGER DEFAULT 0,
+        is_new INTEGER DEFAULT 0,
+        is_recommend INTEGER DEFAULT 0,
+        is_promotion INTEGER DEFAULT 0,
+        promotion_price REAL DEFAULT 0,
+        promotion_start TEXT DEFAULT '',
+        promotion_end TEXT DEFAULT '',
+        status TEXT DEFAULT 'active',
+        sort_order INTEGER DEFAULT 0,
+        title_color TEXT DEFAULT '',
+        sub_title TEXT DEFAULT '',
+        gift_points INTEGER DEFAULT 0,
+        usage_guide TEXT DEFAULT '',
+        mobile_content TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT
+      );
+
+      -- 商品SKU
+      CREATE TABLE IF NOT EXISTS shop_goods_skus (
+        id TEXT PRIMARY KEY,
+        goods_id TEXT NOT NULL,
+        sku_code TEXT DEFAULT '',
+        barcode TEXT DEFAULT '',
+        spec_values TEXT DEFAULT '',
+        price REAL DEFAULT 0,
+        original_price REAL DEFAULT 0,
+        cost_price REAL DEFAULT 0,
+        stock INTEGER DEFAULT 0,
+        sales_count INTEGER DEFAULT 0,
+        image_url TEXT DEFAULT '',
+        weight REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 购物车
+      CREATE TABLE IF NOT EXISTS shop_cart (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT DEFAULT '',
+        product_image TEXT DEFAULT '',
+        price REAL DEFAULT 0,
+        quantity INTEGER DEFAULT 1,
+        spec TEXT DEFAULT '',
+        checked INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商品相册
+      CREATE TABLE IF NOT EXISTS shop_goods_images (
+        id TEXT PRIMARY KEY,
+        goods_id TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        is_main INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 用户地址
+      CREATE TABLE IF NOT EXISTS shop_user_addresses (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        province TEXT,
+        city TEXT,
+        district TEXT,
+        address TEXT NOT NULL,
+        postal_code TEXT,
+        is_default INTEGER DEFAULT 0,
+        latitude REAL,
+        longitude REAL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 用户收藏
+      CREATE TABLE IF NOT EXISTS shop_user_favorites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        goods_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, goods_id)
+      );
+
+      -- 用户浏览历史
+      CREATE TABLE IF NOT EXISTS shop_user_browse_history (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        goods_id TEXT NOT NULL,
+        browse_time TEXT DEFAULT CURRENT_TIMESTAMP,
+        browse_count INTEGER DEFAULT 1
+      );
+
+      -- 用户积分
+      CREATE TABLE IF NOT EXISTS shop_user_integral (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        integral INTEGER DEFAULT 0,
+        frozen_integral INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 积分日志
+      CREATE TABLE IF NOT EXISTS shop_integral_log (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        integral INTEGER DEFAULT 0,
+        before_integral INTEGER DEFAULT 0,
+        after_integral INTEGER DEFAULT 0,
+        related_id TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 订单操作追溯日志
+      CREATE TABLE IF NOT EXISTS shop_order_logs (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        remark TEXT DEFAULT '',
+        operator TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 优惠券
+      -- 用户优惠券
+      
+      -- 订单主表（增强版）
+      CREATE TABLE IF NOT EXISTS shop_orders_v2 (
+        id TEXT PRIMARY KEY,
+        order_no TEXT UNIQUE NOT NULL,
+        user_id TEXT NOT NULL,
+        user_name TEXT,
+        user_phone TEXT,
+        user_email TEXT,
+        address_id TEXT,
+        address_name TEXT,
+        address_phone TEXT,
+        address_province TEXT,
+        address_city TEXT,
+        address_district TEXT,
+        address_detail TEXT,
+        goods_count INTEGER DEFAULT 0,
+        goods_weight REAL DEFAULT 0,
+        goods_amount REAL DEFAULT 0,
+        shipping_fee REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        coupon_id TEXT,
+        coupon_name TEXT,
+        coupon_amount REAL DEFAULT 0,
+        integral_used INTEGER DEFAULT 0,
+        integral_amount REAL DEFAULT 0,
+        total_amount REAL DEFAULT 0,
+        pay_amount REAL DEFAULT 0,
+        pay_type TEXT,
+        pay_status TEXT DEFAULT 'unpaid',
+        pay_time TEXT,
+        pay_transaction_id TEXT,
+        order_status TEXT DEFAULT 'pending',
+        shipping_type TEXT,
+        shipping_company TEXT,
+        shipping_no TEXT,
+        shipping_time TEXT,
+        receive_time TEXT,
+        remark TEXT,
+        admin_remark TEXT,
+        cancel_reason TEXT,
+        cancel_time TEXT,
+        is_invoice INTEGER DEFAULT 0,
+        invoice_type TEXT,
+        invoice_title TEXT,
+        invoice_no TEXT,
+        source TEXT DEFAULT 'web',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 订单商品明细
+      CREATE TABLE IF NOT EXISTS shop_order_goods (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        goods_id TEXT NOT NULL,
+        sku_id TEXT,
+        goods_name TEXT,
+        sku_code TEXT,
+        spec_values TEXT DEFAULT '{}',
+        price REAL DEFAULT 0,
+        original_price REAL,
+        quantity INTEGER DEFAULT 1,
+        amount REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        integral INTEGER DEFAULT 0,
+        image_url TEXT,
+        weight REAL DEFAULT 0,
+        is_comment INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 订单售后
+      CREATE TABLE IF NOT EXISTS shop_order_aftersale (
+                amount REAL DEFAULT 0,
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_goods_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        reason TEXT,
+        description TEXT,
+        images TEXT DEFAULT '[]',
+        refund_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        admin_remark TEXT,
+        handle_time TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 物流快递公司
+      CREATE TABLE IF NOT EXISTS shop_express (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT UNIQUE NOT NULL,
+        logo_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_enable INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 优惠券
+      CREATE TABLE IF NOT EXISTS shop_coupons (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL,
+        type TEXT DEFAULT 'discount',
+        value REAL DEFAULT 0, min_amount REAL DEFAULT 0,
+        total INTEGER DEFAULT 0, received INTEGER DEFAULT 0, used INTEGER DEFAULT 0,
+        start_time TEXT, end_time TEXT, status TEXT DEFAULT 'active',
+        description TEXT DEFAULT '', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS shop_user_coupons (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, coupon_id TEXT NOT NULL,
+        status TEXT DEFAULT 'unused', used_time TEXT,
+        claimed_at TEXT, used_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      -- 秒杀
+      CREATE TABLE IF NOT EXISTS shop_seckill (
+        id TEXT PRIMARY KEY, goods_id TEXT NOT NULL,
+        seckill_price REAL NOT NULL, seckill_stock INTEGER DEFAULT 0,
+        sold_count INTEGER DEFAULT 0, limit_count INTEGER DEFAULT 1,
+        start_time TEXT NOT NULL, end_time TEXT NOT NULL,
+        status TEXT DEFAULT 'upcoming', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      
+      );-- 积分
+      CREATE TABLE IF NOT EXISTS shop_user_points (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        points INTEGER DEFAULT 0,
+        total_earned INTEGER DEFAULT 0,
+        total_used INTEGER DEFAULT 0,
+        type TEXT DEFAULT 'earn',
+        description TEXT DEFAULT '',
+        balance INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS shop_point_logs (
+                balance INTEGER DEFAULT 0,
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+        type TEXT, points INTEGER, description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      
+      );-- 支付方式
+      CREATE TABLE IF NOT EXISTS shop_payment_methods (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT UNIQUE NOT NULL,
+        logo_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_enable INTEGER DEFAULT 1,
+        config TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 站点配置
+      CREATE TABLE IF NOT EXISTS shop_site_config (
+        id TEXT PRIMARY KEY,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT,
+        type TEXT DEFAULT 'string',
+        config_group TEXT DEFAULT 'basic',
+        description TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 导航菜单
+      CREATE TABLE IF NOT EXISTS shop_navigation (
+                location TEXT DEFAULT "header",
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'header',
+        parent_id TEXT,
+        link_type TEXT DEFAULT 'page',
+        link_url TEXT,
+        icon TEXT,
+        image_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 快递公司
+      CREATE TABLE IF NOT EXISTS shop_express_companies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT,
+        website TEXT,
+        phone TEXT,
+        is_enabled INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 用户余额日志
+      CREATE TABLE IF NOT EXISTS shop_balance_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        amount REAL DEFAULT 0,
+        type TEXT DEFAULT 'recharge',
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 拼团活动
+      CREATE TABLE IF NOT EXISTS shop_group_buy (
+        id TEXT PRIMARY KEY,
+        goods_id TEXT NOT NULL,
+        group_price REAL NOT NULL,
+        group_stock INTEGER DEFAULT 0,
+        sold_count INTEGER DEFAULT 0,
+        group_size INTEGER DEFAULT 2,
+        limit_count INTEGER DEFAULT 0,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        status TEXT DEFAULT 'upcoming',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 拼团记录（每个团实例）
+      CREATE TABLE IF NOT EXISTS shop_group_buy_records (
+        id TEXT PRIMARY KEY,
+        activity_id TEXT NOT NULL,
+        goods_id TEXT,
+        leader_id TEXT NOT NULL,
+        order_id TEXT,
+        current_count INTEGER DEFAULT 1,
+        target_count INTEGER DEFAULT 2,
+        status TEXT DEFAULT 'ongoing',
+        members TEXT DEFAULT '[]',
+        end_time TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 砍价活动
+      CREATE TABLE IF NOT EXISTS shop_bargain (
+        id TEXT PRIMARY KEY,
+        goods_id TEXT NOT NULL,
+        start_price REAL DEFAULT 0,
+        floor_price REAL NOT NULL,
+        bargain_stock INTEGER DEFAULT 0,
+        sold_count INTEGER DEFAULT 0,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        status TEXT DEFAULT 'upcoming',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 砍价记录（用户发起的砍价实例）
+      CREATE TABLE IF NOT EXISTS shop_bargain_records (
+        id TEXT PRIMARY KEY,
+        activity_id TEXT NOT NULL,
+        goods_id TEXT,
+        user_id TEXT NOT NULL,
+        current_price REAL DEFAULT 0,
+        floor_price REAL DEFAULT 0,
+        help_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'ongoing',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 砍价助力记录
+      CREATE TABLE IF NOT EXISTS shop_bargain_helps (
+        id TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        user_name TEXT,
+        amount REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 会员等级
+      CREATE TABLE IF NOT EXISTS shop_member_levels (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        level INTEGER DEFAULT 1,
+        min_points INTEGER DEFAULT 0,
+        discount REAL DEFAULT 1,
+        icon TEXT,
+        description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 分销全局配置
+      CREATE TABLE IF NOT EXISTS shop_distribution_config (
+        id TEXT PRIMARY KEY,
+        is_open INTEGER DEFAULT 1,
+        level_mode INTEGER DEFAULT 2,
+        settle_type TEXT DEFAULT 'paid',
+        commission_base TEXT DEFAULT 'pay',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 分销等级（含一/二/三级佣金比例）
+      CREATE TABLE IF NOT EXISTS shop_distribution_levels (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        level INTEGER DEFAULT 1,
+        rate1 REAL DEFAULT 0,
+        rate2 REAL DEFAULT 0,
+        rate3 REAL DEFAULT 0,
+        icon TEXT,
+        description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 分销商 / 推广员
+      CREATE TABLE IF NOT EXISTS shop_distribution_members (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        user_name TEXT,
+        invite_code TEXT NOT NULL UNIQUE,
+        parent_id TEXT,
+        level_id TEXT,
+        status TEXT DEFAULT 'approved',
+        total_commission REAL DEFAULT 0,
+        withdrawable REAL DEFAULT 0,
+        withdrawn REAL DEFAULT 0,
+        team_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 分销佣金订单
+      CREATE TABLE IF NOT EXISTS shop_distribution_orders (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        buyer_id TEXT,
+        distributor_id TEXT NOT NULL,
+        distribute_level INTEGER DEFAULT 1,
+        goods_money REAL DEFAULT 0,
+        commission REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        settled_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 分销提现
+      CREATE TABLE IF NOT EXISTS shop_distribution_withdraw (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT,
+        amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        account TEXT,
+        account_name TEXT,
+        remark TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 仓库
+      CREATE TABLE IF NOT EXISTS shop_warehouse (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        contact TEXT DEFAULT '',
+        remark TEXT DEFAULT '',
+        is_default INTEGER DEFAULT 0,
+        status INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 仓库商品库存
+      CREATE TABLE IF NOT EXISTS shop_warehouse_goods (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT NOT NULL,
+        goods_id TEXT NOT NULL,
+        sku_code TEXT DEFAULT '',
+        stock INTEGER DEFAULT 0,
+        freeze_stock INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(warehouse_id, goods_id)
+      );
+
+      -- 库存变动日志
+      CREATE TABLE IF NOT EXISTS shop_stock_logs (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT,
+        goods_id TEXT,
+        sku_code TEXT DEFAULT '',
+        type TEXT DEFAULT 'in',
+        num INTEGER DEFAULT 0,
+        after_stock INTEGER DEFAULT 0,
+        remark TEXT DEFAULT '',
+        operator TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 地区数据(省市区三级)
+      CREATE TABLE IF NOT EXISTS shop_region (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT DEFAULT '0',
+        level INTEGER DEFAULT 1,
+        code TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 支付方式配置
+      CREATE TABLE IF NOT EXISTS shop_pay_methods (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        is_open INTEGER DEFAULT 1,
+        config TEXT DEFAULT '{}',
+        sort_order INTEGER DEFAULT 0
+      );
+
+      -- 系统配置(键值)
+      CREATE TABLE IF NOT EXISTS shop_sys_config (
+        id TEXT PRIMARY KEY,
+        cfg_key TEXT UNIQUE NOT NULL,
+        cfg_value TEXT DEFAULT '',
+        remark TEXT DEFAULT '',
+        updated_at TEXT
+      );
+
+      -- 页面装修
+      CREATE TABLE IF NOT EXISTS shop_page_design (
+        id TEXT PRIMARY KEY,
+        page_key TEXT NOT NULL,
+        title TEXT,
+        blocks TEXT DEFAULT '[]',
+        status INTEGER DEFAULT 1,
+        updated_at TEXT
+      );
+
+      -- 友情链接
+      CREATE TABLE IF NOT EXISTS shop_links (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        logo_url TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商品参数
+      CREATE TABLE IF NOT EXISTS shop_goods_params (
+        id TEXT PRIMARY KEY,
+        category_id TEXT,
+        name TEXT NOT NULL,
+        value TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS文章评论
+      CREATE TABLE IF NOT EXISTS cms_comments (
+        id TEXT PRIMARY KEY,
+        article_id TEXT,
+        user_id TEXT,
+        user_name TEXT DEFAULT '匿名',
+        user_avatar TEXT,
+        content TEXT NOT NULL,
+        parent_id TEXT,
+        reply_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商品浏览历史
+      CREATE TABLE IF NOT EXISTS shop_history (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        goods_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 搜索历史
+      CREATE TABLE IF NOT EXISTS shop_search_history (
+                type TEXT DEFAULT "goods",
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        keyword TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 用户会话
+      CREATE TABLE IF NOT EXISTS shop_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        token TEXT,
+        expires_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商城用户
+      CREATE TABLE IF NOT EXISTS shop_users (
+                last_login TEXT,
+        updated_at TEXT,
+        points INTEGER DEFAULT 0,
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        phone TEXT,
+        email TEXT,
+        password TEXT,
+        avatar TEXT,
+        integral INTEGER DEFAULT 0,
+        balance REAL DEFAULT 0,
+        level TEXT DEFAULT 'normal',
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+
+      CREATE TABLE IF NOT EXISTS document_permissions (
+        id TEXT PRIMARY KEY, document_id TEXT, user_id TEXT, role_id TEXT,
+        perm_type TEXT DEFAULT 'read', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS folder_permissions (
+        id TEXT PRIMARY KEY, folder_id TEXT, user_id TEXT, role_id TEXT,
+        perm_type TEXT DEFAULT 'read', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS file_storage (
+        id TEXT PRIMARY KEY, file_name TEXT, file_path TEXT, file_size INTEGER,
+        mime_type TEXT, entity_type TEXT, entity_id TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS survey_options (
+        id TEXT PRIMARY KEY, question_id TEXT, option_text TEXT,
+        sort_order INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        id TEXT PRIMARY KEY, name TEXT, cron_expr TEXT, handler TEXT,
+        is_active INTEGER DEFAULT 1, last_run TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+
+      -- 商品评论（增强版）
+      CREATE TABLE IF NOT EXISTS shop_goods_comments (
+        id TEXT PRIMARY KEY,
+        goods_id TEXT NOT NULL,
+        order_id TEXT,
+        order_goods_id TEXT,
+        user_id TEXT NOT NULL,
+        user_name TEXT,
+        user_avatar TEXT,
+        rating INTEGER DEFAULT 5,
+        content TEXT,
+        images TEXT DEFAULT '[]',
+        videos TEXT DEFAULT '[]',
+        is_anonymous INTEGER DEFAULT 0,
+        reply_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        admin_reply TEXT,
+        admin_reply_time TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 商品评论回复
+      CREATE TABLE IF NOT EXISTS shop_comment_replies (
+        id TEXT PRIMARY KEY,
+        comment_id TEXT NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        content TEXT,
+        like_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- ============ CMS内容管理系统核心表 ============
+
+      -- 网站栏目（多级栏目树）
+      CREATE TABLE IF NOT EXISTS cms_channels (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        code TEXT UNIQUE,
+        type TEXT DEFAULT 'list',
+        content_model TEXT DEFAULT 'article',
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        image_url TEXT,
+        description TEXT,
+        seo_title TEXT,
+        seo_keywords TEXT,
+        seo_description TEXT,
+        template_list TEXT,
+        template_detail TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 内容模型
+      CREATE TABLE IF NOT EXISTS cms_content_models (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT UNIQUE,
+        fields TEXT DEFAULT '[]',
+        is_system INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 内容扩展字段
+      CREATE TABLE IF NOT EXISTS cms_content_fields (
+        id TEXT PRIMARY KEY,
+        model_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        field_key TEXT NOT NULL,
+        field_type TEXT DEFAULT 'text',
+        options TEXT DEFAULT '{}',
+        is_required INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 文章内容（增强版）
+      CREATE TABLE IF NOT EXISTS cms_articles (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        author TEXT,
+        source TEXT,
+        summary TEXT,
+        content TEXT,
+        image_url TEXT,
+        images TEXT DEFAULT '[]',
+        video_url TEXT,
+        attachments TEXT DEFAULT '[]',
+        tags TEXT DEFAULT '[]',
+        keywords TEXT,
+        view_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
+        comment_count INTEGER DEFAULT 0,
+        favorite_count INTEGER DEFAULT 0,
+        is_top INTEGER DEFAULT 0,
+        is_hot INTEGER DEFAULT 0,
+        is_recommend INTEGER DEFAULT 0,
+        is_bold INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        publish_time TEXT,
+        seo_title TEXT,
+        seo_keywords TEXT,
+        seo_description TEXT,
+        template TEXT,
+        created_by TEXT,
+        custom_fields TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 文章评论
+      CREATE TABLE IF NOT EXISTS cms_article_comments (
+        id TEXT PRIMARY KEY,
+        article_id TEXT NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        user_email TEXT,
+        content TEXT,
+        parent_id TEXT,
+        reply_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        ip TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 内容标签
+      CREATE TABLE IF NOT EXISTS cms_tags (
+                use_count INTEGER DEFAULT 0,
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        slug TEXT UNIQUE,
+        description TEXT,
+        article_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 内容-标签关联
+      CREATE TABLE IF NOT EXISTS cms_article_tags (
+        id TEXT PRIMARY KEY,
+        article_id TEXT NOT NULL,
+        tag_id TEXT NOT NULL,
+        UNIQUE(article_id, tag_id)
+      );
+
+      -- 内容分组（专题）
+      CREATE TABLE IF NOT EXISTS cms_content_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'topic',
+        description TEXT,
+        image_url TEXT,
+        article_ids TEXT DEFAULT '[]',
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 表单模板
+      CREATE TABLE IF NOT EXISTS cms_forms (
+                settings TEXT,
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        fields TEXT DEFAULT '[]',
+        success_message TEXT,
+        redirect_url TEXT,
+        is_active INTEGER DEFAULT 1,
+        submit_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 表单提交数据
+      CREATE TABLE IF NOT EXISTS cms_form_submissions (
+        id TEXT PRIMARY KEY,
+        form_id TEXT NOT NULL,
+        data TEXT DEFAULT '{}',
+        user_id TEXT,
+        user_name TEXT,
+        ip TEXT,
+        status TEXT DEFAULT 'new',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 留言板
+      CREATE TABLE IF NOT EXISTS cms_messages (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        content TEXT,
+        reply TEXT,
+        reply_time TEXT,
+        status TEXT DEFAULT 'pending',
+        ip TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 模板管理
+      CREATE TABLE IF NOT EXISTS cms_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT UNIQUE,
+        type TEXT DEFAULT 'page',
+        content TEXT,
+        is_system INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 网站配置
+      CREATE TABLE IF NOT EXISTS cms_site_config (
+        id TEXT PRIMARY KEY,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT,
+        type TEXT DEFAULT 'string',
+        config_group TEXT DEFAULT 'basic',
+        description TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS幻灯片
+      CREATE TABLE IF NOT EXISTS cms_slides (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        image_url TEXT,
+        link_url TEXT,
+        position TEXT DEFAULT 'home',
+        sort_order INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        start_time TEXT,
+        end_time TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS导航
+      CREATE TABLE IF NOT EXISTS cms_navigation (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT,
+        icon TEXT,
+        parent_id TEXT,
+        location TEXT DEFAULT 'header',
+        sort_order INTEGER DEFAULT 0,
+        is_show INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS表单字段
+      CREATE TABLE IF NOT EXISTS cms_form_fields (
+        id TEXT PRIMARY KEY,
+        form_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        label TEXT NOT NULL,
+        type TEXT DEFAULT 'text',
+        required INTEGER DEFAULT 0,
+        options TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS表单数据
+      CREATE TABLE IF NOT EXISTS cms_form_data (
+        id TEXT PRIMARY KEY,
+        form_id TEXT NOT NULL,
+        data TEXT,
+        ip TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS用户
+      CREATE TABLE IF NOT EXISTS cms_users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        email TEXT,
+        nickname TEXT,
+        avatar TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS用户会话
+      CREATE TABLE IF NOT EXISTS cms_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS链接
+      CREATE TABLE IF NOT EXISTS cms_links (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        logo TEXT,
+        type TEXT DEFAULT 'friend',
+        sort_order INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CMS配置
+      CREATE TABLE IF NOT EXISTS cms_config (
+        id TEXT PRIMARY KEY,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- ============ 索引 ============
+      CREATE INDEX IF NOT EXISTS idx_shop_category_parent ON shop_categories(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_category ON shop_goods(category_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_brand ON shop_goods(brand_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_status ON shop_goods(status);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_hot ON shop_goods(is_hot);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_new ON shop_goods(is_new);
+      CREATE INDEX IF NOT EXISTS idx_shop_goods_recommend ON shop_goods(is_recommend);
+      CREATE INDEX IF NOT EXISTS idx_shop_order_user ON shop_orders_v2(user_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_order_status ON shop_orders_v2(order_status);
+      CREATE INDEX IF NOT EXISTS idx_shop_order_pay_status ON shop_orders_v2(pay_status);
+      CREATE INDEX IF NOT EXISTS idx_shop_order_no ON shop_orders_v2(order_no);
+      CREATE INDEX IF NOT EXISTS idx_shop_comment_goods ON shop_goods_comments(goods_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_user_favorite ON shop_user_favorites(user_id);
+      CREATE INDEX IF NOT EXISTS idx_shop_integral_user ON shop_integral_log(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_channel_parent ON cms_channels(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_article_channel ON cms_articles(channel_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_article_status ON cms_articles(status);
+      CREATE INDEX IF NOT EXISTS idx_cms_article_publish ON cms_articles(publish_time);
+      CREATE INDEX IF NOT EXISTS idx_cms_comment_article ON cms_article_comments(article_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_tag_name ON cms_tags(name);
+      CREATE INDEX IF NOT EXISTS idx_cms_slides_position ON cms_slides(position);
+      CREATE INDEX IF NOT EXISTS idx_cms_slides_status ON cms_slides(status);
+      CREATE INDEX IF NOT EXISTS idx_cms_navigation_location ON cms_navigation(location);
+      CREATE INDEX IF NOT EXISTS idx_cms_navigation_parent ON cms_navigation(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_form_fields_form ON cms_form_fields(form_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_form_data_form ON cms_form_data(form_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_users_username ON cms_users(username);
+      CREATE INDEX IF NOT EXISTS idx_cms_sessions_token ON cms_sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_cms_sessions_user ON cms_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cms_links_type ON cms_links(type);
+      CREATE INDEX IF NOT EXISTS idx_cms_links_status ON cms_links(status);
+      CREATE INDEX IF NOT EXISTS idx_cms_config_key ON cms_config(key);
     `);
+  }
+
+  private migrateColumns() {
+    const addCol = (table: string, col: string, def: string) => {
+      try {
+        const info = this.db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+        if (!info.find((c) => c.name === col)) {
+          this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+        }
+      } catch (e) { /* ignore */ }
+    };
+    addCol('cms_articles', 'is_bold', 'INTEGER DEFAULT 0');
+    addCol('shop_goods', 'video_url', 'TEXT DEFAULT \'\'');
+    addCol('cms_articles', 'custom_fields', 'TEXT DEFAULT \'{}\'');
+    addCol('cms_articles', 'sensitive_hits', 'TEXT DEFAULT \'[]\'');
+    // 敏感词表
+    this.db.exec(`CREATE TABLE IF NOT EXISTS cms_sensitive_words (
+      id TEXT PRIMARY KEY, word TEXT UNIQUE, level INTEGER DEFAULT 1, created_at TEXT
+    )`);
+    // 文章附件
+    this.db.exec(`CREATE TABLE IF NOT EXISTS cms_article_attachments (
+      id TEXT PRIMARY KEY, article_id TEXT, file_name TEXT, file_path TEXT, file_size INTEGER, created_at TEXT
+    )`);
+    const swCount = (this.db.prepare('SELECT COUNT(*) AS c FROM cms_sensitive_words').get() as any).c;
+    if (swCount === 0) {
+      const demo = ['暴力', '色情', '赌博', '政治敏感词', '诈骗'];
+      const ins = this.db.prepare('INSERT OR IGNORE INTO cms_sensitive_words (id, word, level, created_at) VALUES (?, ?, 1, ?)');
+      demo.forEach((w, i) => ins.run('sw_' + (i + 1), w, new Date().toISOString()));
+    }
+    addCol('shop_goods', 'title_color', 'TEXT DEFAULT \'\'');
+    addCol('shop_goods', 'sub_title', 'TEXT DEFAULT \'\'');
+    addCol('shop_goods', 'gift_points', 'INTEGER DEFAULT 0');
+    addCol('shop_goods', 'usage_guide', 'TEXT DEFAULT \'\'');
+    addCol('shop_goods', 'mobile_content', 'TEXT DEFAULT \'\'');
+    // 商品单/多分类模式
+    addCol('shop_goods', 'category_mode', 'TEXT DEFAULT \'single\'');
+    addCol('shop_goods', 'category_ids', 'TEXT DEFAULT \'[]\'');
+    // 规格图片绑定（规格值 -> 图片URL 映射）
+    addCol('shop_goods', 'spec_images', 'TEXT DEFAULT \'[]\'');
+    // 商品扩展数据（自定义键值对）
+    addCol('shop_goods', 'extend_data', 'TEXT DEFAULT \'[]\'');
+    // 订单发货/物流字段（原 schema 缺失，导致发货写入报错）
+    addCol('shop_orders', 'tracking_no', 'TEXT DEFAULT \'\'');
+    addCol('shop_orders', 'tracking_company', 'TEXT DEFAULT \'\'');
+    // 售后退货退款扩展字段（库存回滚 + 退货物流 + 退款状态机）
+    addCol('shop_order_aftersale', 'return_tracking_no', 'TEXT DEFAULT \'\'');
+    addCol('shop_order_aftersale', 'return_tracking_company', 'TEXT DEFAULT \'\'');
+    addCol('shop_order_aftersale', 'return_shipped_at', 'TEXT');
+    addCol('shop_order_aftersale', 'received_at', 'TEXT');
+    addCol('shop_order_aftersale', 'refunded_at', 'TEXT');
+    addCol('shop_order_aftersale', 'refund_method', 'TEXT DEFAULT \'\'');
+    addCol('shop_order_aftersale', 'reviewer', 'TEXT DEFAULT \'\'');
+    addCol('shop_order_aftersale', 'reject_reason', 'TEXT DEFAULT \'\'');
+    addCol('shop_order_aftersale', 'updated_at', 'TEXT');
+  }
+
+  // 修正遗留外键：订单/评价明细的 product_id 原指向已弃用的 shop_products，
+  // 实际商城使用 shop_goods，导致下单/评价时外键校验失败。将其重定向到 shop_goods。
+  private migrateShopProductFks() {
+    const retarget = (table: string) => {
+      try {
+        const fks = this.db.prepare(`PRAGMA foreign_key_list(${table})`).all() as any[];
+        if (fks.some((f: any) => f.table === 'shop_products' && f.from === 'product_id')) {
+          const tmp = `_${table}_old`;
+          this.db.exec(`ALTER TABLE ${table} RENAME TO ${tmp}`);
+          const cols = (this.db.prepare(`PRAGMA table_info(${tmp})`).all() as any[]).map((c: any) => c.name).join(', ');
+          this.db.exec(`CREATE TABLE ${table} (
+            id TEXT PRIMARY KEY,
+            order_id TEXT REFERENCES shop_orders(id),
+            product_id TEXT REFERENCES shop_goods(id),
+            sku TEXT,
+            product_name TEXT,
+            quantity INTEGER DEFAULT 1,
+            price REAL,
+            amount REAL,
+            remark TEXT
+          )`);
+          this.db.exec(`INSERT INTO ${table} (${cols}) SELECT ${cols} FROM ${tmp}`);
+          this.db.exec(`DROP TABLE ${tmp}`);
+          console.log(`[Database] retargeted ${table}.product_id -> shop_goods`);
+        }
+      } catch (e) { console.error('migrateShopProductFks failed', e); }
+    };
+    retarget('shop_order_items');
+    try {
+      const fks = this.db.prepare(`PRAGMA foreign_key_list(shop_reviews)`).all() as any[];
+      if (fks.some((f: any) => f.table === 'shop_products' && f.from === 'product_id')) {
+        this.db.exec('ALTER TABLE shop_reviews RENAME TO _shop_reviews_old');
+        this.db.exec(`CREATE TABLE shop_reviews (
+          id TEXT PRIMARY KEY,
+          product_id TEXT REFERENCES shop_goods(id),
+          order_id TEXT,
+          user_id TEXT,
+          user_name TEXT,
+          rating INTEGER DEFAULT 5,
+          content TEXT,
+          images TEXT,
+          status TEXT DEFAULT 'pending',
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`);
+        this.db.exec('INSERT INTO shop_reviews SELECT * FROM _shop_reviews_old');
+        this.db.exec('DROP TABLE _shop_reviews_old');
+        console.log('[Database] retargeted shop_reviews.product_id -> shop_goods');
+      }
+    } catch (e) { console.error('migrateShopProductFks(reviews) failed', e); }
   }
 
   private seedDefaultData() {
     const empCount = this.db.prepare('SELECT COUNT(*) as c FROM employees').get() as { c: number };
     const permCount = this.db.prepare('SELECT COUNT(*) as c FROM permissions').get() as { c: number };
-    if (empCount.c > 0 && permCount.c > 0) return;
-    console.log('[Database] Seeding...');
+    const needSeedHRData = empCount.c === 0 || permCount.c === 0;
+
+    if (needSeedHRData) {
+      console.log('[Database] Seeding HR data...');
+    }
 
     const now = new Date().toISOString();
 
-    // Permissions
-    const perms = [
+    if (needSeedHRData) {
+      // Permissions
+      const perms = [
       { id: 'p_org', moduleName: '组织管理', moduleKey: 'organization', actions: JSON.stringify(['read', 'create', 'update', 'delete']) },
       { id: 'p_personnel', moduleName: '人事管理', moduleKey: 'personnel', actions: JSON.stringify(['read', 'create', 'update', 'delete']) },
       { id: 'p_attendance', moduleName: '考勤管理', moduleKey: 'attendance', actions: JSON.stringify(['read', 'create', 'update', 'delete']) },
@@ -1573,6 +3896,208 @@ export class DatabaseService {
       );
     }
 
+    } // end of needSeedHRData
+
+    // 产品基础档案默认数据
+    const sizeCount = this.db.prepare('SELECT COUNT(*) as c FROM sizes').get() as { c: number };
+    if (sizeCount.c === 0) {
+      console.log('[Database] Seeding product default data...');
+
+      // 默认颜色（如果为空）
+      const colorCount = this.db.prepare('SELECT COUNT(*) as c FROM colors').get() as { c: number };
+      if (colorCount.c === 0) {
+        const defaultColors = [
+          { id: 'color_1', name: '黑色', pantone_code: 'Black C', hex_color: '#000000', sort_order: 1 },
+          { id: 'color_2', name: '白色', pantone_code: 'White', hex_color: '#FFFFFF', sort_order: 2 },
+          { id: 'color_3', name: '红色', pantone_code: '18-1662 TCX', hex_color: '#DC2626', sort_order: 3 },
+          { id: 'color_4', name: '蓝色', pantone_code: '18-3949 TCX', hex_color: '#2563EB', sort_order: 4 },
+          { id: 'color_5', name: '灰色', pantone_code: '17-4402 TCX', hex_color: '#6B7280', sort_order: 5 },
+          { id: 'color_6', name: '棕色', pantone_code: '18-1148 TCX', hex_color: '#78350F', sort_order: 6 },
+          { id: 'color_7', name: '绿色', pantone_code: '17-5936 TCX', hex_color: '#16A34A', sort_order: 7 },
+          { id: 'color_8', name: '粉色', pantone_code: '13-1520 TCX', hex_color: '#EC4899', sort_order: 8 },
+          { id: 'color_9', name: '紫色', pantone_code: '18-3838 TCX', hex_color: '#7C3AED', sort_order: 9 },
+          { id: 'color_10', name: '橙色', pantone_code: '16-1359 TCX', hex_color: '#EA580C', sort_order: 10 },
+        ];
+        for (const c of defaultColors) {
+          this.db.prepare('INSERT INTO colors (id, name, pantone_code, custom_code, hex_color, image_url, sort_order, is_active, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
+            c.id, c.name, c.pantone_code, null, c.hex_color, null, c.sort_order, 1, now
+          );
+        }
+      }
+
+      // 默认尺码（鞋类）
+      const shoeSizes = [
+        { id: 'size_35', name: '35', category: 'shoe', sort_order: 1 },
+        { id: 'size_36', name: '36', category: 'shoe', sort_order: 2 },
+        { id: 'size_37', name: '37', category: 'shoe', sort_order: 3 },
+        { id: 'size_38', name: '38', category: 'shoe', sort_order: 4 },
+        { id: 'size_39', name: '39', category: 'shoe', sort_order: 5 },
+        { id: 'size_40', name: '40', category: 'shoe', sort_order: 6 },
+        { id: 'size_41', name: '41', category: 'shoe', sort_order: 7 },
+        { id: 'size_42', name: '42', category: 'shoe', sort_order: 8 },
+        { id: 'size_43', name: '43', category: 'shoe', sort_order: 9 },
+        { id: 'size_44', name: '44', category: 'shoe', sort_order: 10 },
+        { id: 'size_45', name: '45', category: 'shoe', sort_order: 11 },
+      ];
+      for (const s of shoeSizes) {
+        this.db.prepare('INSERT INTO sizes (id, name, category, sort_order, is_active, created_at) VALUES (?,?,?,?,?,?)').run(
+          s.id, s.name, s.category, s.sort_order, 1, now
+        );
+      }
+
+      // 默认尺码（服装）
+      const clothingSizes = [
+        { id: 'size_s', name: 'S', category: 'clothing', sort_order: 1 },
+        { id: 'size_m', name: 'M', category: 'clothing', sort_order: 2 },
+        { id: 'size_l', name: 'L', category: 'clothing', sort_order: 3 },
+        { id: 'size_xl', name: 'XL', category: 'clothing', sort_order: 4 },
+        { id: 'size_2xl', name: '2XL', category: 'clothing', sort_order: 5 },
+        { id: 'size_3xl', name: '3XL', category: 'clothing', sort_order: 6 },
+      ];
+      for (const s of clothingSizes) {
+        this.db.prepare('INSERT INTO sizes (id, name, category, sort_order, is_active, created_at) VALUES (?,?,?,?,?,?)').run(
+          s.id, s.name, s.category, s.sort_order, 1, now
+        );
+      }
+
+      // 默认尺码组
+      const sizeGroups = [
+        { id: 'sg_male', name: '男鞋尺码组', description: '男鞋标准尺码 39-45' },
+        { id: 'sg_female', name: '女鞋尺码组', description: '女鞋标准尺码 35-40' },
+        { id: 'sg_clothing', name: '服装尺码组', description: '服装标准尺码 S-3XL' },
+      ];
+      for (const g of sizeGroups) {
+        this.db.prepare('INSERT INTO size_groups (id, name, description, is_active, created_at) VALUES (?,?,?,?,?)').run(
+          g.id, g.name, g.description, 1, now
+        );
+      }
+
+      // 尺码组成员
+      const maleItems = [
+        { id: 'sgi_m_39', size_group_id: 'sg_male', size_id: 'size_39', sort_order: 1 },
+        { id: 'sgi_m_40', size_group_id: 'sg_male', size_id: 'size_40', sort_order: 2 },
+        { id: 'sgi_m_41', size_group_id: 'sg_male', size_id: 'size_41', sort_order: 3 },
+        { id: 'sgi_m_42', size_group_id: 'sg_male', size_id: 'size_42', sort_order: 4 },
+        { id: 'sgi_m_43', size_group_id: 'sg_male', size_id: 'size_43', sort_order: 5 },
+        { id: 'sgi_m_44', size_group_id: 'sg_male', size_id: 'size_44', sort_order: 6 },
+        { id: 'sgi_m_45', size_group_id: 'sg_male', size_id: 'size_45', sort_order: 7 },
+      ];
+      const femaleItems = [
+        { id: 'sgi_f_35', size_group_id: 'sg_female', size_id: 'size_35', sort_order: 1 },
+        { id: 'sgi_f_36', size_group_id: 'sg_female', size_id: 'size_36', sort_order: 2 },
+        { id: 'sgi_f_37', size_group_id: 'sg_female', size_id: 'size_37', sort_order: 3 },
+        { id: 'sgi_f_38', size_group_id: 'sg_female', size_id: 'size_38', sort_order: 4 },
+        { id: 'sgi_f_39', size_group_id: 'sg_female', size_id: 'size_39', sort_order: 5 },
+        { id: 'sgi_f_40', size_group_id: 'sg_female', size_id: 'size_40', sort_order: 6 },
+      ];
+      const clothingItems = [
+        { id: 'sgi_c_s', size_group_id: 'sg_clothing', size_id: 'size_s', sort_order: 1 },
+        { id: 'sgi_c_m', size_group_id: 'sg_clothing', size_id: 'size_m', sort_order: 2 },
+        { id: 'sgi_c_l', size_group_id: 'sg_clothing', size_id: 'size_l', sort_order: 3 },
+        { id: 'sgi_c_xl', size_group_id: 'sg_clothing', size_id: 'size_xl', sort_order: 4 },
+        { id: 'sgi_c_2xl', size_group_id: 'sg_clothing', size_id: 'size_2xl', sort_order: 5 },
+        { id: 'sgi_c_3xl', size_group_id: 'sg_clothing', size_id: 'size_3xl', sort_order: 6 },
+      ];
+      for (const item of [...maleItems, ...femaleItems, ...clothingItems]) {
+        this.db.prepare('INSERT INTO size_group_items (id, size_group_id, size_id, sort_order) VALUES (?,?,?,?)').run(
+          item.id, item.size_group_id, item.size_id, item.sort_order
+        );
+      }
+
+      // 默认品类
+      const categories = [
+        { id: 'cat_shoe', name: '鞋类', code: 'SHOE', type: 'shoe', sort_order: 1 },
+        { id: 'cat_shoe_run', name: '运动鞋', code: 'SHOE-RUN', type: 'shoe', parent_id: 'cat_shoe', sort_order: 1 },
+        { id: 'cat_shoe_casual', name: '休闲鞋', code: 'SHOE-CAS', type: 'shoe', parent_id: 'cat_shoe', sort_order: 2 },
+        { id: 'cat_shoe_leather', name: '皮鞋', code: 'SHOE-LEA', type: 'shoe', parent_id: 'cat_shoe', sort_order: 3 },
+        { id: 'cat_clothing', name: '服装', code: 'CLOTH', type: 'clothing', sort_order: 2 },
+        { id: 'cat_clothing_tshirt', name: 'T恤', code: 'CLOTH-TS', type: 'clothing', parent_id: 'cat_clothing', sort_order: 1 },
+        { id: 'cat_clothing_jacket', name: '外套', code: 'CLOTH-JK', type: 'clothing', parent_id: 'cat_clothing', sort_order: 2 },
+        { id: 'cat_accessory', name: '配件', code: 'ACC', type: 'accessory', sort_order: 3 },
+      ];
+      for (const c of categories) {
+        this.db.prepare('INSERT INTO product_categories (id, name, code, parent_id, type, sort_order, is_active, created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+          c.id, c.name, c.code, c.parent_id || null, c.type, c.sort_order, 1, now
+        );
+      }
+
+      // 默认编码规则
+      const codingRules = [
+        { id: 'rule_sku', name: 'SKU标准编码', target_type: 'sku', expression: '${prefix}${year}${sequence}', prefix: 'FD', sequence_digits: 6, current_sequence: 0 },
+        { id: 'rule_style', name: '款号编码', target_type: 'style', expression: '${categ.code}${year}${sequence}', prefix: '', sequence_digits: 4, current_sequence: 0 },
+      ];
+      for (const r of codingRules) {
+        this.db.prepare('INSERT INTO coding_rules (id, name, target_type, category_id, expression, prefix, sequence_digits, current_sequence, is_active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(
+          r.id, r.name, r.target_type, null, r.expression, r.prefix, r.sequence_digits, r.current_sequence, 1, now
+        );
+      }
+
+      // 默认箱型
+      const boxTypes = [
+        { id: 'box_10', name: '10双装标准箱', qty_per_box: 10, gross_weight: 2.5, length: 40, width: 30, height: 20 },
+        { id: 'box_12', name: '12双装大箱', qty_per_box: 12, gross_weight: 3.0, length: 45, width: 35, height: 25 },
+      ];
+      for (const b of boxTypes) {
+        this.db.prepare('INSERT INTO box_types (id, name, qty_per_box, gross_weight, length, width, height, is_active, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
+          b.id, b.name, b.qty_per_box, b.gross_weight, b.length, b.width, b.height, 1, now
+        );
+      }
+    }
+
+    // Seed AI model configs if empty
+    const modelCount = this.db.prepare('SELECT COUNT(*) as c FROM ai_model_configs').get() as { c: number };
+    if (modelCount.c === 0) {
+      const defaultModels = [
+        { id: 'model_deepseek', name: 'DeepSeek', base_url: 'https://api.deepseek.com', api_key: '', model: 'deepseek-chat', is_active: 1, provider_type: 'openai' },
+        { id: 'model_openai', name: 'OpenAI', base_url: 'https://api.openai.com', api_key: '', model: 'gpt-4o-mini', is_active: 1, provider_type: 'openai' },
+        { id: 'model_ollama', name: 'Ollama Local', base_url: 'http://localhost:11434', api_key: '', model: 'deepseek-r1:8b', is_active: 0, provider_type: 'ollama' },
+      ];
+      const insertModel = this.db.prepare('INSERT INTO ai_model_configs (id, name, base_url, api_key, model, is_active, provider_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      for (const m of defaultModels) insertModel.run(m.id, m.name, m.base_url, m.api_key, m.model, m.is_active, m.provider_type);
+    }
+
+    // Seed meal menus if empty
+    const menuCount = this.db.prepare('SELECT COUNT(*) as c FROM meal_menus').get() as { c: number };
+    if (menuCount.c === 0) {
+      const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const menus = [
+        { id: 'mm_001', canteenId: '', date: today, mealType: 'lunch', name: '周一午餐', dishes: JSON.stringify(['宫保鸡丁 ¥12', '清炒西兰花 ¥8', '番茄蛋汤 ¥5', '白米饭 ¥2']), status: 'published' },
+        { id: 'mm_002', canteenId: '', date: today, mealType: 'dinner', name: '周一晚餐', dishes: JSON.stringify(['红烧肉 ¥15', '蒜蓉菜心 ¥8', '紫菜蛋花汤 ¥5', '白米饭 ¥2']), status: 'published' },
+        { id: 'mm_003', canteenId: '', date: tomorrow, mealType: 'lunch', name: '周二午餐', dishes: JSON.stringify(['鱼香肉丝 ¥12', '酸辣土豆丝 ¥8', '冬瓜排骨汤 ¥10', '白米饭 ¥2']), status: 'draft' },
+      ];
+      const insertMenu = this.db.prepare('INSERT INTO meal_menus (id, canteenId, date, mealType, name, dishes, price, status) VALUES (?, ?, ?, ?, ?, ?, 0, ?)');
+      for (const m of menus) insertMenu.run(m.id, m.canteenId, m.date, m.mealType, m.name, m.dishes, m.status);
+    }
+
+    // Seed AI knowledge base system
+    const kbBaseCount = this.db.prepare('SELECT COUNT(*) as c FROM ai_knowledge_bases').get() as { c: number };
+    if (kbBaseCount.c === 0) {
+      // Create default knowledge base
+      this.db.prepare('INSERT INTO ai_knowledge_bases (id, name, description, is_default) VALUES (?, ?, ?, ?)')
+        .run('default', 'HR知识库', 'HR管理系统预置知识库', 1);
+
+      // Migrate existing knowledge items to default KB (set kb_id)
+      this.db.prepare("UPDATE ai_knowledge SET kb_id='default' WHERE kb_id IS NULL OR kb_id=''").run();
+
+      // Insert default knowledge items if table is empty
+      const kbCount = this.db.prepare('SELECT COUNT(*) as c FROM ai_knowledge').get() as { c: number };
+      if (kbCount.c === 0) {
+        const knowledgeItems = [
+          { id: 'kb_default_01', title: '年假制度', category: 'attendance', content: '年假（带薪年休假）标准：\n1. 工作满1年不满10年：5天/年\n2. 工作满10年不满20年：10天/年\n3. 工作满20年及以上：15天/年\n\n年假可分段使用，当年未休完可延期至次年3月31日。', tags: '年假,休假,福利' },
+          { id: 'kb_default_02', title: '加班管理规定', category: 'attendance', content: '加班管理制度：\n1. 工作日加班：按基本工资的150%计算\n2. 休息日加班：按基本工资的200%计算\n3. 法定节假日加班：按基本工资的300%计算\n\n加班需提前申请并经主管审批，每月总加班时长不超过36小时。', tags: '加班,考勤,薪酬' },
+          { id: 'kb_default_03', title: '招聘面试流程', category: 'recruitment', content: '招聘面试标准流程：\n1. 简历筛选（HR初筛）\n2. 电话初试（15-30分钟）\n3. 技术/专业面试（部门主管，约60分钟）\n4. HR面试（素质评估，约30分钟）\n5. 背景调查\n6. 发放Offer\n\n整个流程应在10个工作日内完成。', tags: '招聘,面试,流程' },
+          { id: 'kb_default_04', title: '绩效考核制度', category: 'performance', content: '绩效考核周期与标准：\n1. 季度考核（每季度末进行）\n2. 年度考核（12月进行）\n\n评分等级：\n- S级（卓越）：绩效分≥95，占比≤10%\n- A级（优秀）：绩效分85-94，占比≤20%\n- B级（良好）：绩效分70-84，占比≤50%\n- C级（需改进）：绩效分60-69，占比≤15%\n- D级（不合格）：绩效分<60', tags: '绩效,考核,评估' },
+          { id: 'kb_default_05', title: '五险一金说明', category: 'salary', content: '五险一金缴纳说明：\n\n养老保险：公司16%，个人8%\n医疗保险：公司8%，个人2%\n失业保险：公司0.5%，个人0.5%\n工伤保险：公司0.2%-1.9%（按行业浮动），个人0%\n生育保险：公司0.8%，个人0%\n住房公积金：公司5%-12%，个人5%-12%\n\n缴纳基数按上年度月平均工资确定。', tags: '社保,五险一金,薪酬' },
+        ];
+        const insertKb = this.db.prepare('INSERT INTO ai_knowledge (id, kb_id, title, category, content, tags) VALUES (?, ?, ?, ?, ?, ?)');
+        for (const item of knowledgeItems) {
+          insertKb.run(item.id, 'default', item.title, item.category, item.content, item.tags);
+        }
+      }
+    }
+
+    
     console.log('[Database] Seeding completed');
   }
 
@@ -1621,6 +4146,19 @@ export class DatabaseService {
   delete(table: string, id: string): boolean {
     const result = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     return result.changes > 0;
+  }
+
+  deleteById(table: string, id: string): boolean {
+    const result = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    return result.changes > 0;
+  }
+
+  deleteWhere(table: string, conditions: Record<string, any>): number {
+    const keys = Object.keys(conditions);
+    const whereClause = keys.map(k => `${k} = ?`).join(' AND ');
+    const values = Object.values(conditions);
+    const result = this.db.prepare(`DELETE FROM ${table} WHERE ${whereClause}`).run(...values);
+    return result.changes;
   }
 
   query(sql: string, params: any[] = []): any[] {
