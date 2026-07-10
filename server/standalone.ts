@@ -2082,6 +2082,55 @@ function apiRouter() {
     } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
   });
 
+  // ---- AI客服配置 ----
+  const csConfigPath = path.join(__dirname, '..', 'data', 'ai-cs-config.json');
+  const readCsConfig = () => { try { return JSON.parse(fs.readFileSync(csConfigPath, 'utf-8')); } catch { return { systemPrompt: '', kbIds: [], welcomeMsg: '您好！我是飞达AI智能客服 🤖\n有什么可以帮助您的？' }; } };
+  const writeCsConfig = (cfg: any) => { fs.mkdirSync(path.dirname(csConfigPath), { recursive: true }); fs.writeFileSync(csConfigPath, JSON.stringify(cfg, null, 2)); };
+
+  router.get('/ai/cs-config', (_req, res) => { res.json({ success: true, data: readCsConfig() }); });
+  router.put('/ai/cs-config', (req, res) => {
+    const cfg = { ...readCsConfig(), ...req.body };
+    writeCsConfig(cfg);
+    res.json({ success: true, data: cfg });
+  });
+
+  // ---- AI 问答对 (FAQ) ----
+  router.get('/ai/faqs', (req, res) => {
+    const rows = db.findAll('ai_faqs') || [];
+    res.json(Array.isArray(rows) ? rows : []);
+  });
+  router.post('/ai/faqs', (req, res) => {
+    const { question, answer, category, sort_order } = req.body;
+    if (!question || !answer) return res.status(400).json({ error: '问题和答案不能为空' });
+    db.insert('ai_faqs', { id: 'faq_' + Date.now(), question, answer, category: category || 'general', sort_order: sort_order || 0, created_at: new Date().toISOString() });
+    res.json({ success: true });
+  });
+  router.put('/ai/faqs/:id', (req, res) => {
+    db.update('ai_faqs', req.params.id, req.body);
+    res.json({ success: true });
+  });
+  router.delete('/ai/faqs/:id', (req, res) => {
+    db.deleteById('ai_faqs', req.params.id);
+    res.json({ success: true });
+  });
+  // 知识库搜索（用于客服检索上下文）
+  router.post('/ai/kb-search', (req, res) => {
+    const { query, kbIds, limit } = req.body;
+    if (!query) return res.json([]);
+    const l = limit || 5;
+    let sql = "SELECT id, kb_id, title, content, category FROM ai_knowledge WHERE 1=1";
+    const params: any[] = [];
+    if (kbIds && kbIds.length) { sql += " AND kb_id IN (" + kbIds.map(() => '?').join(',') + ")"; params.push(...kbIds); }
+    sql += " ORDER BY updated_at DESC LIMIT ?";
+    params.push(l * 2);
+    try {
+      const rows = db.query(sql, params);
+      const kw = query.toLowerCase();
+      const scored = rows.map((r: any) => ({ ...r, score: (r.title?.toLowerCase().includes(kw) ? 3 : 0) + (r.content?.toLowerCase().includes(kw) ? 2 : 0) })).filter((r: any) => r.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, l);
+      res.json(scored);
+    } catch { res.json([]); }
+  });
+
   // 知识库管理
   router.get('/ai/knowledge', (req, res) => {
     try {
