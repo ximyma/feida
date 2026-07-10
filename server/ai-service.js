@@ -477,24 +477,52 @@ async function runCodeAgent(messages, options = {}) {
   const isOllama = cfg.providerType === 'ollama';
   
   // Ollama 模型不支持标准 function calling，用 JSON 格式引导
-  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则】
-当需要读取文件、搜索代码、执行命令、查询数据库时，你的回复必须是纯 JSON 格式（一行，不要包含其他文字）：
+  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则 - 必须遵守】
+当用户要求查询数据、搜索代码、执行操作时，你必须回复纯 JSON 格式的工具调用（一行，不包含其他文字）：
 {"tool":"工具名","params":{"参数":"值"}}
-可用工具：
-- read_file: {"file_path":"路径"}
-- write_file: {"file_path":"路径", "content":"内容"}
-- patch: {"file_path":"路径", "old_string":"旧文本", "new_string":"新文本"}
-- grep: {"pattern":"搜索模式"}
-- glob: {"pattern":"文件模式"}
-- bash: {"command":"命令"}
-- sql_query: {"sql":"SQL语句", "confirm":true}
 
-【重要】当你不需要使用工具时（如打招呼、解释概念、总结结果），必须用纯中文自然语言回复，绝对不能使用 JSON 格式！` : '';
+示例 - 查所有表：
+{"tool":"sql_query","params":{"sql":"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name","confirm":true}}
+
+示例 - 查某表结构：
+{"tool":"sql_query","params":{"sql":"PRAGMA table_info(表名)","confirm":true}}
+
+示例 - 搜索代码：
+{"tool":"grep","params":{"pattern":"搜索关键词"}}
+
+可用工具：
+sql_query: {"sql":"SQL语句","confirm":true}
+grep: {"pattern":"搜索模式"}
+read_file: {"file_path":"路径"}
+glob: {"pattern":"文件模式"}
+bash: {"command":"命令"}
+write_file: {"file_path":"路径","content":"内容"}
+patch: {"file_path":"路径","old_string":"旧文本","new_string":"新文本"}
+
+⚠️ 工具调用必须用 JSON！不要给建议或解释后再加 JSON，直接输出 JSON！` : '';
   
   for (let i = 0; i < maxIterations; i++) {
-    const toolHint = `你是一个代码助手，可以读写项目文件、搜索代码、执行命令、查询数据库。
-可用工具：read_file(读文件), write_file(写文件), patch(修改文件), grep(搜索代码), glob(查找文件), bash(执行命令), sql_query(查询数据库)。
-当需要查看/修改代码或数据时，直接调用对应工具。执行后根据结果继续对话。` + ollamaToolGuide;
+    const toolHint = `你是一个可以执行实际操作的技术助手。你必须使用工具来获取真实数据，绝对不能编造或猜测。
+当前项目是飞达HR系统，使用 SQLite 数据库（文件 data/ehr.db）。
+
+当用户要求以下操作时，必须立即调用对应工具：
+- 查询数据、表结构 → 使用 sql_query 工具（例如查询所有表名：SELECT name FROM sqlite_master WHERE type='table'）
+- 搜索代码 → 使用 grep 工具
+- 查看文件 → 使用 read_file 工具
+- 查找文件 → 使用 glob 工具
+- 执行命令 → 使用 bash 工具
+- 修改文件 → 使用 write_file 或 patch 工具
+
+可用工具：
+- sql_query: 执行SQL（参数：sql, confirm:true。查询所有表名：sql="SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"）
+- grep: 搜索代码（参数：pattern）
+- read_file: 读取文件（参数：file_path）
+- glob: 查找文件（参数：pattern）
+- bash: 执行命令（参数：command）
+- write_file: 写文件（参数：file_path, content）
+- patch: 修改文件（参数：file_path, old_string, new_string）
+
+你必须使用工具获取真实结果，然后基于结果回答。禁止使用"你可以尝试执行...命令"这类猜测性回复。` + ollamaToolGuide;
     
     const reqBody = {
       model: cfg ? cfg.model : 'deepseek-chat',

@@ -257,6 +257,42 @@ export default function AIAssistantPage() {
     }
     // =========================
 
+    // 通用助手：检测是否需要工具（数据库查询/代码操作/文件操作），自动路由到代码助手后端
+    const needsTools = /数据库|表结构|SQL|查询.*表|建表|查.*数据|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|读.*文件|写.*文件|修改.*文件|npm|grep|bash|sql|SELECT|INSERT|UPDATE|DELETE/i.test(text);
+    if (needsTools) {
+      try {
+        setMessages(prev => [...prev, { id: 'a_loading', role: 'assistant', content: '🔄 正在使用工具执行操作...', timestamp: Date.now() }]);
+        const toolMessages = [
+          { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。当用户要求查询数据或操作代码时，你必须使用工具获取真实结果，不要猜测。可用工具：sql_query(查询数据库)、grep(搜索代码)、read_file(读文件)、glob(查找文件)、bash(执行命令)。` },
+          ...allMessages.map(m => ({ role: m.role, content: m.content })),
+        ];
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000);
+        const res = await fetch('/api/ai/code-agent/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: toolMessages, options: { maxIterations: 10, temperature: 0.3 } }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
+        if (data.success && data.data) {
+          const { content, steps } = data.data;
+          if (steps && steps.length > 0) {
+            steps.forEach((s: any) => setMessages(prev => [...prev, { id: 's_' + Date.now() + Math.random(), role: 'tool' as const, content: `🔧 执行工具: **${s.tool}**\n\n参数: \`${JSON.stringify(s.params)}\`\n\n结果: ${typeof s.result === 'string' ? s.result : '```\n' + JSON.stringify(s.result, null, 2).slice(0, 1500) + '\n```'}`, timestamp: Date.now() }]));
+          }
+          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: content || '无响应', timestamp: Date.now() }]);
+        } else {
+          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '操作失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
+        }
+      } catch (e: any) {
+        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
+        setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '网络异常：' + e.message, timestamp: Date.now() }]);
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
       const toolPrompt = buildToolSystemPrompt();
       const systemMsg = toolPrompt ? `你是飞达智能HR系统的AI助手。${toolPrompt}请用中文回答。` : undefined;
