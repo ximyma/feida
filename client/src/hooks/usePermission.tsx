@@ -104,8 +104,36 @@ export function computeSiteScope(roleIds: string[]): string[] {
 }
 
 export function usePermission() {
-  const [user, setUser] = useState<any>(null);
-  const [permissions, setPermissions] = useState<string[]>([]);
+  const [user, setUser] = useState<any>(() => {
+    // 同步初始化：避免首次渲染时 user=null 导致 can() 全部返回 false 而按钮闪烁消失
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) {
+        const d = JSON.parse(raw);
+        // 兼容 roleIds 为 JSON 字符串而非数组的情况
+        if (d.roleIds && typeof d.roleIds === 'string') {
+          try { d.roleIds = JSON.parse(d.roleIds); } catch { d.roleIds = []; }
+        }
+        if (!Array.isArray(d.roleIds)) d.roleIds = [];
+        return d;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+  const [permissions, setPermissions] = useState<string[]>(() => {
+    // 同步计算初始权限，确保首次渲染就有正确的权限集合
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) {
+        const d = JSON.parse(raw);
+        let roleIds = d.roleIds;
+        if (typeof roleIds === 'string') { try { roleIds = JSON.parse(roleIds); } catch { roleIds = []; } }
+        if (!Array.isArray(roleIds)) roleIds = [];
+        return computePermissions(roleIds);
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const [siteScope, setSiteScope] = useState<string[]>(['*']);
   const [loading, setLoading] = useState(true);
 
@@ -119,8 +147,10 @@ export function usePermission() {
       try {
         const userData = JSON.parse(userStr);
         setUser(userData);
-        const roleIds = userData.roleIds || [];
-        // 1) 本地即时计算
+        let roleIds = userData.roleIds;
+        if (typeof roleIds === 'string') { try { roleIds = JSON.parse(roleIds); } catch { roleIds = []; } }
+        if (!Array.isArray(roleIds)) roleIds = [];
+        // 1) 本地即时计算（可能已被 useState 初始值覆盖，此处做兜底）
         setPermissions(computePermissions(roleIds));
         setSiteScope(computeSiteScope(roleIds));
         // 2) 后端权威 resolve（失败则沿用本地）
