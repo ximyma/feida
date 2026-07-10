@@ -9,7 +9,7 @@ import {
   type EditorContentProps,
   type Extensions,
 } from '@tiptap/react';
-import { Slot } from 'radix-ui';
+import { Slot } from '@radix-ui/react-slot';
 
 import { LinkHoverToolbar } from '@/components/business-ui/tiptap-editor/components/link-hover-toolbar';
 import { CompleteKit } from '@/components/business-ui/tiptap-editor/extensions/complete-kit';

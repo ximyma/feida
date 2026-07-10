@@ -162,6 +162,23 @@ node test-i18n-expand.js      # i18n 词条 (#129)
 
 ---
 
+## 📥 预构建发布包（GitHub Releases）
+
+每次推送 `v*` 标签，GitHub Actions（[`.github/workflows/release.yml`](./.github/workflows/release.yml)）会自动构建并上传**开箱即用**的可运行程序包到 Release：
+
+| 平台 | 资产 | 使用 |
+|------|------|------|
+| Linux x64 | `feida-linux-x64.tar.gz` | `tar -xzf feida-linux-x64.tar.gz && cd feida-linux-x64 && ./start.sh` |
+| Windows x64 | `feida-win-x64.zip` | 解压后双击 `start.bat` |
+
+包内已含编译产物 `dist/`、生产依赖 `node_modules/`、`package.json`、启动脚本与 `LICENSE`。
+默认端口 `3000`（可用 `SERVER_PORT` 覆盖），首次启动自动建库并播种（`data/ehr.db`）。
+默认账户：`admin / admin123`、`hr_admin / hr123456`。
+
+> 手动触发：在仓库根目录执行 `git tag v1.0.1 && git push origin v1.0.1` 即可生成对应 Release。
+
+---
+
 ## 📝 版本说明
 
 ### v1.0.0 (2026-07-10) — 首个开源发布版本

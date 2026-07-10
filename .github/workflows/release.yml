@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: feida-linux-x64
+            pack_cmd: 'tar'
+          - os: windows-latest
+            artifact_name: feida-win-x64
+            pack_cmd: 'zip'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      # Install ALL declared dependencies. package.json now declares every
+      # runtime dependency (including antd, @ant-design/icons, axios, crypto-js,
+      # es-toolkit, iconv-lite, mysql2, nanoid, pg, radix-ui, sharp ...) so this
+      # is fully reproducible on a clean machine.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build server (tsc -> dist/server)
+        run: npm run build:server
+
+      - name: Build client (vite -> dist/client)
+        run: npm run build:client
+
+      # Drop devDependencies to shrink the runtime bundle (typescript/vite/etc.
+      # are no longer needed once the build is done).
+      - name: Prune dev dependencies
+        run: npm prune --omit=dev
+
+      - name: Prepare empty data directory
+        run: mkdir -p data
+
+      - name: Package (tar.gz, linux)
+        if: matrix.pack_cmd == 'tar'
+        run: tar -czf "${{ matrix.artifact_name }}.tar.gz" dist node_modules package.json LICENSE README.md start.sh start.bat data
+
+      - name: Package (zip, windows)
+        if: matrix.pack_cmd == 'zip'
+        shell: pwsh
+        run: Compress-Archive -Path dist, node_modules, package.json, LICENSE, README.md, start.sh, start.bat, data -DestinationPath "${{ matrix.artifact_name }}.zip"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Feida HR System ${{ github.ref_name }}
+          body: |
+            ## Feida 智能HR系统 ${{ github.ref_name }}
+
+            预构建的可运行程序包（含生产依赖，解压即用）。
+
+            ### 使用方式
+            - **Linux**: `tar -xzf feida-linux-x64.tar.gz && cd feida-linux-x64 && ./start.sh`
+            - **Windows**: 解压 `feida-win-x64.zip` 后双击 `start.bat`
+            - 默认端口 `3000`，可用环境变量 `SERVER_PORT` 覆盖。
+            - 首次启动自动建库并播种 (`data/ehr.db`)。
+
+            ### 默认账户
+            - 管理员 `admin / admin123`
+            - 人事 `hr_admin / hr123456`
+
+            详见 `README.md`。
+          files: |
+            ${{ matrix.artifact_name }}.${{ matrix.pack_cmd == 'tar' && 'tar.gz' || 'zip' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
