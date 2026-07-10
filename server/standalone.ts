@@ -172,7 +172,9 @@ function apiRouter() {
     // 工艺管理/PLM模块
     'material_attributes','materials','processes',
     'process_routes','process_route_items','components',
-    'boms','bom_items','scrap_rules','soles','season_materials'
+    'boms','bom_items','scrap_rules','soles','season_materials',
+    // 网站互动
+    'site_messages'
   ];
   
   // ============ 打卡功能 API ============

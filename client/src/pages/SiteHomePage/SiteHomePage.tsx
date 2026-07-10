@@ -67,6 +67,7 @@ export default function SiteHomePage() {
           <div style={{ display: 'flex', gap: 32 }}>
             <Link to="/site" style={{ color: '#1890ff', fontWeight: 'bold' }}>首页</Link>
             <Link to="/site/articles" style={{ color: '#fff' }}>文章</Link>
+            <Link to="/site/guestbook" style={{ color: '#fff' }}>留言板</Link>
             <Link to="/shop" style={{ color: '#fff' }}>商城</Link>
           </div>
         </div>

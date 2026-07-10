@@ -129,7 +129,9 @@ import CorrectiveActionsPage from './pages/QualityPage/CorrectiveActionsPage';
 import SiteHomePage from './pages/SiteHomePage/SiteHomePage';
 import ArticleListPageV2 from './pages/SiteHomePage/ArticleListPageV2';
 import ArticleDetailPageV2 from './pages/SiteHomePage/ArticleDetailPageV2';
+import GuestbookPage from './pages/SiteHomePage/GuestbookPage';
 import ShopHomePageV2 from './pages/ShopHomePage/ShopHomePageV2';
+import ShopContactPage from './pages/ShopHomePage/ShopContactPage';
 import ProductDetailPageV2 from './pages/ShopHomePage/ProductDetailPageV2';
 import CartPage from './pages/ShopHomePage/CartPage';
 import ShopUserCenter from './pages/ShopHomePage/ShopUserCenter';
@@ -161,9 +163,11 @@ export default function App() {
       <Route path="/site" element={<SiteHomePage />} />
       <Route path="/site/articles" element={<ErrorBoundary fallbackName="网站栏目-文章列表"><ArticleListPageV2 /></ErrorBoundary>} />
       <Route path="/site/article/:id" element={<ErrorBoundary fallbackName="文章详情"><ArticleDetailPageV2 /></ErrorBoundary>} />
+      <Route path="/site/guestbook" element={<ErrorBoundary fallbackName="留言板"><GuestbookPage /></ErrorBoundary>} />
 
       {/* 商城前台（无需登录）增强版 */}
       <Route path="/shop" element={<ShopHomePageV2 />} />
+      <Route path="/shop/contact" element={<ErrorBoundary fallbackName="咨询投诉"><ShopContactPage /></ErrorBoundary>} />
       <Route path="/shop/goods/:id" element={<ProductDetailPageV2 />} />
       <Route path="/shop/category/:id" element={<ShopHomePageV2 />} />
       <Route path="/shop/brand/:id" element={<ShopHomePageV2 />} />
