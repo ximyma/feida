@@ -4,7 +4,7 @@ import {
   Send, Bot, User, Sparkles, BarChart3, FileSearch, Languages, BookOpen,
   Trash2, Copy, RefreshCw, Settings, Plus, MessageSquare, ChevronLeft,
   ChevronRight, MoreHorizontal, Edit, Brain, Wrench, Zap, Terminal,
-  FileText, Calculator, Search, Globe,
+  FileText, Calculator, Search, Globe, Code, Database, FolderOpen,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -31,6 +31,15 @@ const QUICK_ACTIONS = [
   { label: '培训规划', icon: Sparkles, prompt: '请帮我设计一个为期3个月的新员工入职培训计划。' },
 ];
 
+const CODE_QUICK_ACTIONS = [
+  { label: '查看表结构', icon: Database, prompt: '帮我查看数据库中所有表的名称和结构。' },
+  { label: '搜索代码', icon: Search, prompt: '帮我搜索项目中所有与"权限"或"Permission"相关的代码。' },
+  { label: '查看路由', icon: FolderOpen, prompt: '帮我列出 server/standalone.ts 中所有注册的 API 路由。' },
+  { label: '修改文件', icon: Code, prompt: '帮我创建一个新的前端页面：一个简单的数据统计仪表盘。' },
+  { label: '数据库查询', icon: Database, prompt: '帮我查询当前系统有多少用户和角色。' },
+  { label: '运行构建', icon: Terminal, prompt: '帮我运行 npm run build:server 检查有无编译错误。' },
+];
+
 const AGENT_TOOLS = [
   { key: 'search_knowledge', label: '搜索知识库', icon: Search, desc: '检索HR知识库中的相关信息' },
   { key: 'analyze_data', label: '数据分析', icon: Calculator, desc: '分析HR数据并生成洞察' },
@@ -52,6 +61,7 @@ export default function AIAssistantPage() {
   const [modelList, setModelList] = useState<{id:string, name:string, model:string}[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [agentMode, setAgentMode] = useState<'general' | 'code'>('general');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -196,6 +206,29 @@ export default function AIAssistantPage() {
     }
 
     await saveMessage('user', text);
+
+    // ===== 代码助手模式 =====
+    if (agentMode === 'code') {
+      try {
+        const codeMessages = [
+          { role: 'system', content: `你是飞达项目的代码助手。项目路径: D:\\feida。你可以使用以下工具：read_file(读文件)、write_file(写文件)、patch(修改文件)、grep(搜索代码)、glob(查找文件)、bash(执行命令)、sql_query(查询数据库)。当用户要求修改代码、查询数据、执行操作时，直接调用工具。操作完成后用中文回复结果。` },
+          ...allMessages.map(m => ({ role: m.role, content: m.content })),
+        ];
+        const res = await fetch('/api/ai/code-agent/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: codeMessages, options: { maxIterations: 10, temperature: 0.3 } }),
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: data.data.content || '代码助手无响应', timestamp: Date.now() }]);
+        } else {
+          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '代码助手调用失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
+        }
+      } catch (e: any) { setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '网络异常：' + e.message, timestamp: Date.now() }]); }
+      setLoading(false);
+      return;
+    }
+    // =========================
 
     // 收集对话上下文
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
@@ -482,12 +515,26 @@ export default function AIAssistantPage() {
           <div ref={bottomRef} />
         </div>
 
+        {/* Agent 模式选择器 */}
+        <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#999' }}>模式：</span>
+          <Button size="small" type={agentMode === 'general' ? 'primary' : 'default'}
+            onClick={() => { setAgentMode('general'); setActiveTool(null); }}
+            icon={<Bot size={12} />}>通用助手</Button>
+          <Button size="small" type={agentMode === 'code' ? 'primary' : 'default'}
+            onClick={() => { setAgentMode('code'); setActiveTool(null); }}
+            icon={<Terminal size={12} />}>代码助手</Button>
+          {agentMode === 'code' && <Tag color="orange" style={{ marginLeft: 4, fontSize: 11 }}>可读写文件·执行命令·操作数据库</Tag>}
+        </div>
+
         {/* 快捷操作 */}
         {messages.length <= 1 && !loading && (
           <Card size="small" style={{ marginBottom: 8, flexShrink: 0 }}>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>试试这些：</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>
+              {agentMode === 'code' ? '代码助手快捷操作：' : '试试这些：'}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {QUICK_ACTIONS.map((action, idx) => (
+              {(agentMode === 'code' ? CODE_QUICK_ACTIONS : QUICK_ACTIONS).map((action, idx) => (
                 <Button key={idx} size="small" icon={<action.icon size={12} />} onClick={() => sendMessage(action.prompt)}>
                   {action.label}
                 </Button>
@@ -502,7 +549,7 @@ export default function AIAssistantPage() {
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeTool ? `【${AGENT_TOOLS.find(t => t.key === activeTool)?.label}模式】输入内容...` : '输入HR问题，Enter发送 / Shift+Enter换行...'}
+            placeholder={agentMode === 'code' ? '代码助手模式：输入指令，如"帮我查看表结构"或"搜索权限相关代码"...' : (activeTool ? `【${AGENT_TOOLS.find(t => t.key === activeTool)?.label}模式】输入内容...` : '输入HR问题，Enter发送 / Shift+Enter换行...')}
             autoSize={{ minRows: 2, maxRows: 4 }}
             disabled={loading}
             style={{ borderRadius: 8, fontSize: 14 }}

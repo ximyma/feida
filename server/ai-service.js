@@ -448,6 +448,131 @@ async function extractDocumentInfo(text, docType = 'general') {
 // ============================================================
 // 导出
 // ============================================================
+// 代码助手 Agent（可读写文件、执行命令、操作数据库）
+// ============================================================
+let codeAgentTools = null;
+function getCodeAgentTools() {
+  if (!codeAgentTools) {
+    try { codeAgentTools = require('./code-agent-tools.js'); } catch { /* not found */ }
+  }
+  return codeAgentTools;
+}
+
+async function runCodeAgent(messages, options = {}) {
+  const tools = getCodeAgentTools();
+  if (!tools) return { error: '代码助手工具集未加载' };
+  
+  const maxIterations = options.maxIterations || 10;
+  const allMessages = [...messages];
+  let finalContent = '';
+  
+  for (let i = 0; i < maxIterations; i++) {
+    const systemMsg = allMessages.find(m => m.role === 'system');
+    // 注入工具使用指导
+    const toolHint = `你是一个代码助手，可以读写项目文件、搜索代码、执行命令、查询数据库。
+可用工具：read_file(读文件), write_file(写文件), patch(修改文件), grep(搜索代码), glob(查找文件), bash(执行命令), sql_query(查询数据库)。
+当需要查看/修改代码或数据时，直接调用对应工具。执行后根据结果继续对话。`;
+    
+    const cfg = resolveModelConfig(options.model);
+    const reqBody = {
+      model: cfg ? cfg.model : 'deepseek-chat',
+      messages: [
+        ...allMessages.slice(0, 1),
+        { role: 'system', content: (allMessages[0]?.content || '') + '\n\n' + toolHint },
+        ...allMessages.slice(1)
+      ],
+      tools: tools.TOOL_DEFINITIONS,
+      tool_choice: 'auto',
+      max_tokens: options.maxTokens || 4096,
+      temperature: options.temperature !== undefined ? options.temperature : 0.3,
+    };
+    
+    const response = await chatCompletionDirect(reqBody, cfg);
+    if (!response || !response.choices || !response.choices.length) {
+      finalContent = 'AI 无响应';
+      break;
+    }
+    
+    const choice = response.choices[0];
+    const msg = choice.message;
+    
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      // 执行工具调用
+      allMessages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
+      
+      for (const tc of msg.tool_calls) {
+        const fnName = tc.function.name;
+        let fnParams = {};
+        try { fnParams = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
+        
+        const toolResult = tools.execute(fnName, fnParams);
+        
+        allMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(toolResult, null, 2).slice(0, 4000)
+        });
+      }
+      continue; // 继续循环让 LLM 处理工具结果
+    }
+    
+    finalContent = msg.content || '';
+    break;
+  }
+  
+  return { content: finalContent || '达到最大执行次数，请简化你的请求。', iterations: Math.min(maxIterations, allMessages.filter(m => m.role === 'tool').length) };
+}
+
+// 直接调用 LLM（不走 chatCompletion，因为需要传 tools）
+async function chatCompletionDirect(reqBody, cfg) {
+  return new Promise((resolve, reject) => {
+    const http = require('http');
+    const https = require('https');
+    
+    const url = new URL(cfg ? (cfg.base_url + '/chat/completions') : 'https://api.deepseek.com/chat/completions');
+    const isHttps = url.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    
+    const apiKey = cfg ? cfg.api_key : (process.env.DEEPSEEK_API_KEY || '');
+    
+    const postData = JSON.stringify(reqBody);
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+      },
+      timeout: 120000,
+    };
+    
+    const req = transport.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch { reject(new Error('JSON解析失败: ' + body.slice(0, 200))); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
+    req.write(postData);
+    req.end();
+  });
+}
+
+async function getCodeAgentToolsDefs() {
+  const tools = getCodeAgentTools();
+  return tools ? tools.TOOL_DEFINITIONS.slice(0, 7).map(t => ({
+    name: t.function.name,
+    description: t.function.description
+  })) : [];
+}
+
+// ============================================================
 
 module.exports = {
   setDb, getDb, listModelConfigs, getActiveModelConfig, getModelConfigById, resolveModelConfig,
@@ -460,4 +585,5 @@ module.exports = {
   createConversation, getConversation, listConversations, addMessage, deleteConversation,
   listAgentTools, executeAgentTool, runAgent,
   analyzeHRData, analyzeResume, translateText, extractDocumentInfo,
+  runCodeAgent, getCodeAgentToolsDefs,
 };

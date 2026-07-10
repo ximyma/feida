@@ -9,7 +9,7 @@
     "dev:server": "tsx watch server/standalone.ts",
     "dev:client": "vite --config vite.config.ts",
     "build": "npm run build:server && npm run build:client",
-    "build:server": "tsc -p tsconfig.server.json && node -e \"require('fs').cpSync('server/ai-service.js','dist/server/ai-service.js')\"",
+    "build:server": "tsc -p tsconfig.server.json && node -e \"require('fs').cpSync('server/ai-service.js','dist/server/ai-service.js'); require('fs').cpSync('server/code-agent-tools.js','dist/server/code-agent-tools.js')\"",
     "build:client": "vite build --config vite.config.ts",
     "start": "node dist/server/standalone.js",
     "type:check": "tsc --noEmit"

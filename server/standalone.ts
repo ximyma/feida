@@ -2427,6 +2427,26 @@ function apiRouter() {
     }
   });
 
+  // ============ 代码助手 Agent ============
+  router.get('/ai/code-agent/tools', async (_req, res) => {
+    const aiService = require('./ai-service.js');
+    try { res.json(await aiService.getCodeAgentToolsDefs()); } catch { res.json([]); }
+  });
+
+  router.post('/ai/code-agent/run', async (req, res) => {
+    try {
+      const { messages, options } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ success: false, error: '请提供有效的 messages 数组' });
+      }
+      const aiService = require('./ai-service.js');
+      const result = await aiService.runCodeAgent(messages, options || {});
+      res.json({ success: true, data: result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // ============ 原有 CRUD API ============
 
   // ===== 多语言 i18n 骨架（#107）=====（注册于 catch-all 之前，避免被 /:table 拦截）
