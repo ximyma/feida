@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Tree, Divider, Row, Col, InputNumber, Checkbox, Upload, Empty, Alert } from 'antd';
+import { Table, Card, Button, Tag, Modal, Form, Input, Select, Switch, message, Space, Popconfirm, Tabs, Divider, Row, Col, InputNumber, Checkbox, Upload, Empty } from 'antd';
 import { Plus, Edit, Delete, FolderOpen, FileText, MessageSquare, Settings, Sparkles, SpellCheck, Upload as UploadIcon } from 'lucide-react';
 import RichTextEditor from '../../components/RichTextEditor';
 import usePermission from '../../hooks/usePermission';
@@ -585,58 +585,27 @@ export default function CMSAdminPage() {
     <div className="cms-admin">
       <Tabs activeKey={activeTab} onChange={(key) => { setActiveTab(key); setSearchParams(key === 'channels' ? {} : { tab: key }); }}>
         <TabPane tab={<span><FolderOpen size={14} /> {t('栏目管理')}</span>} key="channels">
-          {can('cms:channel:manage') && (
-            <Alert
-              message="栏目操作指南"
-              description={<span>点击右上角 <Tag color="blue">添加栏目</Tag> 按钮创建栏目。创建后，右侧表格每行有 <Tag color="green">编辑</Tag> 和 <Tag color="red">删除</Tag> 按钮。拖拽表格行可排序。</span>}
-              type="info" showIcon closable style={{ marginBottom: 16 }}
-            />
-          )}
-          <Row gutter={16}>
-            <Col span={6}>
-              <Card
-                title={t('栏目结构')}
-                extra={can('cms:channel:manage') ? <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>{t('添加栏目')}</Button> : null}
-                style={{ minHeight: 400 }}
-              >
-                {channels.length > 0 ? (
-                  <Tree showLine defaultExpandAll onSelect={() => {}} treeData={channels.map(item => ({
-                    key: item.id,
-                    title: <span><FolderOpen size={14} style={{ marginRight: 8 }} />{item.name}{!item.is_show && <Tag style={{ marginLeft: 8, fontSize: 10 }}>隐藏</Tag>}</span>,
-                  }))} />
-                ) : (
-                  <Empty description="暂无栏目数据" style={{ marginTop: 40 }}>
-                    {can('cms:channel:manage') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>添加第一个栏目</Button>}
-                  </Empty>
-                )}
-              </Card>
-            </Col>
-            <Col span={18}>
-              <Card title="栏目列表">
-                <Table
-                  dataSource={channels} columns={channelColumns} rowKey="id" loading={loading} pagination={false}
-                  rowClassName={(r: any) => channelDragOver === r.id ? 'drag-over-row' : ''}
-                  onRow={(record: any) => ({
-                    draggable: true,
-                    onDragStart: () => setDragChannelId(record.id),
-                    onDragOver: (e) => { e.preventDefault(); setChannelDragOver(record.id); },
-                    onDrop: () => handleChannelDrop(record.id),
-                    onDragEnd: () => { setDragChannelId(''); setChannelDragOver(''); }
-                  })}
-                />
-              </Card>
-            </Col>
-          </Row>
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space>
+              {can('cms:channel:manage') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>添加栏目</Button>}
+            </Space>
+            <span style={{ color: '#999', fontSize: 12 }}>共 {channels.length} 个栏目 · 拖拽行可排序</span>
+          </div>
+          <Table
+            dataSource={channels} columns={channelColumns} rowKey="id" loading={loading} pagination={false}
+            rowClassName={(r: any) => channelDragOver === r.id ? 'drag-over-row' : ''}
+            onRow={(record: any) => ({
+              draggable: true,
+              onDragStart: () => setDragChannelId(record.id),
+              onDragOver: (e) => { e.preventDefault(); setChannelDragOver(record.id); },
+              onDrop: () => handleChannelDrop(record.id),
+              onDragEnd: () => { setDragChannelId(''); setChannelDragOver(''); }
+            })}
+            locale={{ emptyText: <Empty description="暂无栏目">{can('cms:channel:manage') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddChannel}>添加第一个栏目</Button>}</Empty> }}
+          />
         </TabPane>
 
         <TabPane tab={<span><FileText size={14} /> {t('文章管理')}</span>} key="articles">
-          {can('cms:article:create') && (
-            <Alert
-              message="文章操作指南"
-              description={<span>点击下方 <Tag color="blue">添加文章</Tag> 按钮写文章。表格每行有 <Tag color="green">编辑</Tag> · <Tag>移动</Tag> · <Tag>复制</Tag> · <Tag color="red">删除</Tag> 按钮。勾选多行后可批量替换、删除、导出。支持 <Tag>Word导入</Tag> 和 <Tag>导入JSON</Tag>。</span>}
-              type="info" showIcon closable style={{ marginBottom: 16 }}
-            />
-          )}
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col span={12}>
               {can('cms:article:create') && <Button type="primary" icon={<Plus size={14} />} onClick={handleAddArticle}>{t('添加文章')}</Button>}
