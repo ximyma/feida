@@ -157,6 +157,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <I18nProvider>
+    <ErrorBoundary fallbackName="应用页面">
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
@@ -361,6 +362,7 @@ export default function App() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </ErrorBoundary>
     </I18nProvider>
   );
 }
