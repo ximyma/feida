@@ -525,7 +525,6 @@ bash: {"command":"命令"}` : '';
     const reqBody = {
       model: cfg ? cfg.model : 'deepseek-chat',
       messages: [
-        ...allMessages.slice(0, 1),
         { role: 'system', content: (allMessages[0]?.content || '') + '\n\n' + toolHint },
         ...allMessages.slice(1)
       ],
@@ -585,16 +584,31 @@ bash: {"command":"命令"}` : '';
     }
     
     finalContent = msg.content || '';
-    // 后处理：如果回复是 JSON 格式但没有被解析为工具调用，提取可读内容
+    // 后处理：清理 JSON 格式回复
     if (isOllama && finalContent.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(finalContent.trim());
-        // 提取常见字段：result > answer > content > message > 原值
-        if (parsed.result) finalContent = parsed.result;
-        else if (parsed.answer) finalContent = parsed.answer;
-        else if (parsed.content) finalContent = parsed.content;
-        else if (parsed.message && typeof parsed.message === 'string') finalContent = parsed.message;
-        else if (parsed.error) finalContent = '错误：' + parsed.error;
+        // 如果是工具调用/结果的 JSON 回显（无实际文本内容），用工具结果替代
+        if ((parsed.type || parsed.params) && !parsed.tool && !parsed.result && !parsed.answer && !parsed.error) {
+          // 这是工具响应的 JSON 回显，用实际工具结果生成摘要
+          if (steps.length > 0) {
+            const lastStep = steps[steps.length - 1];
+            if (lastStep.result && lastStep.result.rowCount !== undefined) {
+              finalContent = `查询成功，共返回 ${lastStep.result.rowCount} 条结果。表名包括：${lastStep.result.rows?.slice(0,10).map((r:any)=>r.name||Object.values(r)[0]).join('、')}${lastStep.result.rows?.length > 10 ? ' 等...' : ''}`;
+            } else {
+              finalContent = `工具 ${lastStep.tool} 执行完成。`;
+            }
+          } else {
+            finalContent = '请用自然语言描述结果，不要输出 JSON 格式。';
+          }
+        } else {
+          // 提取可读字段：result > answer > content > message > 原值
+          if (parsed.result) finalContent = parsed.result;
+          else if (parsed.answer) finalContent = parsed.answer;
+          else if (parsed.content && typeof parsed.content === 'string') finalContent = parsed.content;
+          else if (parsed.message && typeof parsed.message === 'string') finalContent = parsed.message;
+          else if (parsed.error) finalContent = '错误：' + parsed.error;
+        }
       } catch { /* 保留原值 */ }
     }
     break;

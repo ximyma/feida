@@ -164,6 +164,10 @@ function execReadFile(params) {
   const stat = fs.statSync(fp);
   if (stat.isDirectory()) return { error: `${params.file_path} 是一个目录` };
   if (stat.size > MAX_FILE_SIZE) return { error: `文件过大 (${(stat.size/1024/1024).toFixed(1)}MB)，请用grep搜索` };
+  // 拒绝二进制文件（.db .exe .dll .bin .so .zip 等）
+  const ext = path.extname(fp).toLowerCase();
+  const binaryExts = ['.db','.db-shm','.db-wal','.exe','.dll','.bin','.so','.dylib','.zip','.7z','.gz','.jpg','.png','.gif','.ico','.woff','.ttf','.mp4','.mp3'];
+  if (binaryExts.includes(ext)) return { error: `${params.file_path} 是二进制文件（${ext}），无法直接读取。如需查询数据库请用 sql_query 工具。` };
   
   const content = fs.readFileSync(fp, 'utf-8');
   const lines = content.split('\n');
