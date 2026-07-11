@@ -2472,6 +2472,37 @@ function apiRouter() {
     }
   });
 
+  // ============ Agent 会话管理 API ============
+  router.get('/ai/sessions', (req, res) => {
+    try {
+      const AgentSystem = require('./agent/index');
+      const sessions = AgentSystem.listSessions();
+      res.json({ success: true, data: sessions });
+    } catch (e: any) {
+      res.json({ success: false, error: e.message });
+    }
+  });
+
+  router.delete('/ai/sessions/:id', (req, res) => {
+    try {
+      const AgentSystem = require('./agent/index');
+      AgentSystem.clearSession(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, error: e.message });
+    }
+  });
+
+  router.post('/ai/sessions/:id/title', (req, res) => {
+    try {
+      const AgentSystem = require('./agent/index');
+      AgentSystem.updateSessionTitle(req.params.id, req.body.title);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.json({ success: false, error: e.message });
+    }
+  });
+
   // ============ 原有 CRUD API ============
 
   // ===== 多语言 i18n 骨架（#107）=====（注册于 catch-all 之前，避免被 /:table 拦截）

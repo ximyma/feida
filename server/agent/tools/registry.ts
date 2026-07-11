@@ -12,6 +12,8 @@ import { SqlQueryTool } from './builtin/sql-query';
 import { WebSearchTool } from './builtin/web-search';
 import { WebFetchTool } from './builtin/web-fetch';
 import { SendFileTool } from './builtin/send-file';
+import { MemorySearchTool } from './builtin/memory-search';
+import { MemoryGetTool } from './builtin/memory-get';
 import { toolManager } from './tool-manager';
 
 export function registerAllTools(): void {
@@ -19,7 +21,8 @@ export function registerAllTools(): void {
     new ReadFileTool(), new WriteFileTool(), new PatchTool(),
     new BashTool(), new GrepTool(), new GlobTool(),
     new SqlQueryTool(), new WebSearchTool(), new WebFetchTool(),
-    new SendFileTool(),  // POST_PROCESS: Agent完成后自动发送文件
+    new SendFileTool(),
+    new MemorySearchTool(), new MemoryGetTool(),
   ]);
 }
 
