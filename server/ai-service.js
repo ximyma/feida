@@ -476,51 +476,20 @@ async function runCodeAgent(messages, options = {}) {
   const cfg = resolveModelConfig(options.model);
   const isOllama = cfg.providerType === 'ollama';
   
-  // Ollama 模型不支持标准 function calling，用 JSON 格式引导
-  const ollamaToolGuide = isOllama ? `\n\n【工具调用规则 - 必须遵守】
-用户要求查询数据、搜索代码、执行操作时，回复纯 JSON（不含其他文字）：
-{"tool":"工具名","params":{"参数":"值"}}
-
-【SQLite 正确语法】
-- 列出所有表：{"tool":"sql_query","params":{"sql":"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name","confirm":true}}
-- 查看表结构：{"tool":"sql_query","params":{"sql":"PRAGMA table_info('表名')","confirm":true}}
-- 查看表数据：{"tool":"sql_query","params":{"sql":"SELECT * FROM 表名 LIMIT 10","confirm":true}}
-- ⚠️ 不要用 SHOW TABLES / DESCRIBE / PRAGMA table_info(*) 这些错误语法！
-
-【错误重试】工具返回 error 时必须分析原因，换正确 SQL 重试！禁止放弃后给建议！
-
-其他工具：
-sql_query: {"sql":"SQL","confirm":true}
-grep: {"pattern":"搜索模式"}
-read_file: {"file_path":"路径"}
-glob: {"pattern":"文件模式"}
-bash: {"command":"命令"}` : '';
+  // Ollama 用标签格式嵌入工具调用（用户看到的是自然语言）
+  const ollamaToolGuide = isOllama ? `\n\n你可以调用以下工具。在自然语言回复中嵌入工具标签（标签对用户不可见）：
+[TOOL:sql_query]{"sql":"SELECT name FROM sqlite_master WHERE type='table'","confirm":true}[/TOOL]
+[TOOL:grep]{"pattern":"关键词"}[/TOOL]
+[TOOL:read_file]{"file_path":"路径"}[/TOOL]
+[TOOL:glob]{"pattern":"模式"}[/TOOL]
+[TOOL:bash]{"command":"命令"}[/TOOL]
+SQLite 提示：查表名用 SELECT name FROM sqlite_master，不要用 SHOW TABLES 或 PRAGMA table_info(*)。` : '';
   
   for (let i = 0; i < maxIterations; i++) {
-    const toolHint = `你是一个可以执行实际操作的技术助手。你必须使用工具获取真实数据，不能编造或猜测。
-当前项目是飞达HR系统，数据库是 SQLite（文件 data/ehr.db）。
-
-【SQLite 数据库操作 - 重要】
-- 列出所有表名：SELECT name FROM sqlite_master WHERE type='table' ORDER BY name
-- 查看表结构：PRAGMA table_info('表名')   注意：PRAGMA 需要单引号括表名
-- 查看表数据：SELECT * FROM 表名 LIMIT 10
-- sql_query 工具必须传 confirm:true
-- 不要用 SHOW TABLES 或 DESCRIBE（那是MySQL语法！）
-- 不要用 PRAGMA table_info(*)（PRAGMA不接受通配符！）
-
-【错误重试规则 - 极其重要】
-如果工具返回 SQL 语法错误，必须分析错误原因，换一种正确的 SQL 重试。
-例如"near \"(\": syntax error" → 说明 PRAGMA table_info(*) 语法错误 → 改用 "SELECT name FROM sqlite_master WHERE type='table'" 重试。
-禁止在失败后放弃并给建议！必须重试直到成功！
-
-可用工具：
-- sql_query: 执行SQL（sql, confirm:true）
-- grep: 搜索代码（pattern）
-- read_file: 读取文件（file_path）
-- glob: 查找文件（pattern）
-- bash: 执行命令（command）
-- write_file: 写文件（file_path, content）
-- patch: 修改文件（file_path, old_string, new_string）` + ollamaToolGuide;
+    const toolHint = `你是一个飞达HR系统的技术助手，数据库是 SQLite (data/ehr.db)。
+请用自然语言回答用户问题。需要查询数据、搜索代码、执行命令时，在自然语言中嵌入工具标签。
+SQLite: 查表名=SELECT name FROM sqlite_master WHERE type='table', 查结构=PRAGMA table_info('表名')
+如果工具返回错误，分析原因后用正确方法重试。` + ollamaToolGuide;
     
     const reqBody = {
       model: cfg ? cfg.model : 'deepseek-chat',
@@ -563,54 +532,33 @@ bash: {"command":"命令"}` : '';
       continue;
     }
     
-    // Ollama JSON 格式工具调用解析
+    // Ollama 标签格式工具调用解析: [TOOL:name]{"params"}[/TOOL]
     if (isOllama && msg.content) {
-      const content = msg.content.trim();
-      const jsonMatch = content.match(/^\{[\s\S]*\}$/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (parsed.tool && typeof parsed.tool === 'string') {
-            const fnName = parsed.tool;
-            const fnParams = parsed.params || {};
-            allMessages.push({ role: 'assistant', content: `调用工具: ${fnName}` });
-            const toolResult = tools.execute(fnName, fnParams);
-            steps.push({ tool: fnName, params: fnParams, result: toolResult });
-            allMessages.push({ role: 'user', content: `工具 ${fnName} 执行结果：\n${JSON.stringify(toolResult, null, 2).slice(0, 4000)}` });
-            continue;
-          }
-        } catch { /* 不是有效 JSON，当作普通回复 */ }
+      const content = msg.content;
+      const toolRegex = /\[TOOL:(\w+)\]([\s\S]*?)\[\/TOOL\]/g;
+      let match;
+      const toolCalls = [];
+      while ((match = toolRegex.exec(content)) !== null) {
+        const fnName = match[1];
+        let fnParams = {};
+        try { fnParams = JSON.parse(match[2].trim()); } catch { /* ignore */ }
+        toolCalls.push({ name: fnName, params: fnParams });
+      }
+      if (toolCalls.length > 0) {
+        // 移除标签，保留自然语言部分
+        const cleanContent = content.replace(/\[TOOL:\w+\][\s\S]*?\[\/TOOL\]/g, '').trim();
+        allMessages.push({ role: 'assistant', content: cleanContent || `执行 ${toolCalls.map(t=>t.name).join(', ')}` });
+        for (const tc of toolCalls) {
+          const toolResult = tools.execute(tc.name, tc.params);
+          steps.push({ tool: tc.name, params: tc.params, result: toolResult });
+          allMessages.push({ role: 'user', content: `工具 ${tc.name} 执行结果：\n${JSON.stringify(toolResult, null, 2).slice(0, 4000)}` });
+        }
+        continue;
       }
     }
     
-    finalContent = msg.content || '';
-    // 后处理：清理 JSON 格式回复
-    if (isOllama && finalContent.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(finalContent.trim());
-        // 如果是工具调用/结果的 JSON 回显（无实际文本内容），用工具结果替代
-        if ((parsed.type || parsed.params) && !parsed.tool && !parsed.result && !parsed.answer && !parsed.error) {
-          // 这是工具响应的 JSON 回显，用实际工具结果生成摘要
-          if (steps.length > 0) {
-            const lastStep = steps[steps.length - 1];
-            if (lastStep.result && lastStep.result.rowCount !== undefined) {
-              finalContent = `查询成功，共返回 ${lastStep.result.rowCount} 条结果。表名包括：${lastStep.result.rows?.slice(0,10).map((r:any)=>r.name||Object.values(r)[0]).join('、')}${lastStep.result.rows?.length > 10 ? ' 等...' : ''}`;
-            } else {
-              finalContent = `工具 ${lastStep.tool} 执行完成。`;
-            }
-          } else {
-            finalContent = '请用自然语言描述结果，不要输出 JSON 格式。';
-          }
-        } else {
-          // 提取可读字段：result > answer > content > message > 原值
-          if (parsed.result) finalContent = parsed.result;
-          else if (parsed.answer) finalContent = parsed.answer;
-          else if (parsed.content && typeof parsed.content === 'string') finalContent = parsed.content;
-          else if (parsed.message && typeof parsed.message === 'string') finalContent = parsed.message;
-          else if (parsed.error) finalContent = '错误：' + parsed.error;
-        }
-      } catch { /* 保留原值 */ }
-    }
+    // 移除标签后的纯文本作为最终回复
+    finalContent = (msg.content || '').replace(/\[TOOL:\w+\][\s\S]*?\[\/TOOL\]/g, '').trim();
     break;
   }
   
