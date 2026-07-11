@@ -5,7 +5,13 @@ import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import fs from 'fs';
 import path from 'path';
 
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+const PROJECT_ROOT = (() => {
+  let root = path.resolve(__dirname, '..', '..', '..', '..');
+  if (!fs.existsSync(path.join(root, 'package.json'))) {
+    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
+  }
+  return root;
+})();
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const BINARY_EXTS = ['.db','.db-shm','.db-wal','.exe','.dll','.bin','.so','.dylib','.zip','.7z','.gz','.jpg','.png','.gif','.ico','.woff','.ttf'];
 

@@ -76,15 +76,20 @@ export async function runAgentLoop(
         const tool = tools.find(t => t.name === fnName);
         const result = tool ? await tool.executeTool(fnParams) : { success: false, error: `未知工具: ${fnName}` };
         steps.push({ tool: fnName, params: fnParams, result });
-        onEvent?.({ type: 'tool_end', data: { tool: fnName, result } });
 
-        agent.addToolResult(tc.id, JSON.stringify(result));
+        const resultStr = JSON.stringify(result);
+        if (!result.success) {
+          agent.addToolResult(tc.id, `${resultStr}\n\n请分析错误原因，换一种正确的方法重试。不要放弃！`);
+        } else {
+          agent.addToolResult(tc.id, resultStr);
+        }
       }
       continue;
     }
 
     // --- Ollama 标签格式: [TOOL:name]{...}[/TOOL] ---
     if (isOllama && response.content) {
+      // 解析工具调用标签
       const toolRegex = /\[TOOL:(\w+)\]([\s\S]*?)\[\/TOOL\]/g;
       const toolCalls: Array<{ name: string; params: any }> = [];
       let match;
@@ -93,6 +98,7 @@ export async function runAgentLoop(
         try { params = JSON.parse(match[2].trim()); } catch { /* ignore */ }
         toolCalls.push({ name: match[1], params });
       }
+
       if (toolCalls.length > 0) {
         const cleanContent = response.content.replace(/\[TOOL:\w+\][\s\S]*?\[\/TOOL\]/g, '').trim();
         agent.addAssistantMessage(cleanContent || `执行 ${toolCalls.map(t => t.name).join(', ')}`);
@@ -101,13 +107,20 @@ export async function runAgentLoop(
           const tool = tools.find(t => t.name === tc.name);
           const result = tool ? await tool.executeTool(tc.params) : { success: false, error: `未知工具: ${tc.name}` };
           steps.push({ tool: tc.name, params: tc.params, result });
-          onEvent?.({ type: 'tool_end', data: { tool: tc.name, result } });
-          agent.addAssistantMessage('', undefined);
-          agent.addToolResult(`tag_${tc.name}_${Date.now()}`, JSON.stringify(result));
+
+          const resultStr = JSON.stringify(result);
+          if (!result.success) {
+            agent.addAssistantMessage(`执行 ${tc.name} 失败: ${result.error}`, undefined);
+            agent.addToolResult(`tag_${tc.name}`, `${resultStr}\n\n请分析错误原因，换一种正确的方法重试。不要放弃！`);
+          } else {
+            agent.addAssistantMessage(`执行 ${tc.name} 成功`, undefined);
+            agent.addToolResult(`tag_${tc.name}`, resultStr);
+          }
         }
-        continue;
+        continue; // ← 回到主循环，把工具结果反馈给 LLM
       }
-      // 清理标签后的纯文本回复
+
+      // 无工具标签 → 纯文本回复
       const clean = response.content.replace(/\[TOOL:\w+\][\s\S]*?\[\/TOOL\]/g, '').trim();
       onEvent?.({ type: 'done', data: { content: clean || '无响应' } });
       return { content: clean || '无响应', steps, iterations: steps.length };
@@ -120,15 +133,4 @@ export async function runAgentLoop(
 
   return { content: '达到最大执行次数，请简化你的请求。', steps, iterations: steps.length };
 }
-
-/** 简单工厂：创建 Agent + 执行循环 */
-export async function runAgent(
-  userMessage: string,
-  llmCaller: LLMCaller,
-  config: AgentConfig & LoopConfig,
-  onEvent?: (event: LoopEvent) => void,
-): Promise<AgentResult> {
-  const agent = new Agent(config);
-  agent.addUserMessage(userMessage);
-  return runAgentLoop(agent, llmCaller, config, onEvent);
-}
+// 简单工厂已移至 agent/index.ts 的 chat() 函数

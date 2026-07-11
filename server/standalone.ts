@@ -2444,7 +2444,7 @@ function apiRouter() {
       try {
         const AgentSystem = require('./agent/index');
         const aiService = require('./ai-service.js');
-        const cfg = aiService.resolveModelConfig(options?.model || {});
+        const cfg = aiService.resolveModelConfig({ modelId: options?.modelId || options?.model });
         const isOllama = cfg.providerType === 'ollama';
 
         const userMsg = messages[messages.length - 1];
@@ -2453,6 +2453,7 @@ function apiRouter() {
           {
             modelCfg: cfg,
             chatFn: aiService.chatCompletionDirect,
+            modelId: options?.modelId || options?.model,
             systemPrompt: messages[0]?.role === 'system' ? messages[0].content : undefined,
             useTags: isOllama,
             maxSteps: options?.maxIterations || 15,

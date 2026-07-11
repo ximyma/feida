@@ -4,7 +4,15 @@
 import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import path from 'path';
 
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+import fs from 'fs';
+
+const PROJECT_ROOT = (() => {
+  let root = path.resolve(__dirname, '..', '..', '..', '..');
+  if (!fs.existsSync(path.join(root, 'package.json'))) {
+    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
+  }
+  return root;
+})();
 const DB_PATH = path.join(PROJECT_ROOT, 'data', 'ehr.db');
 
 export class SqlQueryTool extends BaseTool {

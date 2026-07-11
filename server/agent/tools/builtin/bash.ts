@@ -4,8 +4,15 @@
 import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import { execSync } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+const PROJECT_ROOT = (() => {
+  let root = path.resolve(__dirname, '..', '..', '..', '..');
+  if (!fs.existsSync(path.join(root, 'package.json'))) {
+    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
+  }
+  return root;
+})();
 const BASH_TIMEOUT = 30000;
 const DANGEROUS = ['rm -rf', 'dd if=', 'shutdown', 'reboot', 'mkfs', ':(){:', '> /dev/sda'];
 

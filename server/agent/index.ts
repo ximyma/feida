@@ -110,7 +110,17 @@ export async function chat(
 
 SQLite 提示：查表名用 SELECT name FROM sqlite_master WHERE type='table' ORDER BY name；查结构用 PRAGMA table_info('表名')。不要用 SHOW TABLES/DESCRIBE。
 
-如果工具返回错误，分析原因后换一种方式重试，不要放弃！${options.useTags ? '\n使用 [TOOL:name]{"params"}[/TOOL] 标签格式调用工具。' : ''}${historyMessages ? `\n\n最近对话:\n${historyMessages}` : ''}`;
+如果工具返回错误，分析原因后换一种方式重试，不要放弃！${options.useTags ? `
+
+工具调用标签格式 (必须精确):
+[TOOL:sql_query]{"sql":"SELECT name FROM sqlite_master WHERE type='\''table'\''","confirm":true}[/TOOL]
+[TOOL:grep]{"pattern":"搜索词"}[/TOOL]
+[TOOL:read_file]{"file_path":"路径"}[/TOOL]
+[TOOL:glob]{"pattern":"*.ts"}[/TOOL]
+[TOOL:bash]{"command":"dir"}[/TOOL]
+[TOOL:web_search]{"query":"关键词"}[/TOOL]
+
+标签内必须是严格 JSON，每个标签一行，不要加额外文字。` : ''}${historyMessages ? `\n\n最近对话:\n${historyMessages}` : ''}`;
 
   const systemPrompt = options.systemPrompt || defaultPrompt + skillManager.buildSkillsPrompt();
 
