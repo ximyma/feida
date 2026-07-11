@@ -11,19 +11,15 @@ import { GlobTool } from './builtin/glob';
 import { SqlQueryTool } from './builtin/sql-query';
 import { WebSearchTool } from './builtin/web-search';
 import { WebFetchTool } from './builtin/web-fetch';
+import { SendFileTool } from './builtin/send-file';
 import { toolManager } from './tool-manager';
 
 export function registerAllTools(): void {
   toolManager.registerAll([
-    new ReadFileTool(),
-    new WriteFileTool(),
-    new PatchTool(),
-    new BashTool(),
-    new GrepTool(),
-    new GlobTool(),
-    new SqlQueryTool(),
-    new WebSearchTool(),
-    new WebFetchTool(),
+    new ReadFileTool(), new WriteFileTool(), new PatchTool(),
+    new BashTool(), new GrepTool(), new GlobTool(),
+    new SqlQueryTool(), new WebSearchTool(), new WebFetchTool(),
+    new SendFileTool(),  // POST_PROCESS: Agent完成后自动发送文件
   ]);
 }
 
