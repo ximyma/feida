@@ -39,7 +39,7 @@ export interface LoopConfig {
   cancelSignal?: AbortSignal; onProgress?: ProgressCallback;
 }
 export interface LoopEvent {
-  type: 'step' | 'tool_start' | 'tool_end' | 'progress' | 'text' | 'done' | 'error';
+  type: 'step' | 'tool_start' | 'tool_end' | 'progress' | 'text' | 'thinking' | 'done' | 'error';
   data?: any;
 }
 
@@ -73,6 +73,29 @@ function dropOrphanedToolResults(messages: any[]): any[] {
     if (m.role === 'tool' && m.tool_call_id && !knownIds.has(m.tool_call_id)) return false;
     return true;
   });
+}
+
+/** 过滤思考标签 (DeepSeek R1 / Ollama) */
+function filterThinkTags(text: string, channel: string = 'web'): string {
+  if (channel === 'web') {
+    // Web: 暴露 thinking 为独立事件
+    return text.replace(/<think>/g, '').replace(/<\/think>/g, '');
+  }
+  // 其他: 移除全部 think 内容
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+  text = text.replace(/<think>[\s\S]*$/, ''); // 未闭合标签
+  return text;
+}
+
+/** 提取 thinking 内容并发送事件 */
+function extractThinking(content: string, onEvent?: (e: LoopEvent) => void): string {
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+  let match;
+  while ((match = thinkRegex.exec(content)) !== null) {
+    const thinking = match[1].trim().slice(0, 2000);
+    if (thinking) onEvent?.({ type: 'thinking', data: { content: thinking } });
+  }
+  return content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
 // ── 工具结果裁剪 ──
@@ -133,14 +156,25 @@ export async function runAgentLoop(
 
         if (isOverflow && retries === 0) {
           onEvent?.({ type: 'progress', data: { message: '上下文超限，激进裁剪后重试' } });
-          messages = trimMessages(agent.messages, maxContextTurns / 2, i, true);
-          messages = messages.map((m: any) => {
-            if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > AGGRESSIVE_LIMIT) {
-              m.content = m.content.slice(0, AGGRESSIVE_LIMIT) + '\n[截断]';
-            }
-            return m;
+          // 同时裁剪 agent.messages (不只是本地拷贝)
+          const trimmed = agent.messages.filter((m: any) => {
+            // 保留系统消息 + 最后5轮
+            if (m.role === 'system') return true;
+            return false;
           });
-          retries++; continue;
+          let turns = 0; const keep: any[] = [];
+          for (let j = agent.messages.length - 1; j >= 0 && turns < maxContextTurns / 2; j--) {
+            const m = agent.messages[j];
+            if (m.role === 'user') { keep.unshift(m); turns++; }
+            else if (m.role === 'assistant' || m.role === 'tool') keep.unshift(m);
+          }
+          agent.messages = [...trimmed, ...keep];
+          messages = agent.messages.map((m: any) => {
+            if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > AGGRESSIVE_LIMIT) {
+              return { ...m, content: m.content.slice(0, AGGRESSIVE_LIMIT) + '\n[截断]' };
+            }
+            return { ...m };
+          });
         }
         if (isOverflow && retries >= 1) {
           agent.clearHistory();
@@ -158,6 +192,11 @@ export async function runAgentLoop(
       }
     }
     if (!response) return { content: 'LLM无响应', steps, iterations: steps.length };
+
+    // 过滤 think 标签 + 发送 thinking 事件
+    if (response.content) {
+      response.content = extractThinking(response.content, onEvent);
+    }
 
     // ── OpenAI tool_calls ──
     if (!isOllama && response.tool_calls?.length) {
