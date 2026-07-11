@@ -2503,6 +2503,88 @@ function apiRouter() {
     }
   });
 
+  // ── 代码助手 Agent SSE流式端点 ──
+  router.post('/ai/code-agent/stream', async (req, res) => {
+    // SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const send = (type: string, data: any) => {
+      try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+    };
+
+    try {
+      const { messages, options } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        send('error', { message: 'Invalid messages' });
+        res.end();
+        return;
+      }
+
+      const AgentSystem = require('./agent/index');
+      const aiService = require('./ai-service.js');
+      const cfg = aiService.resolveModelConfig({ modelId: options?.modelId || options?.model });
+      const isOllama = cfg.providerType === 'ollama';
+
+      const userMsg = messages[messages.length - 1];
+      const allMessages = [...messages];
+      if (options?.sessionId || options?.conversationId) {
+        try {
+          const history = AgentSystem.loadMessages(options.sessionId || options.conversationId, 10);
+          for (const h of history) {
+            if (!allMessages.find(m => m.content === h.content)) {
+              allMessages.splice(allMessages.length - 1, 0, h);
+            }
+          }
+        } catch {}
+      }
+
+      send('start', { model: cfg.model, sessionId: options?.sessionId });
+
+      // 流式执行 → 每步实时推事件
+      const result = await AgentSystem.chat(
+        userMsg?.content || '',
+        {
+          sessionId: options?.sessionId || options?.conversationId,
+          modelCfg: cfg,
+          chatFn: aiService.chatCompletionDirect,
+          modelId: options?.modelId || options?.model,
+          systemPrompt: messages[0]?.role === 'system' ? messages[0].content : undefined,
+          useTags: isOllama,
+          maxSteps: options?.maxIterations || 15,
+          temperature: options?.temperature ?? 0.3,
+        },
+        (event: any) => {
+          // 把每个 agent 事件转 SSE 推送给前端
+          if (event.type === 'step') {
+            send('step', { iteration: event.data?.iteration, message: `第 ${event.data?.iteration} 轮思考` });
+          } else if (event.type === 'tool_start') {
+            send('tool_start', { tool: event.data?.tool, params: event.data?.params });
+          } else if (event.type === 'tool_end') {
+            send('tool_end', { tool: event.data?.tool, result: event.data?.result });
+          } else if (event.type === 'progress') {
+            send('progress', event.data?.message || event.data);
+          } else if (event.type === 'thinking') {
+            send('thinking', event.data);
+          } else if (event.type === 'done') {
+            // done事件暂时不发，等最终汇总
+          }
+        }
+      );
+
+      // 汇总结果 + 工具步骤
+      send('done', { content: result.content, steps: result.steps, sessionId: result.sessionId });
+      res.end();
+    } catch (e: any) {
+      send('error', { message: e.message || 'Agent执行失败' });
+      res.end();
+    }
+  });
+
   // 保留旧的 /ai/sessions 端点兼容性
   router.get('/ai/sessions', (req, res) => {
     try {

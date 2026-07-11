@@ -185,6 +185,54 @@ export default function AIAssistantPage() {
     return toolMap[activeTool] || '';
   };
 
+  // SSE流式Agent调用 - 实时显示工具执行和思考过程
+  const agentStream = async (messages: Array<{role:string,content:string}>, sessionId: string | null) => {
+    const placeholderId = 'stream_' + Date.now();
+    setMessages(prev => [...prev, { id: placeholderId, role: 'assistant', content: '🔍 正在思考...', timestamp: Date.now() }]);
+
+    try {
+      const resp = await fetch('/api/ai/code-agent/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, options: { sessionId, maxIterations: 10, temperature: 0.3, modelId: selectedModelId } }),
+      });
+
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '', finalContent = '', statusText = '🔍 正在思考...';
+      const toolSteps: Array<{id:string,tool:string,params:any,status:string,result:string}> = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+        for (const block of events) {
+          const lines = block.split('\n');
+          let eventType = '', eventData = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+            else if (line.startsWith('data: ')) eventData = line.slice(6).trim();
+          }
+          if (!eventType || !eventData) continue;
+          try {
+            const d = JSON.parse(eventData);
+            if (eventType === 'start') statusText = '🤔 分析请求中...';
+            else if (eventType === 'step') statusText = `🔄 第${d.iteration}轮思考...`;
+            else if (eventType === 'tool_start') { toolSteps.push({ id: 't_'+Date.now(), tool: d.tool, params: d.params, status: 'running', result: '' }); statusText = `🔧 执行: ${d.tool}`; }
+            else if (eventType === 'tool_end') { const last = toolSteps[toolSteps.length-1]; if(last){last.status='done';last.result=JSON.stringify(d.result).slice(0,600);} statusText = '📊 分析结果...'; }
+            else if (eventType === 'thinking') statusText = `💭 ${(d.content||'').slice(0,80)}`;
+            else if (eventType === 'progress') statusText = typeof d==='string'?d:(d.message||d);
+            else if (eventType === 'done') { finalContent = d.content || ''; statusText = ''; }
+            else if (eventType === 'error') { finalContent = '❌ '+(d.message||''); statusText = ''; }
+            setMessages(prev => { const idx=prev.findIndex(m=>m.id===placeholderId); if(idx<0)return prev; const copy=[...prev]; copy[idx]={...prev[idx],content:statusText||finalContent||'...'}; return copy; });
+          } catch {}
+        }
+      }
+      setMessages(prev => { const idx=prev.findIndex(m=>m.id===placeholderId); if(idx<0)return prev; const result:any[]=[]; for(const ts of toolSteps){result.push({id:ts.id,role:'tool',content:`🔧 执行: **${ts.tool}**\n参数: \`${JSON.stringify(ts.params)}\`\n${ts.result?'结果:\n```\n'+ts.result.slice(0,800)+'\n```':''}`,timestamp:Date.now()});} result.push({id:'a_'+Date.now(),role:'assistant',content:finalContent||'🤔 无响应',timestamp:Date.now()}); const copy=[...prev]; copy.splice(idx,1,...result); return copy; });
+    } catch (e: any) { setMessages(prev => prev.filter(m=>m.id!==placeholderId)); setMessages(prev => [...prev,{id:'a_'+Date.now(),role:'assistant',content:e.name==='AbortError'?'⏰ 请求超时':'❌ '+e.message,timestamp:Date.now()}]); }
+  };
+
   const sendMessage = useCallback(async (content?: string) => {
     const text = content || inputValue.trim();
     if (!text || loading) return;
@@ -212,85 +260,25 @@ export default function AIAssistantPage() {
     // 收集对话上下文（必须在代码助手模式之前声明，避免 TDZ 错误）
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
 
-    // ===== 代码助手模式 =====
+    // ===== 代码助手模式 / 工具模式 → SSE流式执行 =====
     if (agentMode === 'code') {
-      try {
-        // 显示加载提示
-        setMessages(prev => [...prev, { id: 'a_loading', role: 'assistant', content: '🔄 代码助手正在工作中...\n如果是本地 Ollama 模型，首次加载可能需要 3-5 分钟，请耐心等待。', timestamp: Date.now() }]);
-        const codeMessages = [
-          { role: 'system', content: `你是飞达项目的代码助手。项目路径: D:\\feida。你可以使用以下工具：read_file(读文件)、write_file(写文件)、patch(修改文件)、grep(搜索代码)、glob(查找文件)、bash(执行命令)、sql_query(查询数据库)。当用户要求修改代码、查询数据、执行操作时，直接调用工具。操作完成后用中文回复结果。` },
-          ...allMessages.map(m => ({ role: m.role, content: m.content })),
-        ];
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时（ollama 首次加载慢）
-        const res = await fetch('/api/ai/code-agent/run', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: codeMessages, options: { sessionId: activeConversationId, maxIterations: 10, temperature: 0.3 } }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-        // 移除加载提示
-        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
-        if (data.success && data.data) {
-          const { content, steps } = data.data;
-          // 显示工具执行过程
-          if (steps && steps.length > 0) {
-            steps.forEach((s: any) => {
-              setMessages(prev => [...prev, {
-                id: 's_' + Date.now() + Math.random(),
-                role: 'tool' as const,
-                content: `🔧 执行工具: **${s.tool}**\n\n参数: \`${JSON.stringify(s.params)}\`\n\n结果: ${typeof s.result === 'string' ? s.result : '```\n' + JSON.stringify(s.result, null, 2).slice(0, 1500) + '\n```'}`,
-                timestamp: Date.now()
-              }]);
-            });
-          }
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: content || '代码助手无响应', timestamp: Date.now() }]);
-        } else {
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '代码助手调用失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
-        }
-      } catch (e: any) {
-        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
-        const errMsg = e.name === 'AbortError' ? '请求超时（10分钟）。本地 Ollama 模型加载可能过长，请确认模型已加载后重试。' : ('网络异常：' + e.message);
-        setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: errMsg, timestamp: Date.now() }]);
-      }
+      const codeMessages = [
+        { role: 'system', content: `你是飞达项目的代码助手。可用工具: read_file/write_file/patch/grep/glob/bash/sql_query。直接调用工具获取真实数据，操作完成后用中文回复结果。` },
+        ...allMessages.map(m => ({ role: m.role, content: m.content })),
+      ];
+      await agentStream(codeMessages, activeConversationId);
       setLoading(false);
       return;
     }
-    // =========================
-
-    // 通用助手：检测是否需要工具（数据库查询/代码操作/文件操作），自动路由到代码助手后端
-    const needsTools = /数据库|表结构|SQL|查询.*表|建表|查.*数据|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|读.*文件|写.*文件|修改.*文件|npm|grep|bash|sql|SELECT|INSERT|UPDATE|DELETE/i.test(text);
+    
+    // 检测是否需要工具 → 自动流式Agent
+    const needsTools = /数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text);
     if (needsTools) {
-      try {
-        setMessages(prev => [...prev, { id: 'a_loading', role: 'assistant', content: '🔄 正在使用工具执行操作...', timestamp: Date.now() }]);
-        const toolMessages = [
-          { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。当用户要求查询数据或操作代码时，你必须使用工具获取真实结果，不要猜测。可用工具：sql_query(查询数据库)、grep(搜索代码)、read_file(读文件)、glob(查找文件)、bash(执行命令)。` },
-          ...allMessages.map(m => ({ role: m.role, content: m.content })),
-        ];
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000);
-        const res = await fetch('/api/ai/code-agent/run', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: toolMessages, options: { sessionId: activeConversationId, maxIterations: 10, temperature: 0.3 } }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
-        if (data.success && data.data) {
-          const { content, steps } = data.data;
-          if (steps && steps.length > 0) {
-            steps.forEach((s: any) => setMessages(prev => [...prev, { id: 's_' + Date.now() + Math.random(), role: 'tool' as const, content: `🔧 执行工具: **${s.tool}**\n\n参数: \`${JSON.stringify(s.params)}\`\n\n结果: ${typeof s.result === 'string' ? s.result : '```\n' + JSON.stringify(s.result, null, 2).slice(0, 1500) + '\n```'}`, timestamp: Date.now() }]));
-          }
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: content || '无响应', timestamp: Date.now() }]);
-        } else {
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '操作失败：' + (data.error || '未知错误'), timestamp: Date.now() }]);
-        }
-      } catch (e: any) {
-        setMessages(prev => prev.filter(m => m.id !== 'a_loading'));
-        setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: '网络异常：' + e.message, timestamp: Date.now() }]);
-      }
+      const toolMessages = [
+        { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。必须使用工具获取真实结果，不要猜测。` },
+        ...allMessages.map(m => ({ role: m.role, content: m.content })),
+      ];
+      await agentStream(toolMessages, activeConversationId);
       setLoading(false);
       return;
     }
