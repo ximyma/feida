@@ -2439,9 +2439,33 @@ function apiRouter() {
       if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ success: false, error: '请提供有效的 messages 数组' });
       }
-      const aiService = require('./ai-service.js');
-      const result = await aiService.runCodeAgent(messages, options || {});
-      res.json({ success: true, data: result });
+
+      // 使用新 Agent 系统
+      try {
+        const AgentSystem = require('./agent/index');
+        const aiService = require('./ai-service.js');
+        const cfg = aiService.resolveModelConfig(options?.model || {});
+        const isOllama = cfg.providerType === 'ollama';
+
+        const userMsg = messages[messages.length - 1];
+        const result = await AgentSystem.chat(
+          userMsg?.content || '',
+          {
+            modelCfg: cfg,
+            chatFn: aiService.chatCompletionDirect,
+            systemPrompt: messages[0]?.role === 'system' ? messages[0].content : undefined,
+            useTags: isOllama,
+            maxSteps: options?.maxIterations || 15,
+            temperature: options?.temperature ?? 0.3,
+          }
+        );
+        return res.json({ success: true, data: result });
+      } catch (e: any) {
+        // 新系统加载失败，回退旧系统
+        const aiService = require('./ai-service.js');
+        const result = await aiService.runCodeAgent(messages, options || {});
+        return res.json({ success: true, data: result });
+      }
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

@@ -1,0 +1,44 @@
+/**
+ * grep 工具 — 代码搜索
+ */
+import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
+import { execSync } from 'child_process';
+import path from 'path';
+
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+
+export class GrepTool extends BaseTool {
+  name = 'grep';
+  description = '使用 ripgrep/正则搜索代码。参数: pattern(搜索模式), path(搜索目录,可选,默认项目根)';
+  parameters: ToolParameters = {
+    type: 'object',
+    properties: {
+      pattern: { type: 'string', description: '搜索模式（支持正则）' },
+      path: { type: 'string', description: '搜索目录，默认项目根' },
+    },
+    required: ['pattern'],
+  };
+
+  async execute(params: any): Promise<ToolResult> {
+    const pattern = params.pattern;
+    const dir = path.resolve(PROJECT_ROOT, params.path || '.');
+    try {
+      const opts: any = { timeout: 15000, maxBuffer: 5 * 1024 * 1024, encoding: 'utf-8', shell: true };
+      const output = execSync(`rg -n --max-count=50 "${pattern.replace(/"/g, '\\"')}" "${dir}" --glob '!node_modules' --glob '!.git' --glob '!dist' --glob '!data'`, opts);
+      const lines = output.trim().split('\n').slice(0, 50);
+      return this.ok({ pattern, matches: lines.length, lines });
+    } catch (e: any) {
+      if (e.status === 1) return this.ok({ pattern, matches: 0, lines: [] });
+      // rg 不可用时用 findstr
+      try {
+        const out = execSync(`findstr /s /n /i "${pattern}" "${dir}\\*.ts" "${dir}\\*.tsx" "${dir}\\*.js" 2>nul`, {
+          timeout: 15000, maxBuffer: 5 * 1024 * 1024, encoding: 'utf-8',
+        });
+        const lines = out.trim().split('\n').slice(0, 50);
+        return this.ok({ pattern, matches: lines.length, lines });
+      } catch {
+        return this.fail(`搜索失败: ${e.message}`);
+      }
+    }
+  }
+}

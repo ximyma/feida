@@ -644,5 +644,5 @@ module.exports = {
   createConversation, getConversation, listConversations, addMessage, deleteConversation,
   listAgentTools, executeAgentTool, runAgent,
   analyzeHRData, analyzeResume, translateText, extractDocumentInfo,
-  runCodeAgent, getCodeAgentToolsDefs,
+  runCodeAgent, getCodeAgentToolsDefs, chatCompletionDirect,
 };
