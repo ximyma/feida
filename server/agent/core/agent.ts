@@ -18,6 +18,8 @@ export interface AgentConfig {
   temperature?: number;
   workspaceDir?: string;
   enableTools?: boolean;
+  cancelSignal?: AbortSignal;  // v2: 取消信号
+  modelContextWindow?: number; // v2: 模型上下文窗口大小
 }
 
 export interface AgentMessage {
