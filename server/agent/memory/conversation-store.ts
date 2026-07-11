@@ -89,6 +89,18 @@ export function appendMessages(sessionId: string, messages: StoredMessage[]): vo
   tx();
 }
 
+/** 更新会话标题 */
+export function updateSessionTitle(sessionId: string, title: string): void {
+  const d = getDb();
+  d.prepare('UPDATE sessions SET title = ? WHERE session_id = ?').run(title.slice(0, 100), sessionId);
+}
+
+/** 自动生成标题 (取首条用户消息前30字) */
+export function generateTitle(firstMessage: string): string {
+  const cleaned = firstMessage.replace(/[\n\r]/g, ' ').trim();
+  return cleaned.slice(0, 30) + (cleaned.length > 30 ? '...' : '');
+}
+
 /** 列出所有会话 */
 export function listSessions(page = 1, pageSize = 50): Session[] {
   const d = getDb();
