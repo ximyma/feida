@@ -1,0 +1,16 @@
+node_modules
+dist
+data
+.git
+.gitignore
+.workbuddy
+*.md
+!README.md
+cms
+shopxo
+test-*.js
+check-*.js
+check-*.cjs
+*.txt
+DEPLOY_PACKAGE
+.DS_Store

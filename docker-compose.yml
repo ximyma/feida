@@ -1,0 +1,15 @@
+# ── 飞达HR系统 Docker Compose ──
+
+services:
+  feida:
+    build: .
+    container_name: feida-hr
+    ports:
+      - "3000:3000"
+    volumes:
+      # 持久化数据库文件
+      - ./data:/app/data
+    environment:
+      - SERVER_PORT=3000
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
