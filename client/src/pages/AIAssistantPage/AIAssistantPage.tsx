@@ -223,7 +223,7 @@ export default function AIAssistantPage() {
         const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时（ollama 首次加载慢）
         const res = await fetch('/api/ai/code-agent/run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: codeMessages, options: { maxIterations: 10, temperature: 0.3 } }),
+          body: JSON.stringify({ messages: codeMessages, options: { sessionId: activeConversationId, maxIterations: 10, temperature: 0.3 } }),
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
@@ -270,7 +270,7 @@ export default function AIAssistantPage() {
         const timeoutId = setTimeout(() => controller.abort(), 600000);
         const res = await fetch('/api/ai/code-agent/run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: toolMessages, options: { maxIterations: 10, temperature: 0.3 } }),
+          body: JSON.stringify({ messages: toolMessages, options: { sessionId: activeConversationId, maxIterations: 10, temperature: 0.3 } }),
           signal: controller.signal,
         });
         clearTimeout(timeoutId);

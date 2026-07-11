@@ -2305,12 +2305,14 @@ function apiRouter() {
     }
   });
 
-  // 对话历史管理
+  // ============ Agent 对话管理 API (桥接新旧系统) ============
   router.post('/ai/conversations', (req, res) => {
     try {
-      const aiService = require('./ai-service.js');
-      const conv = aiService.createConversation(req.body?.title);
-      res.json({ success: true, data: conv });
+      const AgentSystem = require('./agent/index');
+      const title = req.body?.title || '新对话';
+      const id = `c_${Date.now()}`;
+      AgentSystem.createSession(id, title);
+      res.json({ success: true, data: { id, title } });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -2318,20 +2320,33 @@ function apiRouter() {
 
   router.get('/ai/conversations', (_req, res) => {
     try {
-      const aiService = require('./ai-service.js');
-      const list = aiService.listConversations();
-      res.json({ success: true, data: list });
+      const AgentSystem = require('./agent/index');
+      const sessions = AgentSystem.listSessions();
+      const conversations = sessions.map((s: any) => ({
+        id: s.session_id,
+        title: s.title || '新对话',
+        messageCount: s.msg_count || 0,
+        createdAt: new Date(s.created_at).toISOString(),
+        updatedAt: new Date(s.last_active).toISOString(),
+      }));
+      res.json({ success: true, data: conversations });
     } catch (e: any) {
-      res.status(500).json({ success: false, error: e.message });
+      res.json({ success: false, error: e.message, data: [] });
     }
   });
 
   router.get('/ai/conversations/:id', (req, res) => {
     try {
-      const aiService = require('./ai-service.js');
-      const conv = aiService.getConversation(req.params.id);
-      if (!conv) return res.status(404).json({ success: false, error: '对话不存在' });
-      res.json({ success: true, data: conv });
+      const AgentSystem = require('./agent/index');
+      const msgs = AgentSystem.loadMessages(req.params.id, 100);
+      const title = AgentSystem.getSessionTitle(req.params.id);
+      const messages = msgs.map((m: any, idx: number) => ({
+        id: `m_${idx}`,
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        timestamp: Date.now(),
+      }));
+      res.json({ success: true, data: { id: req.params.id, title, messages } });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -2339,10 +2354,13 @@ function apiRouter() {
 
   router.post('/ai/conversations/:id/messages', (req, res) => {
     try {
-      const aiService = require('./ai-service.js');
-      const msg = aiService.addMessage(req.params.id, req.body.role, req.body.content);
-      if (!msg) return res.status(404).json({ success: false, error: '对话不存在' });
-      res.json({ success: true, data: msg });
+      const AgentSystem = require('./agent/index');
+      const { role, content } = req.body;
+      if (!role || content === undefined) {
+        return res.status(400).json({ success: false, error: '缺少 role 或 content' });
+      }
+      AgentSystem.appendMessages(req.params.id, [{ role, content: String(content) }]);
+      res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -2350,8 +2368,8 @@ function apiRouter() {
 
   router.delete('/ai/conversations/:id', (req, res) => {
     try {
-      const aiService = require('./ai-service.js');
-      aiService.deleteConversation(req.params.id);
+      const AgentSystem = require('./agent/index');
+      AgentSystem.clearSession(req.params.id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
@@ -2451,6 +2469,7 @@ function apiRouter() {
         const result = await AgentSystem.chat(
           userMsg?.content || '',
           {
+            sessionId: options?.sessionId || options?.conversationId,
             modelCfg: cfg,
             chatFn: aiService.chatCompletionDirect,
             modelId: options?.modelId || options?.model,
@@ -2472,7 +2491,7 @@ function apiRouter() {
     }
   });
 
-  // ============ Agent 会话管理 API ============
+  // 保留旧的 /ai/sessions 端点兼容性
   router.get('/ai/sessions', (req, res) => {
     try {
       const AgentSystem = require('./agent/index');
