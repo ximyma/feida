@@ -110,7 +110,9 @@ export default function AIAssistantPage() {
       const data = await res.json();
       const list = (data.data || []).filter((m:any) => m.is_active === 1);
       setModelList(list.map((m:any) => ({ id: m.id, name: m.name, model: m.model })));
-      if (list.length > 0) setSelectedModelId(list[0].id);
+      // 自动选择默认模型，否则选第一个
+      const def = list.find((m:any) => m.is_default === 1);
+      setSelectedModelId(def ? def.id : (list.length > 0 ? list[0].id : null));
     } catch {}
   };
 

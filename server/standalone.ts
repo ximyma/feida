@@ -2003,7 +2003,7 @@ function apiRouter() {
 
   router.get('/ai/models', (_req, res) => {
     try {
-      const configs = db.query("SELECT * FROM ai_model_configs ORDER BY is_active DESC, created_at ASC");
+      const configs = db.query("SELECT * FROM ai_model_configs ORDER BY is_default DESC, is_active DESC, created_at ASC");
       const safe = configs.map((c: any) => ({ ...c, api_key: c.api_key ? '***' : '' }));
       res.json({ success: true, data: safe });
     } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
@@ -2014,7 +2014,10 @@ function apiRouter() {
       const { name, base_url, api_key, model, provider_type } = req.body;
       if (!name || !base_url || !model) return res.status(400).json({ success: false, error: '名称/API地址/模型必填' });
       const id = 'model_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-      db.insert('ai_model_configs', { id, name, base_url, api_key: api_key || '', model, provider_type: provider_type || 'openai' });
+      // 检查是否已有默认模型，没有则自动设为默认
+      const existingDefault = db.query("SELECT COUNT(*) as c FROM ai_model_configs WHERE is_default=1") as any[];
+      const isDefault = existingDefault[0]?.c ? 0 : 1;
+      db.insert('ai_model_configs', { id, name, base_url, api_key: api_key || '', model, provider_type: provider_type || 'openai', is_default: isDefault });
       res.json({ success: true, data: { id } });
     } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
   });
@@ -2030,6 +2033,15 @@ function apiRouter() {
       if (provider_type !== undefined) data.provider_type = provider_type;
       if (is_active !== undefined) data.is_active = is_active;
       db.update('ai_model_configs', req.params.id, data);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  // 设为默认模型
+  router.post('/ai/models/:id/set-default', (req, res) => {
+    try {
+      (db as any).db.prepare("UPDATE ai_model_configs SET is_default = 0").run();
+      db.update('ai_model_configs', req.params.id, { is_default: 1 });
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
   });

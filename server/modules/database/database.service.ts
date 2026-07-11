@@ -3325,6 +3325,7 @@ export class DatabaseService {
     addCol('shop_order_aftersale', 'reviewer', 'TEXT DEFAULT \'\'');
     addCol('shop_order_aftersale', 'reject_reason', 'TEXT DEFAULT \'\'');
     addCol('shop_order_aftersale', 'updated_at', 'TEXT');
+    addCol('ai_model_configs', 'is_default', 'INTEGER DEFAULT 0');
   }
 
   // 修正遗留外键：订单/评价明细的 product_id 原指向已弃用的 shop_products，

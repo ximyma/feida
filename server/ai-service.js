@@ -58,7 +58,11 @@ function listModelConfigs() {
 
 function getActiveModelConfig() {
   try {
-    const models = getDb().query("SELECT * FROM ai_model_configs WHERE is_active=1 ORDER BY created_at ASC LIMIT 1");
+    // 优先使用默认模型，否则第一个活跃模型
+    let models = getDb().query("SELECT * FROM ai_model_configs WHERE is_active=1 AND is_default=1 LIMIT 1");
+    if (models.length === 0) {
+      models = getDb().query("SELECT * FROM ai_model_configs WHERE is_active=1 ORDER BY created_at ASC LIMIT 1");
+    }
     if (models.length > 0) {
       const m = models[0];
       return { baseURL: m.base_url, apiKey: m.api_key || '', model: m.model, providerType: m.provider_type || 'openai' };

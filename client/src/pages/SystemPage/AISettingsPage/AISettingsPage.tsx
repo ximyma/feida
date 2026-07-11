@@ -4,7 +4,7 @@ import { Plus, Edit, Delete, CheckCircle, KeyRound, Cpu, Zap, Bot, Database, Hel
 
 const { TextArea } = Input;
 
-interface ModelConfig { id: string; name: string; base_url: string; api_key: string; model: string; is_active: number; provider_type: string; }
+interface ModelConfig { id: string; name: string; base_url: string; api_key: string; model: string; is_active: number; is_default: number; provider_type: string; }
 interface CsConfig { systemPrompt: string; kbIds: string[]; welcomeMsg: string; }
 interface Faq { id: string; question: string; answer: string; category: string; sort_order: number; }
 
@@ -58,6 +58,11 @@ export default function AISettingsPage() {
     await fetch(`/api/ai/models/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: a ? 1 : 0 }) });
     loadModels();
   };
+  const setDefault = async (id: string) => {
+    await fetch(`/api/ai/models/${id}/set-default`, { method: 'POST' });
+    message.success('已设为默认模型');
+    loadModels();
+  };
   const testModel = async (c: ModelConfig) => {
     setTesting(p => ({ ...p, [c.id]: true }));
     const r = await fetch(`/api/ai/models/${c.id}/test`, { method: 'POST' }).then(r => r.json());
@@ -105,8 +110,9 @@ export default function AISettingsPage() {
     { title: 'API地址', dataIndex: 'base_url', ellipsis: true },
     { title: '模型ID', dataIndex: 'model', render: (v: string) => <Tag color="blue">{v}</Tag> },
     { title: '类型', dataIndex: 'provider_type', width: 80, render: (v: string) => <Tag>{v === 'ollama' ? 'Ollama' : 'OpenAI兼容'}</Tag> },
-    { title: '状态', width: 100, render: (_: any, r: ModelConfig) => <Space><Switch checked={r.is_active===1} onChange={v=>toggleActive(r,v)} size="small" />{testResult[r.id]&&<Tag color={testResult[r.id]==='OK'?'green':'red'}>{testResult[r.id]}</Tag>}</Space> },
-    { title: '操作', width: 160, render: (_: any, r: ModelConfig) => <Space>
+    { title: '状态', width: 130, render: (_: any, r: ModelConfig) => <Space size={4}>{r.is_default === 1 && <Tag color="gold">默认</Tag>}<Switch checked={r.is_active===1} onChange={v=>toggleActive(r,v)} size="small" />{testResult[r.id]&&<Tag color={testResult[r.id]==='OK'?'green':'red'}>{testResult[r.id]}</Tag>}</Space> },
+    { title: '操作', width: 200, render: (_: any, r: ModelConfig) => <Space size={0}>
+      {r.is_default !== 1 && <Button size="small" type="link" onClick={()=>setDefault(r.id)}>设为默认</Button>}
       <Button size="small" type="link" icon={<Zap size={14}/>} loading={testing[r.id]} onClick={()=>testModel(r)}>测试</Button>
       <Button size="small" type="link" icon={<Edit size={14}/>} onClick={()=>{const v={...r};if(v.api_key==='***')v.api_key='';setEditing(r);modelForm.setFieldsValue(v);setModalOpen(true)}} />
       <Popconfirm title="确认删除？" onConfirm={()=>delModel(r.id)}><Button size="small" type="link" danger icon={<Delete size={14}/>} /></Popconfirm>
