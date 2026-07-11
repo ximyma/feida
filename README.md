@@ -1,9 +1,9 @@
-# 飞达智能 HR 系统 (Feida Intelligent HR System) v1.0.0
+# 飞达智能 HR 系统 (Feida Intelligent HR System) v1.1.0
 
 > 基于 AI 大模型的**智能人力资源管理 + 企业门户 + 商城**一体化全栈平台。
-> 首个开源发布版本（Apache 2.0）。
+> Apache 2.0 开源。
 
-飞达是一套开箱即用的企业数字化平台：以人力资源管理（HR）为核心，向上集成 AI 助手/知识库/BI/预警，横向覆盖 ERP 制造（产品/工艺/仓储/销售/采购/生产/财务/质量）、内容门户（CMS）与在线商城（ShopXO 超集），并通过 **RBAC 细粒度权限（#108）+ 站点级权限作用域（#130）+ 多语言 i18n（#107/#129）** 实现企业级管控。
+飞达是一套开箱即用的企业数字化平台：以人力资源管理（HR）为核心，向上集成 **AI 代码助手（工具执行）/ 智能对话 / 知识库 / BI 看板**，横向覆盖 ERP 制造（产品/工艺/仓储/销售/采购/生产/财务/质量）、内容门户（CMS）与在线商城（ShopXO 超集），并通过 **RBAC 细粒度权限 + 站点级权限作用域 + 多语言 i18n** 实现企业级管控。
 
 ---
 
@@ -11,7 +11,7 @@
 
 | 域 | 模块 | 关键能力 |
 |----|------|----------|
-| **AI** | 智能助手 / 知识库 / BI 看板 / 智能预警 / AI 配置 | 流式对话、混合检索(RAG)、ECharts+AI 洞察、5 类预警规则、多提供商(DeepSeek/OpenAI/Ollama) |
+| **AI** | 智能对话 / 代码助手(工具执行) / 知识库 / BI 看板 / 智能预警 / AI 配置 | 流式对话、Function Calling (OpenAI 兼容) + Tag 引导 (Ollama)、sql_query/grep/read_file/bash 等 7 个工具、文件读写、数据库操作、混合检索(RAG)、ECharts+AI 洞察、多提供商(DeepSeek/OpenAI/SiliconFlow/Ollama) |
 | **人力资源** | 人事 / 考勤 / 薪酬 / 绩效 / 招聘 / 培训 / 人才 / 统计 | 员工档案+字段自定义、排班、薪资公式引擎、KPI、简历/Offer、课程中心、组织架构图 |
 | **流程** | 审批 / 工作流 | 请假/加班/离职申请、可视化流程设计器、审批历史 |
 | **后勤** | 宿舍 / 食堂 / 车辆 / 访客 | 后勤事务一体化 |
@@ -28,7 +28,8 @@
 feida/
 ├── server/                         # 后端 (TypeScript, Express 风格)
 │   ├── standalone.ts               # 主入口：API 路由 + 静态托管 + 自动 seed
-│   ├── ai-service.js               # AI 服务 (LLM / 知识库 / 智能体)
+│   ├── ai-service.js               # AI 服务 (LLM / 知识库 / 工具执行循环)
+│   ├── code-agent-tools.js          # AI 工具集 (文件读写/命令执行/数据库查询)
 │   ├── workflow-engine.ts          # 工作流引擎
 │   ├── approval-engine.ts          # 审批引擎
 │   ├── salary-formula-engine.ts    # 薪资公式引擎
@@ -91,7 +92,14 @@ npm start            # 启动 dist/server/standalone.js
 SERVER_PORT=3400 npm start
 ```
 
-### 4. 默认账户
+### 4. Docker 部署
+```bash
+docker compose up -d     # 启动（端口 3000，数据卷 ./data）
+docker compose down      # 停止
+```
+镜像基于 `node:22-alpine`，多阶段构建，约 200MB。数据库文件通过 `./data` 卷持久化。
+
+### 5. 默认账户
 | 用户名 | 密码 | 角色 | 权限 |
 |--------|------|------|------|
 | `admin` | `admin123` | 超级管理员 | 全部权限 |
@@ -137,6 +145,8 @@ node test-i18n-expand.js      # i18n 词条 (#129)
 | `SERVER_HOST` | `localhost` | 绑定地址 (`0.0.0.0` 可外网访问) |
 | `DEEPSEEK_API_KEY` | (空) | DeepSeek API 密钥（AI 功能可选） |
 
+AI 提供商支持：**DeepSeek / OpenAI / 硅基流动 (SiliconFlow) / Ollama 本地模型**。在系统设置 → AI 设置中配置即可。Ollama 首次加载模型需 3-5 分钟。
+
 数据库无需手动初始化：首次启动自动建表 + 播种（HR / CMS / 商城 / RBAC / AI 知识库）。详见 [`SYSTEM_INIT.md`](./SYSTEM_INIT.md)。
 
 ---
@@ -180,6 +190,15 @@ node test-i18n-expand.js      # i18n 词条 (#129)
 ---
 
 ## 📝 版本说明
+
+### v1.1.0 (2026-07-11)
+- ✅ AI 代码助手：7 个工具（sql_query / grep / read_file / write_file / patch / glob / bash）
+- ✅ 工具执行过程可视化（🔧 步骤展示）
+- ✅ Ollama 支持：自然语言 + Tag 引导工具调用，10 分钟超时
+- ✅ SiliconFlow API 支持
+- ✅ 通用助手自动路由——数据库/代码类问题自动调用工具
+- ✅ Docker 部署支持（多阶段构建，~200MB）
+- ✅ API Key 掩码防覆盖保护
 
 ### v1.0.0 (2026-07-10) — 首个开源发布版本
 - ✅ 全栈整合：HR + ERP 制造 + CMS 门户 + ShopXO 商城 + AI
