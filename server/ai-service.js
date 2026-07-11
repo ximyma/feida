@@ -587,7 +587,13 @@ async function chatCompletionDirect(reqBody, cfg) {
       });
       authHeaders = {};
     } else {
-      endpoint = (cfg.baseURL || cfg.base_url || 'https://api.deepseek.com') + '/v1/chat/completions';
+      let base = (cfg.baseURL || cfg.base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
+      // 如果 baseURL 已包含 /v1，不再重复添加
+      if (base.endsWith('/v1')) {
+        endpoint = base + '/chat/completions';
+      } else {
+        endpoint = base + '/v1/chat/completions';
+      }
       postBody = JSON.stringify({
         model: cfg.model, messages: reqBody.messages,
         tools: reqBody.tools, tool_choice: reqBody.tool_choice || 'auto',

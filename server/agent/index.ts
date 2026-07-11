@@ -12,9 +12,11 @@ import {
   listSessions, cleanupOldSessions, getSessionTitle,
 } from './memory/conversation-store';
 import { appendDailyMemory, readDailyMemory, getLongTermMemory, flushMemory, searchMemory } from './memory/memory-manager';
+import { skillManager } from './skills/skill-manager';
 
-// 启动时注册所有工具
+// 启动时注册所有工具和技能
 registerAllTools();
+skillManager.refresh();
 
 // ── LLM Caller 适配器 (连接现有 ai-service.js 的 chatCompletionDirect) ──
 
@@ -96,8 +98,21 @@ export async function chat(
   } catch { /* ignore */ }
 
   // 构建系统提示词
-  const systemPrompt = options.systemPrompt || `你是飞达智能HR系统的AI助手。你可以使用工具读取文件、搜索代码、查询数据库、执行命令、搜索网页。
-${historyMessages ? `\n最近对话:\n${historyMessages}` : ''}`;
+  const defaultPrompt = `你是飞达智能HR系统的技术助手，可以执行实际操作。
+项目位于 D:\\feida，数据库是 SQLite (data/ehr.db)。
+
+⚡ 当用户要求以下操作时，必须调用对应工具获取真实结果，不能编造或猜测：
+- 查询数据、查看表结构 → sql_query (列所有表: SELECT name FROM sqlite_master)
+- 搜索代码、查找文件 → grep / glob / read_file
+- 执行命令、构建项目 → bash
+- 修改文件 → write_file / patch
+- 搜索网页信息 → web_search / web_fetch
+
+SQLite 提示：查表名用 SELECT name FROM sqlite_master WHERE type='table' ORDER BY name；查结构用 PRAGMA table_info('表名')。不要用 SHOW TABLES/DESCRIBE。
+
+如果工具返回错误，分析原因后换一种方式重试，不要放弃！${options.useTags ? '\n使用 [TOOL:name]{"params"}[/TOOL] 标签格式调用工具。' : ''}${historyMessages ? `\n\n最近对话:\n${historyMessages}` : ''}`;
+
+  const systemPrompt = options.systemPrompt || defaultPrompt + skillManager.buildSkillsPrompt();
 
   // 创建 Agent
   const agent = new Agent({
