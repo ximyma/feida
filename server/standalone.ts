@@ -62,6 +62,21 @@ const app = express();
 const db = new DatabaseService();
 db.onModuleInit();
 
+  // 初始化 API Token 认证 (P0: 安全补全)
+  const { initAuth, apiAuthMiddleware } = require('./modules/api-auth');
+  initAuth(db, process.env.JWT_SECRET);
+
+  // 初始化模块系统 (参照 Odoo ir.module.module)
+  const { ModuleRegistry } = require('./modules/module-registry');
+  const moduleRegistry = new ModuleRegistry(db, path.join(__dirname, '..', 'modules'));
+  moduleRegistry.discoverAll();
+  // 自动安装依赖已满足的模块
+  for (const m of moduleRegistry.list()) {
+    if (m.auto_install && moduleRegistry.checkDependencies(m)) {
+      try { moduleRegistry.install(m.name); } catch {}
+    }
+  }
+
   // 初始化增强版工作流引擎
   initWorkflowEngine(db);
 
@@ -10573,7 +10588,7 @@ function hashPwd(pwd: string): string {
 
 app.use('/uploads', express.static(uploadDir));
 
-app.use('/api', apiRouter());
+app.use('/api', apiAuthMiddleware, apiRouter());
 
 app.use(express.static(path.join(__dirname, '../client')));
 
