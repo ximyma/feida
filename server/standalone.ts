@@ -7966,7 +7966,7 @@ function updateDailyReport(db: any, date: string, record: any) {
     articles.forEach((a: any) => {
       if (a.status === 'deleted') return;
       let tags: string[] = [];
-      try { tags = JSON.parse(a.tags || '[]'); } catch { tags = []; }
+      try { const p = JSON.parse(a.tags || '[]'); tags = Array.isArray(p) ? p : []; } catch { tags = []; }
       tags.forEach((t: string) => { if (t) counter[t] = (counter[t] || 0) + 1; });
     });
     const list = Object.entries(counter).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
