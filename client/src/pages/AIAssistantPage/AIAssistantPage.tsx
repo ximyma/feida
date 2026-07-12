@@ -260,102 +260,31 @@ export default function AIAssistantPage() {
     // 收集对话上下文（必须在代码助手模式之前声明，避免 TDZ 错误）
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
 
-    // ===== 代码助手模式 / 工具模式 → SSE流式执行 =====
+    // ===== 统一所有对话走 SSE agentStream (代码/工具/通用) =====
     if (agentMode === 'code') {
       const codeMessages = [
         { role: 'system', content: `你是飞达项目的代码助手。可用工具: read_file/write_file/patch/grep/glob/bash/sql_query。直接调用工具获取真实数据，操作完成后用中文回复结果。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
       await agentStream(codeMessages, activeConversationId);
-      setLoading(false);
-      return;
-    }
-    
-    // 检测是否需要工具 → 自动流式Agent
-    const needsTools = /数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text);
-    if (needsTools) {
+    } else if (/数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text)) {
       const toolMessages = [
         { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。必须使用工具获取真实结果，不要猜测。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
       await agentStream(toolMessages, activeConversationId);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const toolPrompt = buildToolSystemPrompt();
-      const systemMsg = toolPrompt ? `你是飞达智能HR系统的AI助手。${toolPrompt}请用中文回答。` : undefined;
-
-      const apiMessages = [
-        ...(systemMsg ? [{ role: 'system', content: systemMsg }] : []),
+    } else {
+      // 通用对话也走 agentStream (获得流式+工具能力)
+      const generalMessages = [
+        { role: 'system', content: `你是飞达智能HR系统的AI助手。可以用中文回答各种问题，也可以使用sql_query查询数据库、grep搜索代码等工具。请友好热情地回复。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
-
-      const endpoint = useKnowledge ? '/api/ai/rag-chat' : '/api/ai/stream-chat';
-      const body = useKnowledge
-        ? JSON.stringify({ query: text, messages: apiMessages, kbIds: selectedKbIds.length > 0 ? selectedKbIds : undefined })
-        : JSON.stringify({ messages: apiMessages, options: { modelId: selectedModelId } });
-
-      // 流式响应
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
-
-      if (useKnowledge) {
-        // RAG模式非流式
-        const data = await res.json();
-        if (data.success) {
-          const aiContent = data.data?.content || '';
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: aiContent, timestamp: Date.now() }]);
-          await saveMessage('assistant', aiContent);
-        }
-      } else {
-        // 流式模式: 读取 SSE
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        let fullContent = '';
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              try {
-                const parsed = JSON.parse(line.slice(6));
-                if (parsed.type === 'content' && parsed.content) {
-                  fullContent = parsed.content;
-                  setStreamingContent(fullContent);
-                } else if (parsed.type === 'done') {
-                  // 完成
-                } else if (parsed.type === 'error') {
-                  throw new Error(parsed.error);
-                }
-              } catch {}
-            }
-          }
-        }
-
-        if (fullContent) {
-          setMessages(prev => [...prev, { id: 'a_' + Date.now(), role: 'assistant', content: fullContent, timestamp: Date.now() }]);
-          await saveMessage('assistant', fullContent);
-        }
-        setStreamingContent('');
-      }
-    } catch (e: any) {
-      setMessages(prev => [...prev, {
-        id: 'err_' + Date.now(), role: 'assistant',
-        content: `⚠️ AI服务暂时不可用\n\n${e.message}\n\n请检查AI配置和网络连接。`,
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setLoading(false);
+      await agentStream(generalMessages, activeConversationId);
     }
+    
+    setLoading(false);
+    setLoading(false);
+    return;
   }, [inputValue, loading, messages, activeConversationId, useKnowledge, selectedKbIds, selectedModelId, activeTool]);
 
   const clearChat = () => {

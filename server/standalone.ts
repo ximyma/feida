@@ -202,7 +202,19 @@ function apiRouter() {
     'process_routes','process_route_items','components',
     'boms','bom_items','scrap_rules','soles','season_materials',
     // 网站互动
-    'site_messages'
+    'site_messages',
+    // v1.2 新模块
+    'blog_posts','blog_categories','blog_comments',
+    'forum_boards','forum_threads','forum_replies',
+    'elearning_courses','elearning_chapters','elearning_quizzes',
+    'elearning_enrollments','elearning_certificates',
+    'account_chart','payment_methods','tax_rates','holidays',
+    'product_styles','product_colors','product_sizes',
+    'product_color_size_matrix','product_box_configs','product_box_size_ratios',
+    'product_boms','product_process_routes',
+    'workflow_definitions','workflow_form_configs',
+    'workflow_instances','workflow_instance_nodes','workflow_node_assignees',
+    'workflow_comments','companies','automation_actions',
   ];
   
   // ============ 打卡功能 API ============
@@ -10615,7 +10627,7 @@ app.get('*', (_req, res) => {
 });
 
 const PORT = Number(process.env.SERVER_PORT) || 3000;
-const HOST = process.env.SERVER_HOST || 'localhost';
+const HOST = process.env.SERVER_HOST || '0.0.0.0';
 
 const server = http.createServer(app);
 server.listen(PORT, HOST, () => {

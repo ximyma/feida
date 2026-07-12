@@ -241,6 +241,13 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: '任务管理', to: '/system/tasks' },
   { label: '插件管理', to: '/system/plugins', key: 'plugins' },
   ],
+  '/apps': [
+    { label: '博客', to: '/apps/blog', key: 'app-blog' },
+    { label: '论坛', to: '/apps/forum', key: 'app-forum' },
+    { label: '在线学习', to: '/apps/elearning', key: 'app-elearning' },
+    { label: '财务管理', to: '/apps/finance', key: 'app-finance' },
+    { label: '鞋服管理', to: '/apps/shoe', key: 'app-shoe' },
+  ],
 };
 
 const newModuleIcons: Record<string, React.ElementType> = {
@@ -266,6 +273,7 @@ const newModuleIcons: Record<string, React.ElementType> = {
   '/shop-admin': ShoppingCart,
   '/ai': Sparkles,
   '/quality': Shield,
+  '/apps': Sparkles,
 };
 
 const newModuleLabels: Record<string, string> = {
@@ -291,6 +299,7 @@ const newModuleLabels: Record<string, string> = {
   '/shop-admin': '商城管理',
   '/ai': 'AI智能',
   '/quality': '质量管理',
+  '/apps': '更多应用',
 };
 
 const Layout: React.FC = () => {
@@ -330,12 +339,13 @@ const Layout: React.FC = () => {
     '/ai': 'p_website',
     '/quality': 'p_quality',
     '/selfservice': 'p_selfservice',
+    '/apps': 'p_apps',
     '/system': 'p_system',
   };
 
   const USER_ROLE_PERMS: Record<string, string[]> = {
-    super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_system'],
-    sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_system'],
+    super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_apps','p_system'],
+    sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_apps','p_system'],
     hr_admin:    ['p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_approval'],
     hr_staff:    ['p_personnel','p_attendance','p_salary','p_approval'],
     dept_manager:['p_org','p_personnel','p_attendance','p_approval'],
@@ -389,7 +399,7 @@ const Layout: React.FC = () => {
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    ['/personnel','/salary','/attendance','/performance','/recruitment','/logistics','/approval','/product','/system','/cms','/shop-admin','/ai'].forEach(p => {
+    ['/personnel','/salary','/attendance','/performance','/recruitment','/logistics','/approval','/product','/system','/cms','/shop-admin','/ai','/apps'].forEach(p => {
       initial[p] = location.pathname.startsWith(p) ||
         (p === '/cms' && location.pathname.startsWith('/admin/cms')) ||
         (p === '/shop-admin' && location.pathname.startsWith('/admin/shop'));
@@ -549,6 +559,7 @@ const Layout: React.FC = () => {
           {hasModule('/cms') && renderNewModuleNav('/cms')}
           {hasModule('/shop-admin') && renderNewModuleNav('/shop-admin')}
           {hasModule('/ai') && renderNewModuleNav('/ai')}
+          {hasModule('/apps') && renderNewModuleNav('/apps')}
           {hasModule('/quality') && renderNewModuleNav('/quality')}
           {hasModule('/selfservice') && renderNewModuleNav('/selfservice')}
           {isAdmin && renderNewModuleNav('/system')}

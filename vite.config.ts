@@ -21,6 +21,15 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // 为 SSE 端点设置长连接头
+            if (proxyReq.path?.includes('stream')) {
+              proxyReq.setHeader('Connection', 'keep-alive');
+              proxyReq.setHeader('Cache-Control', 'no-cache');
+            }
+          });
+        },
       },
     },
   },
