@@ -16,7 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const ROOT = path.resolve(__dirname, '..', '..', '..');
+const ROOT = process.cwd();
 const AGENT_DIR = path.join(ROOT, 'agent');
 
 export interface PromptSections {

@@ -6,25 +6,19 @@ import { BaseTool, ToolStage, ToolParameters, ToolResult } from '../base-tool';
 import fs from 'fs';
 import path from 'path';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
+const PROJECT_ROOT = process.cwd();
 
 export class SendFileTool extends BaseTool {
-  name = 'send_file';
-  description = '发送文件给用户 (Agent完成后自动执行)';
+  name = "send_file";
+  description = "send_file tool";
+  stage = ToolStage.PRE_PROCESS;
   parameters: ToolParameters = {
     type: 'object',
     properties: {
-      file_path: { type: 'string', description: '文件路径' },
+      file_path: { type: 'string', description: '要发送的文件路径' },
     },
     required: ['file_path'],
   };
-  stage = ToolStage.PRE_PROCESS; // Agent显式调用时才发送
 
   async execute(params: Record<string, any>): Promise<ToolResult> {
     const fp = path.resolve(PROJECT_ROOT, params.file_path || '');

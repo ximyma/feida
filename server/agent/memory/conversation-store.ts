@@ -3,12 +3,15 @@
  * 参照 CowAgent agent/memory/conversation_store.py
  *
  * SQLite 存储 sessions + messages
+ * 使用 process.cwd() 确保编译版和 tsx 版使用同一个 DB
  */
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const AGENT_DIR = path.resolve(__dirname, '..', '..', '..', 'agent');
+// 优先使用环境变量，其次用 cwd 保证 dev/start 共用
+const AGENT_DIR = process.env.AGENT_DATA_DIR
+  || path.resolve(process.cwd(), 'agent');
 const DB_PATH = path.join(AGENT_DIR, 'conversations.db');
 
 let db: Database.Database | null = null;

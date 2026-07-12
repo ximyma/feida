@@ -5,26 +5,12 @@ import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import fs from 'fs';
 import path from 'path';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
+const PROJECT_ROOT = process.cwd();
 
-export class PatchTool extends BaseTool {
-  name = 'patch';
-  description = '精确替换文件中的文本。参数: file_path(路径), old_string(要替换的原文, 必须精确匹配), new_string(替换后的文本)';
-  parameters: ToolParameters = {
-    type: 'object',
-    properties: {
-      file_path: { type: 'string', description: '文件路径' },
-      old_string: { type: 'string', description: '要替换的原文，必须与文件内容精确匹配' },
-      new_string: { type: 'string', description: '替换后的文本' },
-    },
-    required: ['file_path', 'old_string', 'new_string'],
-  };
+export class PatcherTool extends BaseTool {
+  name = "patch";
+  description = "patch tool";
+  parameters: ToolParameters = {type:"object",properties:{file_path:{type:"string",description:"文件路径"},old_str:{type:"string",description:"旧文本"},new_str:{type:"string",description:"新文本"}},required:["file_path","old_str","new_str"]};
 
   async execute(params: any): Promise<ToolResult> {
     const fp = path.resolve(PROJECT_ROOT, params.file_path);

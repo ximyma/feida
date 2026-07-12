@@ -5,17 +5,11 @@ import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import fs from 'fs';
 import path from 'path';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
+const PROJECT_ROOT = process.cwd();
 
 export class WriteFileTool extends BaseTool {
   name = 'write_file';
-  description = '写入或覆盖文件内容。参数: file_path(路径), content(内容)';
+  description = '写入文件';
   parameters: ToolParameters = {
     type: 'object',
     properties: {

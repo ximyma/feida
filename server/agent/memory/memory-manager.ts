@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const AGENT_DIR = path.resolve(__dirname, '..', '..', '..', 'agent');
+const AGENT_DIR = process.env.AGENT_DATA_DIR || path.resolve(process.cwd(), 'agent');
 const MEMORY_DIR = path.join(AGENT_DIR, 'memory');
 const LONG_TERM_DB = path.join(MEMORY_DIR, 'long-term', 'index.db');
 const LONG_TERM_MD = path.join(AGENT_DIR, 'MEMORY.md');

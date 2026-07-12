@@ -5,25 +5,20 @@ import { BaseTool, ToolParameters, ToolResult } from '../base-tool';
 import fs from 'fs';
 import path from 'path';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const BINARY_EXTS = ['.db','.db-shm','.db-wal','.exe','.dll','.bin','.so','.dylib','.zip','.7z','.gz','.jpg','.png','.gif','.ico','.woff','.ttf'];
+const PROJECT_ROOT = process.cwd();
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const BINARY_EXTS = ['.png','.jpg','.jpeg','.gif','.bmp','.ico','.pdf','.mp4','.mp3','.zip','.gz','.exe','.dll','.so','.db','.woff','.ttf','.eot'];
 
 export class ReadFileTool extends BaseTool {
-  name = 'read_file';
-  description = '读取文件内容。参数: file_path(文件路径), offset(起始行,可选), limit(显示行数,可选,默认500)';
+  name = "read_file";
+  description = "read_file tool";
   parameters: ToolParameters = {
     type: 'object',
     properties: {
-      file_path: { type: 'string', description: '文件相对于项目根目录的路径' },
-      offset: { type: 'number', description: '起始行号，默认1' },
-      limit: { type: 'number', description: '显示行数，默认500' },
+      file_path: { type: 'string', description: '文件路径' },
+      offset: { type: 'number', description: '起始行号' },
+      limit: { type: 'number', description: '最大行数' },
     },
     required: ['file_path'],
   };

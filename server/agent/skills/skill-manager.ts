@@ -9,7 +9,7 @@ import path from 'path';
 import { SkillEntry } from './types';
 import { loadSkillsFromDir } from './skill-loader';
 
-const ROOT_DIR = path.resolve(__dirname, '..', '..', '..');
+const ROOT_DIR = process.cwd();
 const BUILTIN_SKILLS_DIR = path.join(ROOT_DIR, 'skills');
 const CUSTOM_SKILLS_DIR = path.join(ROOT_DIR, 'agent', 'skills');
 

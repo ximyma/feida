@@ -6,25 +6,12 @@ import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
+const PROJECT_ROOT = process.cwd();
 
-export class GrepTool extends BaseTool {
-  name = 'grep';
-  description = '使用 ripgrep/正则搜索代码。参数: pattern(搜索模式), path(搜索目录,可选,默认项目根)';
-  parameters: ToolParameters = {
-    type: 'object',
-    properties: {
-      pattern: { type: 'string', description: '搜索模式（支持正则）' },
-      path: { type: 'string', description: '搜索目录，默认项目根' },
-    },
-    required: ['pattern'],
-  };
+export class GrepperTool extends BaseTool {
+  name = "grep";
+  description = "grep tool";
+  parameters: ToolParameters = {type:"object",properties:{pattern:{type:"string",description:"正则表达式"},path:{type:"string",description:"搜索路径"}},required:["pattern"]};
 
   async execute(params: any): Promise<ToolResult> {
     const pattern = params.pattern;

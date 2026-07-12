@@ -6,24 +6,12 @@ import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
-const PROJECT_ROOT = (() => {
-  let root = path.resolve(__dirname, '..', '..', '..', '..');
-  if (!fs.existsSync(path.join(root, 'package.json'))) {
-    root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-  }
-  return root;
-})();
+const PROJECT_ROOT = process.cwd();
 
 export class GlobTool extends BaseTool {
-  name = 'glob';
-  description = '查找匹配模式的文件。参数: pattern(glob模式, 如 *.ts 或 **/*.test.tsx)';
-  parameters: ToolParameters = {
-    type: 'object',
-    properties: {
-      pattern: { type: 'string', description: 'glob 模式，如 *.ts、**/*.vue' },
-    },
-    required: ['pattern'],
-  };
+  name = "glob";
+  description = "glob tool";
+  parameters: ToolParameters = {type:"object",properties:{pattern:{type:"string",description:"glob模式如**/*.ts"}},required:["pattern"]};
 
   async execute(params: any): Promise<ToolResult> {
     const pattern = params.pattern;
