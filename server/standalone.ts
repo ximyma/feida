@@ -62,6 +62,19 @@ const app = express();
 const db = new DatabaseService();
 db.onModuleInit();
 
+  // 初始化登录安全 (P0: 失败锁定+速率限制)
+  const { initLoginSecurity, loginSecurityMiddleware } = require('./modules/login-security');
+  initLoginSecurity(db);
+
+  // 初始化多公司支持
+  const { initMultiCompany, addCompanyIdColumn, MULTI_COMPANY_TABLES } = require('./modules/multi-company');
+  initMultiCompany(db);
+  for (const table of MULTI_COMPANY_TABLES) addCompanyIdColumn(table);
+
+  // 初始化自动化引擎
+  const { initAutomationEngine } = require('./modules/automation-engine');
+  initAutomationEngine(db);
+
   // 初始化 API Token 认证 (P0: 安全补全)
   const { initAuth, apiAuthMiddleware } = require('./modules/api-auth');
   initAuth(db, process.env.JWT_SECRET);
@@ -91,7 +104,7 @@ db.onModuleInit();
   // AI知识库表和默认数据延迟初始化（在首次API调用时创建）
 
 app.use(express.json());
-
+app.use(loginSecurityMiddleware);
 const upload = multer({ dest: uploadDir });
 
 function apiRouter() {

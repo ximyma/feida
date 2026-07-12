@@ -1,0 +1,1 @@
+{"name":"论坛","name_en":"Forum","version":"1.0.0","author":"飞达","license":"Apache-2.0","category":"Website/Forum","depends":["base"],"summary":"企业社区论坛: 版块、帖子、回复、点赞","description":"支持多版块论坛、话题标签、Markdown编辑器、点赞收藏、通知订阅。参照 Odoo website_forum。","installable":true,"application":true,"sequence":210,"data":["data/forum.sql"]}
