@@ -77,7 +77,7 @@ db.onModuleInit();
 
   // 初始化 API Token 认证 (P0: 安全补全)
   const { initAuth, apiAuthMiddleware } = require('./modules/api-auth');
-  initAuth(db, process.env.JWT_SECRET);
+  initAuth(db, process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex'));
 
   // 初始化模块系统 (参照 Odoo ir.module.module)
   const { ModuleRegistry } = require('./modules/module-registry');
@@ -2955,7 +2955,7 @@ function apiRouter() {
     // Only include fields that exist in the target table
     let data: Record<string, any> = { ...rawBody };
     try {
-      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const tableInfo = db.query(`PRAGMA table_info("${table.replace(/"/g, '""')}")`);
       const cols = tableInfo.map((c: any) => c.name);
       // Filter out fields not in table, add timestamps if columns exist
       data = Object.fromEntries(Object.entries(data).filter(([k]) => cols.includes(k)));
@@ -3011,7 +3011,7 @@ function apiRouter() {
     
     let data: Record<string, any> = { ...req.body };
     try {
-      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const tableInfo = db.query(`PRAGMA table_info("${table.replace(/"/g, '""')}")`);
       const cols = tableInfo.map((c: any) => c.name);
       data = Object.fromEntries(Object.entries(data).filter(([k]) => cols.includes(k)));
       if (cols.includes('updatedAt')) data.updatedAt = new Date().toISOString();
@@ -3033,7 +3033,7 @@ function apiRouter() {
     // Check table columns
     let hasCreatedAt = true, hasTimestamp = false;
     try {
-      const tableInfo = db.query(`PRAGMA table_info(${table})`);
+      const tableInfo = db.query(`PRAGMA table_info("${table.replace(/"/g, '""')}")`);
       const cols = tableInfo.map((c: any) => c.name);
       hasCreatedAt = cols.includes('createdAt');
       hasTimestamp = cols.includes('timestamp');
@@ -7314,7 +7314,7 @@ function updateDailyReport(db: any, date: string, record: any) {
   router.post('/shop-login', (req, res) => {
     const { phone, password } = req.body;
     const user = db.findOne('shop_users', { phone });
-    if (!user || user.password !== password) {
+    if (!user || !verifyPwd(password, user.password)) {
       res.json({ success: false, error: '手机号或密码错误' });
       return;
     }
@@ -10602,13 +10602,35 @@ function updateDailyReport(db: any, date: string, record: any) {
   return router;
 }
 
+// 安全密码哈希 (使用 Node.js 内置 PBKDF2)
+import crypto from 'crypto';
+
+const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_KEYLEN = 64;
+const PBKDF2_DIGEST = 'sha512';
+
 function hashPwd(pwd: string): string {
-  let hash = 0;
-  for (let i = 0; i < pwd.length; i++) {
-    hash = ((hash << 5) - hash) + pwd.charCodeAt(i);
-    hash = hash & hash;
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(pwd, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+  return `pbkdf2:${salt}:${hash.toString('hex')}`;
+}
+
+function verifyPwd(pwd: string, stored: string): boolean {
+  // 兼容旧版 simple hash (纯数字)
+  if (!stored || stored === String(stored) && !stored.includes(':')) {
+    // 旧密码：尝试用旧方法验证，然后自动升级
+    let oldHash = 0;
+    for (let i = 0; i < pwd.length; i++) {
+      oldHash = ((oldHash << 5) - oldHash) + pwd.charCodeAt(i);
+      oldHash = oldHash & oldHash;
+    }
+    return String(oldHash) === stored;
   }
-  return String(hash);
+  // PBKDF2 格式: pbkdf2:salt:hash
+  const parts = stored.split(':');
+  if (parts.length !== 3 || parts[0] !== 'pbkdf2') return false;
+  const hash = crypto.pbkdf2Sync(pwd, parts[1], PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+  return hash.toString('hex') === parts[2];
 }
 
 app.use('/uploads', express.static(uploadDir));

@@ -4170,8 +4170,30 @@ export class DatabaseService {
     const user = this.db.prepare('SELECT * FROM users WHERE username = ? OR phone = ?').get(username, username) as any;
     if (!user) return null;
     if (user.status !== 'active') return null;
-    if (user.password !== this.hashPwd(password)) return null;
+    if (!this.verifyPassword(password, user.password)) return null;
     return user;
+  }
+
+  /** 验证密码（支持旧版 simple hash 和 PBKDF2） */
+  verifyPassword(pwd: string, stored: string): boolean {
+    if (!stored || !stored.includes(':')) {
+      // 旧版 simple hash
+      let hash = 0;
+      for (let i = 0; i < pwd.length; i++) { hash = ((hash << 5) - hash) + pwd.charCodeAt(i); hash = hash & hash; }
+      return String(hash) === stored;
+    }
+    const parts = stored.split(':');
+    if (parts.length !== 3 || parts[0] !== 'pbkdf2') return false;
+    const crypto = require('crypto');
+    const hash = crypto.pbkdf2Sync(pwd, parts[1], 100000, 64, 'sha512');
+    return hash.toString('hex') === parts[2];
+  }
+
+  hashPwd(pwd: string): string {
+    const crypto = require('crypto');
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.pbkdf2Sync(pwd, salt, 100000, 64, 'sha512');
+    return `pbkdf2:${salt}:${hash.toString('hex')}`;
   }
 
   updateLoginTime(userId: string, ip: string): void {
@@ -4412,14 +4434,5 @@ export class DatabaseService {
     const departments = (this.db.prepare('SELECT COUNT(*) as c FROM departments WHERE isActive = 1').get() as any).c;
     const pendingApprovals = (this.db.prepare("SELECT COUNT(*) as c FROM approval_requests WHERE status = 'pending'").get() as any).c;
     return { totalEmployees, activeEmployees, pendingLeaves, activeRecruitments, activeCandidates, expiringContracts, todayAttendance, departments, pendingApprovals, activeCycle };
-  }
-
-  private hashPwd(pwd: string): string {
-    let hash = 0;
-    for (let i = 0; i < pwd.length; i++) {
-      hash = ((hash << 5) - hash) + pwd.charCodeAt(i);
-      hash = hash & hash;
-    }
-    return String(hash);
   }
 }
