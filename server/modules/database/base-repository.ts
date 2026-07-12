@@ -23,12 +23,12 @@ export abstract class BaseRepository {
     let sql = `SELECT * FROM "${this.tableName}"`;
     if (orderBy) sql += ` ORDER BY ${orderBy}`;
     if (limit) sql += ` LIMIT ${limit}`;
-    return this.db.query(sql);
+    return this.db.query(sql) as any[];
   }
 
   /** 按 ID 查找 */
   findById(id: string): any | null {
-    return this.db.get(`SELECT * FROM "${this.tableName}" WHERE id = ?`, [id]);
+    return this.db.get(`SELECT * FROM "${this.tableName}" WHERE id = ?`, [id]) as any;
   }
 
   /** 条件查询 */
@@ -38,33 +38,31 @@ export abstract class BaseRepository {
     const values = keys.map(k => conditions[k]);
     let sql = `SELECT * FROM "${this.tableName}" WHERE ${clauses}`;
     if (orderBy) sql += ` ORDER BY ${orderBy}`;
-    return this.db.query(sql, values);
+    return this.db.query(sql, values) as any[];
   }
-
-  /** 计数 */
   count(conditions?: Record<string, any>): number {
     if (!conditions || Object.keys(conditions).length === 0) {
-      const r = this.db.get(`SELECT COUNT(*) as cnt FROM "${this.tableName}"`);
+      const r = this.db.get(`SELECT COUNT(*) as cnt FROM "${this.tableName}"`) as any;
       return r?.cnt || 0;
     }
     const keys = Object.keys(conditions);
     const clauses = keys.map(k => `"${k}" = ?`).join(' AND ');
-    const r = this.db.get(`SELECT COUNT(*) as cnt FROM "${this.tableName}" WHERE ${clauses}`, keys.map(k => conditions[k]));
+    const r = this.db.get(`SELECT COUNT(*) as cnt FROM "${this.tableName}" WHERE ${clauses}`, keys.map(k => conditions[k])) as any;
     return r?.cnt || 0;
   }
 
   /** 插入 */
-  create(data: Record<string, any>): { id: string } {
+  create(data: Record<string, any>): any {
     return this.db.insert(this.tableName, data);
   }
 
   /** 更新 */
-  update(id: string, data: Record<string, any>): { changes: number } {
+  update(id: string, data: Record<string, any>): any {
     return this.db.update(this.tableName, id, data);
   }
 
   /** 删除 */
-  delete(id: string): { changes: number } {
+  delete(id: string): any {
     return this.db.delete(this.tableName, id);
   }
 
@@ -78,7 +76,7 @@ export abstract class BaseRepository {
     let sql = `SELECT * FROM "${this.tableName}" ${clauses}`;
     if (orderBy) sql += ` ORDER BY ${orderBy}`;
     sql += ` LIMIT ${pageSize} OFFSET ${offset}`;
-    return { items: this.db.query(sql, values), total };
+    return { items: this.db.query(sql, values) as any[], total };
   }
 }
 
@@ -110,17 +108,17 @@ export class QueryBuilder {
     const where = this._where.length > 0 ? `WHERE ${this._where.join(' AND ')}` : '';
     let sql = `SELECT ${this._select} FROM "${this.table}" ${where} ${this._orderBy}`.trim();
     if (this._limit > 0) { sql += ` LIMIT ${this._limit}`; if (this._offset > 0) sql += ` OFFSET ${this._offset}`; }
-    return this.db.query(sql, this._params);
+    return this.db.query(sql, this._params) as any[];
   }
 
   first(): any | null {
-    const rows = this.limit(1).all();
+    const rows = this.limit(1).all() as any[];
     return rows[0] || null;
   }
 
   count(): number {
     const where = this._where.length > 0 ? `WHERE ${this._where.join(' AND ')}` : '';
-    const r = this.db.query(`SELECT COUNT(*) as cnt FROM "${this.table}" ${where}`, this._params);
+    const r = this.db.query(`SELECT COUNT(*) as cnt FROM "${this.table}" ${where}`, this._params) as any[];
     return r[0]?.cnt || 0;
   }
 }

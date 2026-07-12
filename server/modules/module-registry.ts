@@ -66,7 +66,7 @@ export class ModuleRegistry {
         if (!manifest.installable) continue;
 
         // 从数据库读取状态
-        const dbRows = this.db.query('SELECT state FROM ir_module_module WHERE name = ?', [entry.name]);
+        const dbRows = (this.db.query('SELECT state FROM ir_module_module WHERE name = ?', [entry.name]) as any[]);
         const state: ModuleState = dbRows[0] ? dbRows[0].state : 'uninstalled';
 
         this.modules.set(entry.name, { manifest, dir: path.join(this.modulesDir, entry.name), state });

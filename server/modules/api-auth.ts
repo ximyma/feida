@@ -33,7 +33,7 @@ export function initAuth(db: IDatabaseDriver, secretKey?: string): void {
   `);
 
   // 确保有系统 API Token
-  const rows = db.query('SELECT COUNT(*) as c FROM api_tokens WHERE user_id = ?', ['system']);
+  const rows = db.query('SELECT COUNT(*) as c FROM api_tokens WHERE user_id = ?', ['system']) as any[];
   if (!rows[0]?.c) {
     const token = crypto.randomBytes(24).toString('hex');
     db.insert('api_tokens', { id: 'tok_system', user_id: 'system', token, name: '系统默认Token', scopes: '*' });
@@ -57,7 +57,7 @@ export function verifyToken(token: string): { userId: string; scopes: string } |
   const rows = _db.query(
     'SELECT user_id, scopes, expires_at FROM api_tokens WHERE token = ?',
     [token]
-  );
+  ) as any[];
   const row = rows[0];
   if (!row) return null;
   if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
@@ -69,8 +69,8 @@ export function verifyToken(token: string): { userId: string; scopes: string } |
 /** 吊销 Token */
 export function revokeToken(token: string): boolean {
   if (!_db) return false;
-  const r = _db.delete('api_tokens', token);
-  return r.changes > 0;
+  const r = _db.delete('api_tokens', token) as any;
+  return (r.changes || 0) > 0;
 }
 
 /** Express 中间件: API Token 认证 */
