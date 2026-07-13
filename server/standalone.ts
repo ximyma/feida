@@ -110,6 +110,14 @@ const upload = multer({ dest: uploadDir });
 function apiRouter() {
   const router = express.Router();
 
+  // 输入验证辅助
+  function requireFields(body: any, fields: string[]): string | null {
+    for (const f of fields) {
+      if (body[f] === undefined || body[f] === null || body[f] === '') return `缺少必填字段: ${f}`;
+    }
+    return null;
+  }
+
   router.post('/auth/login', (req, res) => {
     const { username, password } = req.body;
     const user = db.authenticate(username, password);
@@ -133,9 +141,10 @@ function apiRouter() {
 
   router.post('/auth/change-password', (req, res) => {
     const { userId, oldPassword, newPassword } = req.body;
+    if (!userId || !oldPassword || !newPassword) { res.status(400).json({ error: '缺少必填字段: userId/oldPassword/newPassword' }); return; }
     const user = db.findById('users', userId) as any;
-    if (!user) { res.json({ success: false, message: '用户不存在' }); return; }
-    if (oldPassword && user.password !== hashPwd(oldPassword)) { res.json({ success: false, message: '原密码错误' }); return; }
+    if (!user) { res.status(404).json({ error: '用户不存在' }); return; }
+    if (!verifyPwd(oldPassword, user.password)) { res.status(401).json({ error: '原密码错误' }); return; }
     db.update('users', userId, { password: hashPwd(newPassword) });
     res.json({ success: true });
   });
@@ -219,7 +228,8 @@ function apiRouter() {
   
   // ============ 打卡功能 API ============
   router.post('/attendance/clock-in', (req, res) => {
-    const { employeeId, employeeName, location, remark } = req.body;
+    const { employeeId, employeeName } = req.body;
+    if (!employeeId) { res.status(400).json({ error: '缺少必填字段: employeeId' }); return; }
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const time = now.toTimeString().slice(0, 8);
@@ -260,7 +270,7 @@ function apiRouter() {
       lateCount: lateMinutes > 0 ? 1 : 0,
       isRestDay: 0,
       isHoliday: 0,
-      remark: remark || '',
+      remark: req.body.remark || '',
       createdAt: now.toISOString()
     };
     
@@ -277,7 +287,8 @@ function apiRouter() {
   });
   
   router.post('/attendance/clock-out', (req, res) => {
-    const { employeeId, remark } = req.body;
+    const { employeeId } = req.body;
+    if (!employeeId) { res.status(400).json({ error: '缺少必填字段: employeeId' }); return; }
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const time = now.toTimeString().slice(0, 8);
@@ -316,7 +327,7 @@ function apiRouter() {
       workHours,
       earlyLeaveMinutes: Math.max(0, earlyMinutes),
       status,
-      remark: remark || record.remark
+      remark: req.body.remark || record.remark
     });
     
     res.json({ 
@@ -1258,6 +1269,7 @@ function apiRouter() {
     try {
       const id = req.params.id;
       const { employeeId, employeeName } = req.body;
+      if (!employeeId) { res.status(400).json({ error: '缺少必填字段: employeeId' }); return; }
       const existing = (db as any).db.prepare('SELECT * FROM announcement_reads WHERE announcementId = ? AND employeeId = ?').get(id, employeeId);
       if (!existing) {
         (db as any).db.prepare('INSERT INTO announcement_reads (id, announcementId, userId, employeeId, employeeName, readAt) VALUES (?, ?, ?, ?, ?, ?)').run('read_' + Date.now(), id, employeeId, employeeId, employeeName || '', new Date().toISOString());
@@ -1283,14 +1295,15 @@ function apiRouter() {
   router.post('/surveys/:id/vote', (req, res) => {
     try {
       const id = req.params.id;
-      const { userId, employeeName, answers } = req.body;
+      const { userId, answers } = req.body;
+      if (!userId || !answers) { res.status(400).json({ error: '缺少必填字段: userId/answers' }); return; }
       const survey = (db as any).db.prepare('SELECT * FROM surveys WHERE id = ?').get(id) as any;
       if (!survey) { res.status(404).json({ error: 'Survey not found' }); return; }
       const existing = (db as any).db.prepare('SELECT * FROM survey_responses WHERE surveyId = ? AND userId = ?').get(id, userId);
       if (existing) {
-        (db as any).db.prepare('UPDATE survey_responses SET answers = ?, employeeName = ? WHERE surveyId = ? AND userId = ?').run(JSON.stringify(answers || []), employeeName || '', id, userId);
+        (db as any).db.prepare('UPDATE survey_responses SET answers = ?, employeeName = ? WHERE surveyId = ? AND userId = ?').run(JSON.stringify(answers || []), req.body.employeeName || '', id, userId);
       } else {
-        (db as any).db.prepare('INSERT INTO survey_responses (id, surveyId, userId, answers, employeeName) VALUES (?, ?, ?, ?, ?)').run('resp_' + Date.now(), id, userId, JSON.stringify(answers || []), employeeName || '');
+        (db as any).db.prepare('INSERT INTO survey_responses (id, surveyId, userId, answers, employeeName) VALUES (?, ?, ?, ?, ?)').run('resp_' + Date.now(), id, userId, JSON.stringify(answers || []), req.body.employeeName || '');
         (db as any).db.prepare('UPDATE surveys SET responseCount = responseCount + 1 WHERE id = ?').run(id);
       }
       res.json({ success: true });
@@ -7346,6 +7359,7 @@ function updateDailyReport(db: any, date: string, record: any) {
   });
   router.post('/shop-coupons', (req, res) => {
     const { name, type, value, min_amount, total, start_time, end_time, description } = req.body;
+    if (!name || value === undefined) { res.status(400).json({ error: '缺少必填字段: name/value' }); return; }
     const id = 'cp_' + Date.now();
     db.insert('shop_coupons', { id, name, type: type||'discount', value: value||0, min_amount: min_amount||0, total: total||0, start_time: start_time||'', end_time: end_time||'', description: description||'' });
     res.json({ success: true, id });
@@ -7383,8 +7397,9 @@ function updateDailyReport(db: any, date: string, record: any) {
     res.json(items.map((s: any) => ({ ...s, goods: db.findById('shop_goods', s.goods_id) })));
   });
   router.post('/shop-seckill', (req, res) => {
-    const { goods_id, seckill_price, seckill_stock, limit_count, start_time, end_time } = req.body;
-    db.insert('shop_seckill', { id: 'sk_' + Date.now(), goods_id, seckill_price, seckill_stock: seckill_stock||0, limit_count: limit_count||1, start_time, end_time });
+    const { goods_id, seckill_price } = req.body;
+    if (!goods_id || seckill_price === undefined) { res.status(400).json({ error: '缺少必填字段: goods_id/seckill_price' }); return; }
+    db.insert('shop_seckill', { id: 'sk_' + Date.now(), goods_id, seckill_price, seckill_stock: req.body.seckill_stock||0, limit_count: req.body.limit_count||1, start_time: req.body.start_time, end_time: req.body.end_time });
     res.json({ success: true });
   });
   router.delete('/shop-seckill/:id', (req, res) => { db.delete('shop_seckill', req.params.id); res.json({ success: true }); });
@@ -7395,11 +7410,12 @@ function updateDailyReport(db: any, date: string, record: any) {
     res.json(items.map((s: any) => ({ ...s, goods: db.findById('shop_goods', s.goods_id) })));
   });
   router.post('/shop-group-buy', (req, res) => {
-    const { goods_id, group_price, group_stock, group_size, limit_count, start_time, end_time } = req.body;
+    const { goods_id, group_price } = req.body;
+    if (!goods_id || group_price === undefined) { res.status(400).json({ error: '缺少必填字段: goods_id/group_price' }); return; }
     const now = Date.now();
-    const st = start_time ? new Date(start_time).getTime() : now;
+    const st = req.body.start_time ? new Date(req.body.start_time).getTime() : now;
     const status = st > now ? 'upcoming' : 'ongoing';
-    db.insert('shop_group_buy', { id: 'gb_' + Date.now(), goods_id, group_price, group_stock: group_stock || 0, group_size: group_size || 2, limit_count: limit_count || 0, start_time, end_time, status });
+    db.insert('shop_group_buy', { id: 'gb_' + Date.now(), goods_id, group_price, group_stock: req.body.group_stock || 0, group_size: req.body.group_size || 2, limit_count: req.body.limit_count || 0, start_time: req.body.start_time, end_time: req.body.end_time, status });
     res.json({ success: true });
   });
   router.put('/shop-group-buy/:id', (req, res) => { db.update('shop_group_buy', req.params.id, req.body); res.json({ success: true }); });
