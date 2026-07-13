@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // 验证 #99 智能标签：suggest-tags 接口
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 const post = (path, body) => fetch(BASE + path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
 }).then(r => r.json());

@@ -1,7 +1,8 @@
+require('./fetch-polyfill');
 /**
  * Agent v3 端到端测试 — 多场景覆盖
  */
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let passed = 0, failed = 0;
 
 async function test(name, fn) {
@@ -14,7 +15,7 @@ async function agentAsk(msg, maxSteps = 5) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [{ role: 'user', content: msg }],
-      options: { model: 'model_1783692522319_4m71', maxIterations: maxSteps, temperature: 0.1 }
+      options: { maxIterations: maxSteps, temperature: 0.1 }
     })
   });
   const data = await resp.json();

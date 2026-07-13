@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // #110 CMS 拼写检查验证
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) { pass++; console.log('  ✅', name); } else { fail++; console.log('  ❌', name); } };
 

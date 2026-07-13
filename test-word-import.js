@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // #106 Word 导入验证：上传 .docx → mammoth 解析 → 生成草稿 → 详情可查 → 清理
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 const fs = require('fs');
 const path = require('path');
 const FIXTURE = path.join(__dirname, 'node_modules/mammoth/test/test-data/single-paragraph.docx');

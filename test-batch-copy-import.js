@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // 验证 #100 跨栏目复制 / 批量替换 / 导入导出
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 const post = (p, b) => fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json());
 const put = (p, b) => fetch(BASE + p, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json());
 const get = (p) => fetch(BASE + p).then(r => r.json());

@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // 售后退货退款 + 仅退款 + 退货物流 + 库存回滚 全流程验证
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } };
 async function api(method, path, body) {

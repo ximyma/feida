@@ -1,4 +1,5 @@
-const BASE = process.env.BASE || 'http://localhost:3400';
+require('./fetch-polyfill');
+const BASE = process.env.BASE || 'http://localhost:3000';
 const get = (p) => fetch(BASE + p).then(r => r.json());
 const post = (p, b) => fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json());
 const put = (p, b) => fetch(BASE + p, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json());

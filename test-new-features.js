@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // 新功能后端验证：地区数据 / 支付方式 / 系统配置 / 页面装修 / 线下支付
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } };
 async function api(method, path, body) {

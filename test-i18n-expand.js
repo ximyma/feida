@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // #129 i18n 扩充测试：验证 /api/i18n/messages?lang=en 含新词条
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  \u2713 ' + msg); } else { fail++; console.log('  \u2717 ' + msg); } }
 

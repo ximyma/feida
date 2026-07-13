@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // 验证 #98 内容标签：标签云聚合 + ?tag= 筛选（健壮版：支持重复运行）
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 const post = (path, body) => fetch(BASE + path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
 }).then(r => r.json());

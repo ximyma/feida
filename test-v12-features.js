@@ -1,6 +1,7 @@
+require('./fetch-polyfill');
 // v1.2 Phase2-4 新功能集成测试
 // 测试: 模块系统 / API认证 / 登录安全 / 多公司 / 本土化 / 博客论坛学习
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 const get = async (path) => { const r = await fetch(BASE + path); return { status: r.status, data: await r.json().catch(() => null) }; };
 const post = async (path, body) => { const r = await fetch(BASE + path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)

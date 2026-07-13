@@ -1,5 +1,6 @@
+require('./fetch-polyfill');
 // #128 细粒度权限点测试：验证 /api/rbac/resolve 返回正确权限点（前端按钮显隐的数据来源）
-const BASE = process.env.BASE || 'http://localhost:3400';
+const BASE = process.env.BASE || 'http://localhost:3000';
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  \u2713 ' + msg); } else { fail++; console.log('  \u2717 ' + msg); } }
 

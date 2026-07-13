@@ -1,5 +1,6 @@
-// 培训模块 API 冒烟测试（使用 BASE，默认 http://localhost:3400）
-const BASE = process.env.BASE || 'http://localhost:3400';
+require('./fetch-polyfill');
+// 培训模块 API 冒烟测试（使用 BASE，默认 http://localhost:3000）
+const BASE = process.env.BASE || 'http://localhost:3000';
 
 const endpoints = [
   '/api/training_plans?limit=2',

@@ -1,4 +1,9 @@
-const BASE = process.env.BASE || 'http://localhost:3400';
+// 附件上传测试（需要原生 fetch + FormData）
+if (typeof FormData === 'undefined') {
+  console.log('SKIP: FormData not available (Node.js managed runtime)');
+  process.exit(0);
+}
+const BASE = process.env.BASE || 'http://localhost:3000';
 const fs = require('fs');
 const path = require('path');
 const get = (p) => fetch(BASE + p).then(r => r.json());
