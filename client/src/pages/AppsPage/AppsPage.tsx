@@ -109,6 +109,38 @@ const tabConfig: Record<string, TabCfg> = {
       { name: 'year', label: '年份', type: 'number' },
     ],
   },
+  journal: {
+    title: '凭证管理',
+    table: 'journal_entries',
+    columns: [
+      { title: '凭证号', dataIndex: 'code' },
+      { title: '日期', dataIndex: 'entry_date' },
+      { title: '摘要', dataIndex: 'description' },
+      { title: '借方', dataIndex: 'total_debit' },
+      { title: '贷方', dataIndex: 'total_credit' },
+      { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={v==='posted'?'green':'orange'}>{v}</Tag> },
+    ],
+    formFields: [
+      { name: 'code', label: '凭证号', type: 'text', required: true },
+      { name: 'entry_date', label: '日期', type: 'text', required: true },
+      { name: 'description', label: '摘要', type: 'text', required: true },
+    ],
+  },
+  survey: {
+    title: '问卷调查',
+    table: 'surveys',
+    columns: [
+      { title: '标题', dataIndex: 'title' },
+      { title: '描述', dataIndex: 'description' },
+      { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={v==='active'?'green':'default'}>{v}</Tag> },
+      { title: '回复数', dataIndex: 'responseCount' },
+    ],
+    formFields: [
+      { name: 'title', label: '标题', type: 'text', required: true },
+      { name: 'description', label: '描述', type: 'text' },
+      { name: 'status', label: '状态', type: 'select', options: [{label:'激活',value:'active'},{label:'草稿',value:'draft'}] },
+    ],
+  },
 };
 
 export default function AppsPage() {

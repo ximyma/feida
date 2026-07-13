@@ -218,6 +218,8 @@ function apiRouter() {
     'elearning_courses','elearning_chapters','elearning_quizzes',
     'elearning_enrollments','elearning_certificates',
     'account_chart','payment_methods','tax_rates','holidays',
+    'journal_entries','journal_items',
+    'surveys','survey_responses',
     'product_styles','product_colors','product_sizes',
     'product_color_size_matrix','product_box_configs','product_box_size_ratios',
     'product_boms','product_process_routes',
@@ -864,6 +866,7 @@ function apiRouter() {
   router.post('/salary/items', (req, res) => {
     try {
       const { id, name, code, type, formula, defaultValue, isTaxable, sortOrder, isActive } = req.body;
+      if (!name || !code) { res.status(400).json({ error: '缺少必填字段: name/code' }); return; }
       
       // 验证公式
       if (formula) {
@@ -1048,6 +1051,7 @@ function apiRouter() {
   // 创建班次
   router.post('/shift-types', (req, res) => {
     try {
+      if (!req.body.name) { res.status(400).json({ error: '缺少必填字段: name' }); return; }
       const result = createShiftType(db, req.body);
       res.json(result);
     } catch (e: any) {
@@ -1155,6 +1159,7 @@ function apiRouter() {
 
   router.post('/data_sources/test', (req, res) => {
     try {
+      if (!req.body.id) { res.status(400).json({ error: '缺少必填字段: id' }); return; }
       const result = db.testDataSourceConnection(req.body.id);
       res.json(result);
     } catch (e: any) {
@@ -3234,9 +3239,10 @@ function apiRouter() {
   });
   
   router.post('/approval/process', (req, res) => {
-    const { requestId, approverId, approverName, action, comment } = req.body;
+    const { requestId, approverId, action } = req.body;
+    if (!requestId || !approverId || !action) { res.status(400).json({ error: '缺少必填字段: requestId/approverId/action' }); return; }
     try {
-      const result = processApproval(requestId, approverId, approverName, action, comment);
+      const result = processApproval(requestId, approverId, req.body.approverName || '', action, req.body.comment || '');
       res.json({ success: true, result });
     } catch (e: any) {
       res.json({ success: false, message: e.message });
@@ -7188,6 +7194,27 @@ function updateDailyReport(db: any, date: string, record: any) {
     });
     
     res.json({ success: true });
+  });
+
+  // 试算平衡表
+  router.get('/trial-balance', (_req, res) => {
+    const items = db.findAll('journal_items') as any[];
+    const entries = db.findAll('journal_entries') as any[];
+    // 按科目汇总
+    const ledger: Record<string, { code: string; name: string; debit: number; credit: number }> = {};
+    for (const item of items) {
+      const key = item.account_code || 'unknown';
+      if (!ledger[key]) ledger[key] = { code: key, name: item.account_name || '', debit: 0, credit: 0 };
+      ledger[key].debit += Number(item.debit) || 0;
+      ledger[key].credit += Number(item.credit) || 0;
+    }
+    const accounts = Object.values(ledger);
+    const totalDebit = accounts.reduce((s, a) => s + a.debit, 0);
+    const totalCredit = accounts.reduce((s, a) => s + a.credit, 0);
+    res.json({
+      accounts,
+      summary: { totalDebit, totalCredit, balanced: totalDebit === totalCredit, entryCount: entries.length },
+    });
   });
 
   // 应收发票管理
