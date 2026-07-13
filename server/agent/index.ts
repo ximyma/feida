@@ -8,7 +8,7 @@ import { Agent, AgentConfig } from './core/agent';
 import { runAgentLoop, LLMCaller, LLMResponse, LoopConfig, LoopEvent } from './core/agent-loop';
 import { registerAllTools } from './tools/registry';
 import {
-  createSession, loadMessages, appendMessages, clearSession,
+  createSession, loadMessages, appendMessages, clearSession, deleteSession,
   listSessions, cleanupOldSessions, getSessionTitle,
   updateSessionTitle, generateTitle,
 } from './memory/conversation-store';
@@ -165,7 +165,7 @@ export { skillManager } from './skills/skill-manager';
 
 // ── 导出记忆系统 ──
 export {
-  createSession, loadMessages, appendMessages, clearSession,
+  createSession, loadMessages, appendMessages, clearSession, deleteSession,
   listSessions, cleanupOldSessions, getSessionTitle,
   updateSessionTitle, generateTitle,
   appendDailyMemory, readDailyMemory, getLongTermMemory, flushMemory, searchMemory,

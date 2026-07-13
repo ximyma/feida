@@ -2434,7 +2434,7 @@ function apiRouter() {
   router.delete('/ai/conversations/:id', (req, res) => {
     try {
       const AgentSystem = require('./agent/index');
-      AgentSystem.clearSession(req.params.id);
+      AgentSystem.deleteSession(req.params.id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });

@@ -111,11 +111,18 @@ export function listSessions(page = 1, pageSize = 50): Session[] {
     .all(pageSize, (page - 1) * pageSize) as Session[];
 }
 
-/** 清空会话消息 */
+/** 清空会话消息（保留会话本身） */
 export function clearSession(sessionId: string): void {
   const d = getDb();
   d.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
   d.prepare('UPDATE sessions SET msg_count = 0, last_active = ? WHERE session_id = ?').run(Date.now(), sessionId);
+}
+
+/** 彻底删除会话+消息 */
+export function deleteSession(sessionId: string): void {
+  const d = getDb();
+  d.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+  d.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId);
 }
 
 /** 清理过期会话 (默认 30 天) */
