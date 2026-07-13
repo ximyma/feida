@@ -86,7 +86,7 @@ db.onModuleInit();
   // 自动安装依赖已满足的模块
   for (const m of moduleRegistry.list()) {
     if (m.auto_install && moduleRegistry.checkDependencies(m)) {
-      try { moduleRegistry.install(m.name); } catch {}
+      try { moduleRegistry.install(m.name); } catch (e: any) { console.error('[Module] install failed:', m.name, e.message); }
     }
   }
 
@@ -220,6 +220,9 @@ function apiRouter() {
     'account_chart','payment_methods','tax_rates','holidays',
     'journal_entries','journal_items',
     'surveys','survey_responses',
+    'payment_gateways','payment_logs',
+    'email_campaigns','email_logs',
+    'product_boms','product_bom_items',
     'product_styles','product_colors','product_sizes',
     'product_color_size_matrix','product_box_configs','product_box_size_ratios',
     'product_boms','product_process_routes',
@@ -2598,7 +2601,7 @@ function apiRouter() {
               allMessages.splice(allMessages.length - 1, 0, h);
             }
           }
-        } catch {}
+        } catch (e: any) { console.error('[Agent] load history failed:', e.message); }
       }
 
       send('start', { model: cfg.model, sessionId: options?.sessionId });
@@ -2931,9 +2934,47 @@ function apiRouter() {
     res.json({ success: true, id: p.id, enabled: next });
   });
 
+  // ===== MRP/支付/邮件 路由（注册于 catch-all 之前）=====
+  router.get('/mrp/explode', (req, res) => {
+    const { productId, qty } = req.query;
+    const qtyNum = Number(qty) || 1;
+    const boms = db.findWhere('product_boms', { product_id: productId }) as any[];
+    if (!boms.length) { res.json({ productId, qty: qtyNum, materials: [], message: '无BOM数据' }); return; }
+    const result: Array<{ material: string; code: string; unitQty: number; totalQty: number; unit: string }> = [];
+    for (const bom of boms) {
+      const items = db.findWhere('product_bom_items', { bom_id: bom.id }) as any[];
+      for (const item of items) {
+        result.push({ material: item.material_name, code: item.material_code, unitQty: item.quantity, totalQty: item.quantity * qtyNum, unit: item.unit });
+      }
+    }
+    res.json({ productId, qty: qtyNum, materials: result, bomCount: boms.length });
+  });
+
+  router.get('/payment-gateways', (_req, res) => { res.json(db.findAll('payment_gateways')); });
+  router.put('/payment-gateways/:id', (req, res) => {
+    db.update('payment_gateways', req.params.id, { config: JSON.stringify(req.body.config), is_active: req.body.is_active, updatedAt: new Date().toISOString() });
+    res.json({ success: true });
+  });
+
+  router.get('/email-campaigns', (_req, res) => { res.json(db.findAll('email_campaigns')); });
+  router.post('/email-campaigns', (req, res) => {
+    if (!req.body.name) { res.status(400).json({ error: '缺少必填字段: name' }); return; }
+    const id = 'ec_' + Date.now();
+    db.insert('email_campaigns', { id, name: req.body.name, subject: req.body.subject, template: req.body.template, target_group: req.body.target_group, status: 'draft', createdAt: new Date().toISOString() });
+    res.json({ success: true, id });
+  });
+  router.put('/email-campaigns/:id', (req, res) => { db.update('email_campaigns', req.params.id, req.body); res.json({ success: true }); });
+  router.delete('/email-campaigns/:id', (req, res) => { db.delete('email_campaigns', req.params.id); res.json({ success: true }); });
+  router.post('/email-campaigns/:id/send', (req, res) => {
+    const campaign = db.findById('email_campaigns', req.params.id) as any;
+    if (!campaign) { res.status(404).json({ error: '未找到' }); return; }
+    db.update('email_campaigns', req.params.id, { status: 'sent', sent_count: (campaign.sent_count||0)+1, updatedAt: new Date().toISOString() });
+    res.json({ success: true });
+  });
+
   router.get('/:table', (req, res, next) => {
     const { table } = req.params;
-    const RESERVED_ROUTES = new Set(['workflows', 'approval', 'workflow', 'ai', 'sitemap.xml']);
+    const RESERVED_ROUTES = new Set(['workflows', 'approval', 'workflow', 'ai', 'mrp', 'sitemap.xml']);
     // Allow hyphenated paths through to dedicated route handlers
     if (table.includes('-') || RESERVED_ROUTES.has(table)) { return next(); }
     if (!ALLOWED.includes(table)) { res.json({ error: 'Invalid table' }); return; }
@@ -7289,6 +7330,52 @@ function updateDailyReport(db: any, date: string, record: any) {
     });
 
     res.json({ success: true, id, code });
+  });
+
+  // ========== 支付网关 ==========
+  router.get('/payment-gateways', (_req, res) => {
+    res.json(db.findAll('payment_gateways'));
+  });
+  router.put('/payment-gateways/:id', (req, res) => {
+    db.update('payment_gateways', req.params.id, { config: JSON.stringify(req.body.config), is_active: req.body.is_active, updatedAt: new Date().toISOString() });
+    res.json({ success: true });
+  });
+
+  // ========== MRP简单运算 ==========
+  router.get('/mrp/explode', (req, res) => {
+    const { productId, qty } = req.query;
+    const qtyNum = Number(qty) || 1;
+    const boms = db.findWhere('product_boms', { product_id: productId }) as any[];
+    if (!boms.length) { res.json({ productId, qty: qtyNum, materials: [], message: '无BOM数据' }); return; }
+    const result: Array<{ material: string; code: string; unitQty: number; totalQty: number; unit: string }> = [];
+    for (const bom of boms) {
+      const items = db.findWhere('product_bom_items', { bom_id: bom.id }) as any[];
+      for (const item of items) {
+        result.push({ material: item.material_name, code: item.material_code, unitQty: item.quantity, totalQty: item.quantity * qtyNum, unit: item.unit });
+      }
+    }
+    res.json({ productId, qty: qtyNum, materials: result, bomCount: boms.length });
+  });
+
+  // ========== 邮件营销 ==========
+  router.get('/email-campaigns', (_req, res) => {
+    res.json(db.findAll('email_campaigns'));
+  });
+  router.post('/email-campaigns', (req, res) => {
+    const { name, subject, template, target_group } = req.body;
+    if (!name) { res.status(400).json({ error: '缺少必填字段: name' }); return; }
+    const id = 'ec_' + Date.now();
+    db.insert('email_campaigns', { id, name, subject, template, target_group, status: 'draft', created_at: new Date().toISOString() });
+    res.json({ success: true, id });
+  });
+  router.put('/email-campaigns/:id', (req, res) => { db.update('email_campaigns', req.params.id, req.body); res.json({ success: true }); });
+  router.delete('/email-campaigns/:id', (req, res) => { db.delete('email_campaigns', req.params.id); res.json({ success: true }); });
+  router.post('/email-campaigns/:id/send', (req, res) => {
+    const campaign = db.findById('email_campaigns', req.params.id) as any;
+    if (!campaign) { res.status(404).json({ error: '未找到' }); return; }
+    db.update('email_campaigns', req.params.id, { status: 'sent', sent_count: (campaign.sent_count||0)+1, updatedAt: new Date().toISOString() });
+    db.insert('email_logs', { id: 'el_' + Date.now(), campaign_id: req.params.id, recipient: req.body.recipient||'test@feida.com', subject: campaign.subject, status: 'sent', sent_at: new Date().toISOString(), created_at: new Date().toISOString() });
+    res.json({ success: true });
   });
 
   // 收付款管理
