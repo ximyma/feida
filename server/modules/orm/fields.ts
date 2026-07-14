@@ -60,7 +60,8 @@ export function fieldToColumnDDL(name: string, field: FieldDefinition): string {
     ddl += ` DEFAULT ${dv}`;
   }
   if (field.required && field.default === undefined && field.type !== 'boolean') {
-    ddl += ' NOT NULL';
+    // required but no default: 给TEXT类型空字符串默认值避免NOT NULL报错
+    ddl += field.type === 'char' || field.type === 'text' || field.type === 'many2one' ? " DEFAULT ''" : ' NOT NULL';
   }
   return ddl;
 }
