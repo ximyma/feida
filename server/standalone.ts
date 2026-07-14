@@ -81,7 +81,7 @@ db.onModuleInit();
 
   // 初始化模块系统 (参照 Odoo ir.module.module)
   const { ModuleRegistry } = require('./modules/module-registry');
-  const moduleRegistry = new ModuleRegistry(db, path.join(__dirname, '..', 'modules'));
+  const moduleRegistry = new ModuleRegistry(db, path.join(__dirname, '..', '..', 'modules'));
   moduleRegistry.discoverAll();
   // 自动安装依赖已满足的模块
   for (const m of moduleRegistry.list()) {
@@ -89,6 +89,29 @@ db.onModuleInit();
       try { moduleRegistry.install(m.name); } catch (e: any) { console.error('[Module] install failed:', m.name, e.message); }
     }
   }
+
+  // 初始化 ORM 模型注册表 (参照 Odoo models.py)
+  const { ModelRegistry } = require('./modules/orm/model-registry');
+  const modelRegistry = new ModelRegistry(db);
+  // 从所有已发现的模块加载模型 (直接扫描文件系统)
+  const modulesDir = path.join(__dirname, '..', '..', 'modules');
+  if (require('fs').existsSync(modulesDir)) {
+    for (const entry of require('fs').readdirSync(modulesDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(modulesDir, entry.name);
+      try {
+        const loaded = modelRegistry.loadFromModule(dir);
+        if (loaded.length > 0) console.log(`[ORM] ${entry.name}: +${loaded.length} 模型`);
+      } catch (e: any) { console.error('[ORM] 模型加载失败:', entry.name, e.message); }
+    }
+  }
+  // 手动注册核心表模型 (未模块化的表)
+  registerCoreModels(modelRegistry);
+  // 解析继承链
+  modelRegistry.resolveInheritance();
+  console.log(`[ORM] 总计注册 ${modelRegistry.list().length} 个模型`);
+  // 暴露给 apiRouter 使用
+  (global as any).__feida_models = modelRegistry;
 
   // 初始化增强版工作流引擎
   initWorkflowEngine(db);
@@ -107,8 +130,108 @@ app.use(express.json());
 app.use(loginSecurityMiddleware);
 const upload = multer({ dest: uploadDir });
 
+// 注册核心模型 (未模块化的表)
+function registerCoreModels(registry: any) {
+  const coreModels = [
+    { _name: 'users', _description: '用户表', _fields: {
+      username: { type: 'char', label: '用户名', required: true },
+      realName: { type: 'char', label: '姓名' },
+      password: { type: 'char', label: '密码', groups: [] },
+      role: { type: 'char', label: '角色' },
+      status: { type: 'selection', label: '状态', default: 'active', selection: [{label:'启用',value:'active'},{label:'禁用',value:'disabled'}] },
+    }},
+    { _name: 'attendance_records', _description: '考勤记录', _fields: {
+      employeeId: { type: 'char', label: '员工ID', required: true, index: true },
+      employeeName: { type: 'char', label: '员工姓名' },
+      date: { type: 'date', label: '日期' },
+      clockIn: { type: 'char', label: '上班打卡' },
+      clockOut: { type: 'char', label: '下班打卡' },
+      status: { type: 'selection', label: '状态', selection: [{label:'正常',value:'normal'},{label:'迟到',value:'late'},{label:'早退',value:'early'},{label:'缺卡',value:'missing'}] },
+    }},
+    { _name: 'journal_entries', _description: '会计凭证', _rec_name: 'code', _fields: {
+      code: { type: 'char', label: '凭证号', required: true },
+      entry_date: { type: 'date', label: '日期' },
+      description: { type: 'text', label: '摘要' },
+      total_debit: { type: 'float', label: '借方合计' },
+      total_credit: { type: 'float', label: '贷方合计' },
+      status: { type: 'selection', label: '状态', default: 'draft', selection: [{label:'草稿',value:'draft'},{label:'已过账',value:'posted'}] },
+    }},
+    { _name: 'surveys', _description: '问卷调查', _rec_name: 'title', _fields: {
+      title: { type: 'char', label: '标题', required: true },
+      description: { type: 'text', label: '描述' },
+      status: { type: 'selection', label: '状态', default: 'draft', selection: [{label:'激活',value:'active'},{label:'草稿',value:'draft'}] },
+      responseCount: { type: 'integer', label: '回复数', default: 0 },
+    }},
+    { _name: 'email_campaigns', _description: '邮件营销', _rec_name: 'name', _fields: {
+      name: { type: 'char', label: '名称', required: true },
+      subject: { type: 'char', label: '主题' },
+      template: { type: 'text', label: '模板' },
+      target_group: { type: 'char', label: '目标群' },
+      status: { type: 'selection', label: '状态', default: 'draft', selection: [{label:'草稿',value:'draft'},{label:'已发送',value:'sent'}] },
+    }},
+  ];
+  for (const modelDef of coreModels) {
+    registry.register(modelDef);
+  }
+}
+
 function apiRouter() {
   const router = express.Router();
+
+  // ===== ORM 模型 API (参照 Odoo /web/dataset/call_kw) =====
+  // GET /api/model/:model/search  → model.search(domain)
+  // GET /api/model/:model/browse/:id → model.browse(id)
+  // POST /api/model/:model/create → model.create(values)
+  // PUT /api/model/:model/write/:id → model.write(id, values)
+  // DELETE /api/model/:model/unlink/:id → model.unlink(id)
+  router.get('/model/:model/search', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    try {
+      const domain = req.query.domain ? JSON.parse(req.query.domain as string) : {};
+      const records = m.search(domain, { limit: parseInt(req.query.limit as string) || 100 });
+      res.json({ success: true, data: records, length: records.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  router.get('/model/:model/browse/:id', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    const record = m.browse(req.params.id);
+    if (!record) { res.status(404).json({ error: '记录不存在' }); return; }
+    res.json({ success: true, data: record });
+  });
+  router.post('/model/:model/create', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    // 校验
+    const errors = m.validate(req.body);
+    if (Object.keys(errors).length > 0) { res.status(400).json({ error: '校验失败', details: errors }); return; }
+    try {
+      const result = m.create(req.body);
+      res.json({ success: true, id: result.id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  router.put('/model/:model/write/:id', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    try {
+      m.write(req.params.id, req.body);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  router.delete('/model/:model/unlink/:id', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    try {
+      m.unlink(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  router.get('/model/list', (_req, res) => {
+    const registry = (global as any).__feida_models;
+    if (!registry) { res.json([]); return; }
+    res.json(registry.list());
+  });
 
   // 输入验证辅助
   function requireFields(body: any, fields: string[]): string | null {
