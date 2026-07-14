@@ -247,6 +247,7 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: '在线学习', to: '/apps/elearning', key: 'app-elearning' },
     { label: '财务管理', to: '/apps/finance', key: 'app-finance' },
     { label: '鞋服管理', to: '/apps/shoe', key: 'app-shoe' },
+    { label: 'Odoo模型', to: '/odoo-models', key: 'odoo-models' },
   ],
 };
 

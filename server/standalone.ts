@@ -62,6 +62,10 @@ const app = express();
 const db = new DatabaseService();
 db.onModuleInit();
 
+// 全局暴露数据库引用(供API使用)
+(global as any).__feida_db = db;
+(global as any).__feida_raw_db = (db as any).db;
+
   // 初始化登录安全 (P0: 失败锁定+速率限制)
   const { initLoginSecurity, loginSecurityMiddleware } = require('./modules/login-security');
   initLoginSecurity(db);
@@ -232,6 +236,36 @@ function apiRouter() {
     const registry = (global as any).__feida_models;
     if (!registry) { res.json([]); return; }
     res.json(registry.list());
+  });
+
+  // ===== Odoo 模型管理：Schema / 字段 / 行计数 =====
+  router.get('/model/:model/schema', (req, res) => {
+    try {
+      const rawDb = (global as any).__feida_raw_db;
+      const columns: Array<{ name: string; type: string }> = [];
+      if (rawDb) {
+        const info = rawDb.prepare(`PRAGMA table_info("${req.params.model}")`).all();
+        for (const c of info) columns.push({ name: c.name, type: c.type });
+      }
+      res.json({ table: req.params.model, columns });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  router.get('/model/:model/fields', (req, res) => {
+    const m = (global as any).__feida_models?.get(req.params.model);
+    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    const parts = req.params.model.split('.'), last = parts[parts.length - 1];
+    const fieldDefs = m.getFieldDefs();
+    const dbRaw = (global as any).__feida_raw_db;
+    const colInfo: any[] = dbRaw ? dbRaw.prepare(`PRAGMA table_info("${req.params.model}")`).all() : [];
+    const colSet = new Set(colInfo.map((c: any) => c.name));
+    res.json({ model: req.params.model, fieldCount: fieldDefs.length, fields: fieldDefs, actualColumns: colSet.size });
+  });
+  router.get('/model/:model/count', (req, res) => {
+    try {
+      const dbRaw = (global as any).__feida_raw_db;
+      const row = dbRaw.prepare(`SELECT COUNT(*) as c FROM "${req.params.model}"`).get();
+      res.json({ table: req.params.model, count: row.c });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // ===== 模块市场 API =====

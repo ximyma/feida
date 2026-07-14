@@ -144,6 +144,7 @@ import ShopAdminPage from './pages/Admin/ShopAdminPage';
 import CMSAdminPage from './pages/Admin/CMSAdminPage';
 import AIAssistantPage from './pages/AIAssistantPage/AIAssistantPage';
 import AppsPage from './pages/AppsPage/AppsPage';
+import OdooModelsPage from './pages/AppsPage/OdooModelsPage';
 import AIKnowledgePage from './pages/AIKnowledgePage/AIKnowledgePage';
 import AIBIAnalyticsPage from './pages/AIBIAnalyticsPage/AIBIAnalyticsPage';
 import AIAlertsPage from './pages/AIAlertsPage/AIAlertsPage';
@@ -353,6 +354,7 @@ export default function App() {
         {/* AI智能功能 */}
         <Route path="/ai-assistant" element={<AIAssistantPage />} />
         <Route path="/apps/:tab?" element={<AppsPage />} />
+        <Route path="/odoo-models" element={<OdooModelsPage />} />
         <Route path="/ai-knowledge" element={<AIKnowledgePage />} />
         <Route path="/ai-bianalytics" element={<AIBIAnalyticsPage />} />
         <Route path="/ai-alerts" element={<AIAlertsPage />} />
