@@ -2,7 +2,7 @@
  * Module System — 参照 Odoo __manifest__.py + ir.module.module
  *
  * 设计原则:
- *   1. manifest.json 声明元数据 (name/depends/data/hooks)
+ *   1. manifest.json 声明元数据 (name/depends/data/hooks/views/migrations)
  *   2. ModuleRegistry 管理生命周期 (发现/安装/升级/卸载)
  *   3. 模块表 ir_module_module 持久化状态
  *   4. 向前兼容: 现有代码无需改动, 逐步迁移到模块化
@@ -13,40 +13,57 @@ import path from 'path';
 
 /** 模块清单 — 对应 Odoo __manifest__.py */
 export interface ModuleManifest {
-  name: string;               // 人类可读名称
-  name_en?: string;           // 英文名
-  version: string;            // 语义化版本
+  name: string;
+  name_en?: string;
+  version: string;
   author: string;
   license?: string;
-  category: string;           // 分类路径, 如 "HR/核心"
-  depends: string[];          // 依赖模块名(技术名)
+  category: string;
+  depends: string[];
   description?: string;
   summary?: string;
-  installable: boolean;       // 是否可安装
-  auto_install?: boolean;     // 依赖满足时自动安装
-  application?: boolean;      // 是否应用(在仪表板可见)
-  sequence?: number;          // 加载顺序
-  data?: string[];            // 种子数据文件列表
-  hooks?: {                   // 生命周期钩子
-    pre_init?: string;        // 安装前 (路径指向函数)
+  installable: boolean;
+  auto_install?: boolean;
+  application?: boolean;
+  sequence?: number;
+  data?: string[];
+  /** 视图文件列表 (自动注册前端路由) */
+  views?: string[];
+  /** 迁移脚本目录 */
+  migrations?: string;
+  hooks?: {
+    pre_init?: string;
     post_init?: string;
     post_load?: string;
     uninstall?: string;
   };
-  icon?: string;              // 图标文件
-  countries?: string[];       // 国家代码
+  icon?: string;
+  countries?: string[];
 }
 
 export type ModuleState = 'uninstalled' | 'installed' | 'to_install' | 'to_upgrade' | 'to_remove';
+
+/** 已注册的视图路由 */
+export interface ModuleView {
+  moduleName: string;
+  path: string;          // 前端路由 e.g. "/payroll"
+  label: string;         // 菜单名
+  icon?: string;         // Ant Design 图标
+  component: string;     // JS文件名
+  category: string;      // 分类
+}
 
 /** 模块注册表 */
 export class ModuleRegistry {
   private modules: Map<string, { manifest: ModuleManifest; dir: string; state: ModuleState }> = new Map();
   private modulesDir: string;
+  /** 视图注册表 */
+  private views: ModuleView[] = [];
 
   constructor(private db: IDatabaseDriver, modulesDir: string) {
     this.modulesDir = modulesDir;
     this.ensureModuleTable();
+    this.ensureViewTable();
   }
 
   /** 从文件系统发现所有模块 */
@@ -65,12 +82,16 @@ export class ModuleRegistry {
         const manifest: ModuleManifest = JSON.parse(raw);
         if (!manifest.installable) continue;
 
-        // 从数据库读取状态
+        // 从数据库读取状态和版本
         const rawDb: any = (this.db as any).db || this.db;
-        const row = rawDb.prepare?.('SELECT state FROM ir_module_module WHERE name = ?')?.get(entry.name);
+        const row = rawDb.prepare?.('SELECT state, version FROM ir_module_module WHERE name = ?')?.get(entry.name);
         const state: ModuleState = row ? row.state : 'uninstalled';
-
-        this.modules.set(entry.name, { manifest, dir: path.join(this.modulesDir, entry.name), state });
+        // 检测是否需要升级 (文件版本 > 数据库版本)
+        if (state === 'installed' && row && this.isNewerVersion(manifest.version, row.version)) {
+          this.modules.set(entry.name, { manifest, dir: path.join(this.modulesDir, entry.name), state: 'to_upgrade' });
+        } else {
+          this.modules.set(entry.name, { manifest, dir: path.join(this.modulesDir, entry.name), state });
+        }
       } catch (e) {
         console.warn(`[ModuleRegistry] 跳过无效模块: ${entry.name}`, (e as Error).message);
       }
@@ -82,6 +103,16 @@ export class ModuleRegistry {
   /** 列出所有已发现模块 */
   list(): ModuleManifest[] {
     return [...this.modules.values()].map(m => m.manifest);
+  }
+
+  /** 列出所有模块详情(含状态) */
+  listWithState(): Array<{ name: string; shortdesc: string; version: string; state: ModuleState; category: string; depends: string[] }> {
+    return [...this.modules.entries()].map(([name, m]) => ({
+      name, shortdesc: m.manifest.name,
+      version: m.manifest.version, state: m.state,
+      category: m.manifest.category,
+      depends: m.manifest.depends,
+    }));
   }
 
   /** 获取模块详情 */
@@ -108,20 +139,21 @@ export class ModuleRegistry {
       for (const dataFile of mod.manifest.data) {
         const fp = path.join(mod.dir, dataFile);
         if (fs.existsSync(fp)) {
-          try {
-            const sql = fs.readFileSync(fp, 'utf-8');
-            this.db.exec(sql);
-          } catch (e) { console.warn(`[ModuleRegistry] 数据加载失败: ${dataFile}`, e); }
+          try { this.db.exec(fs.readFileSync(fp, 'utf-8')); }
+          catch (e) { console.warn(`[ModuleRegistry] 数据加载失败: ${dataFile}`, e); }
         }
       }
     }
 
+    // 注册视图
+    this.registerViews(name, mod.dir, mod.manifest);
+
     // 更新状态
     mod.state = 'installed';
-    const raw = (this.db as any).db || this.db;
+    const raw: any = (this.db as any).db || this.db;
     raw.prepare(
-      'INSERT OR REPLACE INTO ir_module_module (name, shortdesc, state, version, author, category) VALUES (?,?,?,?,?,?)'
-    ).run(name, mod.manifest.name, 'installed', mod.manifest.version, mod.manifest.author, mod.manifest.category);
+      'INSERT OR REPLACE INTO ir_module_module (name, shortdesc, state, version, author, category, updated_at) VALUES (?,?,?,?,?,?,?)'
+    ).run(name, mod.manifest.name, 'installed', mod.manifest.version, mod.manifest.author, mod.manifest.category, new Date().toISOString());
 
     // 运行 post_init hook
     if (mod.manifest.hooks?.post_init) this.runHook(mod, 'post_init');
@@ -129,23 +161,108 @@ export class ModuleRegistry {
     return true;
   }
 
+  /** 升级模块 (执行迁移脚本) */
+  upgrade(name: string): boolean {
+    const mod = this.modules.get(name);
+    if (!mod || mod.state !== 'to_upgrade') return false;
+
+    const migrationsDir = mod.manifest.migrations || 'migrations';
+    const mdir = path.join(mod.dir, migrationsDir);
+    if (fs.existsSync(mdir)) {
+      const raw: any = (this.db as any).db || this.db;
+      const row = raw.prepare?.('SELECT version FROM ir_module_module WHERE name = ?')?.get(name);
+      const oldVer = row?.version || '0.0.0';
+      const files = fs.readdirSync(mdir).filter(f => /^[\d.]+\.(js|sql)$/.test(f)).sort();
+      for (const file of files) {
+        const fileVer = file.replace(/\.(js|sql)$/, '');
+        if (this.isVersionInRange(fileVer, oldVer, mod.manifest.version)) {
+          try {
+            if (file.endsWith('.sql')) {
+              this.db.exec(fs.readFileSync(path.join(mdir, file), 'utf-8'));
+            } else if (file.endsWith('.js')) {
+              const migrateModule = require(path.join(mdir, file));
+              if (typeof migrateModule === 'function') migrateModule(this.db);
+            }
+            console.log(`[ModuleRegistry] 迁移: ${name} - ${file}`);
+          } catch (e) { console.error(`[ModuleRegistry] 迁移失败: ${file}`, e); }
+        }
+      }
+    }
+
+    mod.state = 'installed';
+    const raw2: any = (this.db as any).db || this.db;
+    raw2.prepare('UPDATE ir_module_module SET version = ?, state = ?, updated_at = ? WHERE name = ?')
+      .run(mod.manifest.version, 'installed', new Date().toISOString(), name);
+    return true;
+  }
+
   /** 卸载模块 */
   uninstall(name: string): boolean {
     const mod = this.modules.get(name);
-    if (!mod || mod.state !== 'installed') return false;
+    if (!mod || mod.state !== 'installed' && mod.state !== 'to_upgrade') return false;
 
     if (mod.manifest.hooks?.uninstall) this.runHook(mod, 'uninstall');
 
+    // 注销视图
+    this.views = this.views.filter(v => v.moduleName !== name);
+
     mod.state = 'uninstalled';
-    (this.db as any).query('DELETE FROM ir_module_module WHERE name = ?', [name]);
+    const raw: any = (this.db as any).db || this.db;
+    raw.prepare?.('UPDATE ir_module_module SET state = ? WHERE name = ?')?.run('uninstalled', name);
     return true;
+  }
+
+  // ========== 视图管理 ==========
+
+  /** 获取所有已注册视图 */
+  getViews(): ModuleView[] { return this.views; }
+
+  /** 从 manifest 注册视图 */
+  private registerViews(moduleName: string, dir: string, manifest: ModuleManifest): void {
+    if (!manifest.views) return;
+    for (const viewFile of manifest.views) {
+      const fp = path.join(dir, viewFile);
+      if (!fs.existsSync(fp)) continue;
+      try {
+        const viewDefs = require(fp);
+        const defs: ModuleView[] = (viewDefs.views || viewDefs.default?.views || [viewDefs].filter((v: any) => v.path));
+        for (const def of defs) {
+          if (def.path && def.label) {
+            this.views.push({ ...def, moduleName });
+          }
+        }
+      } catch (e) { console.warn(`[ModuleRegistry] 视图加载失败: ${viewFile}`, e); }
+    }
+  }
+
+  /** 视图持久化表 */
+  private ensureViewTable(): void {
+    const raw: any = (this.db as any).db || this.db;
+    try { raw.exec("CREATE TABLE IF NOT EXISTS ir_module_view (module TEXT, path TEXT, label TEXT, icon TEXT, component TEXT, category TEXT, PRIMARY KEY(module, path))"); }
+    catch (e) { /* exists */ }
+  }
+
+  // ========== 版本工具 ==========
+
+  private isNewerVersion(newVer: string, oldVer: string): boolean {
+    const n = newVer.split('.').map(Number);
+    const o = oldVer.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((n[i] || 0) > (o[i] || 0)) return true;
+      if ((n[i] || 0) < (o[i] || 0)) return false;
+    }
+    return false;
+  }
+
+  private isVersionInRange(target: string, from: string, to: string): boolean {
+    return this.isNewerVersion(target, from) && !this.isNewerVersion(target, to);
   }
 
   /** 检查依赖 */
   checkDependencies(manifest: ModuleManifest): boolean {
     for (const dep of manifest.depends) {
       const depMod = this.modules.get(dep);
-      if (!depMod || depMod.state !== 'installed') return false;
+      if (!depMod || (depMod.state !== 'installed' && depMod.state !== 'to_upgrade')) return false;
     }
     return true;
   }
@@ -161,7 +278,7 @@ export class ModuleRegistry {
       const mod = this.modules.get(name);
       if (mod) {
         for (const dep of mod.manifest.depends) visit(dep);
-        if (mod.state === 'installed') order.push(name);
+        order.push(name);
       }
     };
 
@@ -171,7 +288,7 @@ export class ModuleRegistry {
 
   /** 模块表初始化 */
   private ensureModuleTable(): void {
-    const raw = (this.db as any).db || this.db;
+    const raw: any = (this.db as any).db || this.db;
     try {
       raw.exec(`
         CREATE TABLE IF NOT EXISTS ir_module_module (

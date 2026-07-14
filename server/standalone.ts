@@ -112,6 +112,7 @@ db.onModuleInit();
   console.log(`[ORM] 总计注册 ${modelRegistry.list().length} 个模型`);
   // 暴露给 apiRouter 使用
   (global as any).__feida_models = modelRegistry;
+  (global as any).__feida_module_registry = moduleRegistry;
 
   // 初始化增强版工作流引擎
   initWorkflowEngine(db);
@@ -231,6 +232,43 @@ function apiRouter() {
     const registry = (global as any).__feida_models;
     if (!registry) { res.json([]); return; }
     res.json(registry.list());
+  });
+
+  // ===== 模块市场 API =====
+  router.get('/modules/list', (_req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    res.json(registry ? registry.listWithState() : []);
+  });
+  router.get('/modules/:name', (req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    const mod = registry?.get(req.params.name);
+    if (!mod) { res.status(404).json({ error: '模块不存在' }); return; }
+    res.json({ name: mod.manifest.name, version: mod.manifest.version, state: mod.state, depends: mod.manifest.depends, category: mod.manifest.category, description: mod.manifest.description });
+  });
+  router.post('/modules/:name/install', (req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    if (!registry) { res.status(500).json({ error: '注册表不可用' }); return; }
+    const ok = registry.install(req.params.name);
+    if (!ok) { res.status(400).json({ error: '安装失败(依赖不满足或已安装)' }); return; }
+    res.json({ success: true });
+  });
+  router.post('/modules/:name/uninstall', (req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    if (!registry) { res.status(500).json({ error: '注册表不可用' }); return; }
+    const ok = registry.uninstall(req.params.name);
+    if (!ok) { res.status(400).json({ error: '卸载失败(模块未安装)' }); return; }
+    res.json({ success: true });
+  });
+  router.post('/modules/:name/upgrade', (req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    if (!registry) { res.status(500).json({ error: '注册表不可用' }); return; }
+    const ok = registry.upgrade(req.params.name);
+    if (!ok) { res.status(400).json({ error: '升级失败(无待升级模块)' }); return; }
+    res.json({ success: true });
+  });
+  router.get('/views/list', (_req, res) => {
+    const registry = (global as any).__feida_module_registry;
+    res.json(registry ? registry.getViews() : []);
   });
 
   // 输入验证辅助

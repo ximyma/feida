@@ -1,0 +1,28 @@
+{
+  "name": "薪资管理",
+  "name_en": "Payroll",
+  "version": "1.0.1",
+  "author": "飞达",
+  "license": "Apache-2.0",
+  "category": "HR/薪资",
+  "depends": [
+    "hr_core"
+  ],
+  "summary": "薪资管理模块: 扩展员工档案增加薪资字段",
+  "description": "以模型继承(inherit)方式为员工添加工资卡信息、社保公积金字段",
+  "installable": true,
+  "auto_install": true,
+  "application": true,
+  "sequence": 20,
+  "data": [
+    "data/payroll_seed.sql"
+  ],
+  "views": [
+    "views/menu.js"
+  ],
+  "migrations": "migrations",
+  "hooks": {
+    "post_init": "hooks/post_init.js"
+  },
+  "demo": false
+}

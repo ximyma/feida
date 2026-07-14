@@ -5,13 +5,17 @@
   "author": "飞达",
   "license": "Apache-2.0",
   "category": "Localization/China",
-  "depends": ["base", "hr_core"],
+  "depends": [
+    "hr_core"
+  ],
   "summary": "中国会计准则科目表 + 支付宝/微信支付 + 中国地区数据",
   "description": "财务: 中国标准会计科目表(参照财政部最新准则)。支付: 支付宝/微信支付接入。基础数据: 省市区三级联动、中国节假日、税率配置。",
   "installable": true,
   "application": false,
   "sequence": 50,
-  "countries": ["cn"],
+  "countries": [
+    "cn"
+  ],
   "data": [
     "data/account_chart.sql",
     "data/payment_methods.sql",
@@ -20,5 +24,6 @@
   ],
   "hooks": {
     "post_init": "hooks/post_init.js"
-  }
+  },
+  "auto_install": true
 }

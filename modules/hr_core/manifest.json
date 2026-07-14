@@ -5,7 +5,7 @@
   "author": "飞达",
   "license": "Apache-2.0",
   "category": "HR/核心",
-  "depends": ["base"],
+  "depends": [],
   "summary": "人力资源管理核心模块: 员工档案、组织架构、职位职级",
   "description": "员工基础信息管理、部门树、岗位管理、职级体系。是所有HR子模块的依赖基础。",
   "installable": true,
@@ -16,5 +16,6 @@
   ],
   "hooks": {
     "post_init": "hooks/post_init.js"
-  }
+  },
+  "auto_install": true
 }

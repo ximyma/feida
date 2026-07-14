@@ -5,11 +5,14 @@
   "author": "飞达",
   "license": "Apache-2.0",
   "category": "Website/Blog",
-  "depends": ["base"],
+  "depends": [],
   "summary": "企业博客系统: 分类、标签、评论、RSS",
   "description": "支持多栏目博客、文章标签、评论审核、RSS订阅、SEO优化。参照 Odoo website_blog。",
   "installable": true,
   "application": true,
   "sequence": 200,
-  "data": ["data/blog.sql"]
+  "data": [
+    "data/blog.sql"
+  ],
+  "auto_install": true
 }

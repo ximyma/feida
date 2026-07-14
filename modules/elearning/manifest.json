@@ -1,1 +1,20 @@
-{"name":"在线学习","name_en":"E-Learning","version":"1.0.0","author":"飞达","license":"Apache-2.0","category":"HR/Training","depends":["base","hr_core"],"summary":"企业在线学习平台: 课程、章节、测验、证书","description":"支持课程创建、视频/文档上传、章节管理、课后测验、学习进度追踪、结业证书。参照 Odoo website_slides。","installable":true,"application":true,"sequence":30,"data":["data/elearning.sql"]}
+{
+  "name": "在线学习",
+  "name_en": "E-Learning",
+  "version": "1.0.0",
+  "author": "飞达",
+  "license": "Apache-2.0",
+  "category": "HR/Training",
+  "depends": [
+    "hr_core"
+  ],
+  "summary": "企业在线学习平台: 课程、章节、测验、证书",
+  "description": "支持课程创建、视频/文档上传、章节管理、课后测验、学习进度追踪、结业证书。参照 Odoo website_slides。",
+  "installable": true,
+  "application": true,
+  "sequence": 30,
+  "data": [
+    "data/elearning.sql"
+  ],
+  "auto_install": true
+}

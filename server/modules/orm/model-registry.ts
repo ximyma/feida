@@ -28,7 +28,17 @@ export class ModelRegistry {
     } else {
       model.ensureTable();
     }
-    this.models.set(options._inherit || options._name, model);
+    const key = options._inherit || options._name;
+    this.models.set(key, model);
+    // _inherit: 立即向父表添加新列
+    if (options._inherit) {
+      model.migrateColumns();
+      // 把 _inherit 模型的字段合并到父模型中
+      const parent = this.models.get(options._inherit);
+      if (parent) {
+        parent._fields = { ...parent._fields, ...options._fields };
+      }
+    }
     return model;
   }
 
