@@ -51,6 +51,9 @@ export class ModelRegistry {
   private inheritance: Map<string, string> = new Map();
   private db: any;
 
+  /** 获取原始SQLite连接 */
+  private rawDb(): any { return (this.db as any)?.db || this.db; }
+
   constructor(db?: any) {
     this.db = db;
   }
@@ -157,7 +160,7 @@ export class ModelRegistry {
     cols.push('created_at TEXT DEFAULT CURRENT_TIMESTAMP');
     cols.push('updated_at TEXT DEFAULT CURRENT_TIMESTAMP');
     try {
-      this.db.exec(`CREATE TABLE IF NOT EXISTS "${def._name}" (${cols.join(', ')})`);
+      this.rawDb().exec(`CREATE TABLE IF NOT EXISTS "${def._name}" (${cols.join(', ')})`);
       // SQL约束
       if (def._sql_constraints) {
         for (const [cname, constraint] of def._sql_constraints) {
@@ -165,9 +168,9 @@ export class ModelRegistry {
             // 解析约束类型
             if (constraint.startsWith('unique(')) {
               const colName = constraint.match(/unique\((\w+)\)/)?.[1];
-              if (colName) this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${def._name}_${cname} ON "${def._name}"(${colName})`);
+              if (colName) this.rawDb().exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${def._name}_${cname} ON "${def._name}"(${colName})`);
             } else if (constraint.startsWith('check(')) {
-              this.db.exec(`ALTER TABLE "${def._name}" ADD CONSTRAINT ${def._name}_${cname} ${constraint}`);
+              this.rawDb().exec(`ALTER TABLE "${def._name}" ADD CONSTRAINT ${def._name}_${cname} ${constraint}`);
             }
           } catch (e) { /* constraint may exist */ }
         }
@@ -180,7 +183,7 @@ export class ModelRegistry {
     if (!this.db) return;
     for (const [name, field] of Object.entries(fields)) {
       try {
-        this.db.exec(`ALTER TABLE "${table}" ADD COLUMN ${this._fieldToDDL(name, field)}`);
+        this.rawDb().exec(`ALTER TABLE "${table}" ADD COLUMN ${this._fieldToDDL(name, field)}`);
       } catch { /* column may exist */ }
     }
   }

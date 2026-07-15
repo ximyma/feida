@@ -248,6 +248,9 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: '财务管理', to: '/apps/finance', key: 'app-finance' },
     { label: '鞋服管理', to: '/apps/shoe', key: 'app-shoe' },
     { label: 'Odoo模型', to: '/odoo-models', key: 'odoo-models' },
+    { label: 'Analytic Accounts', to: '/addon/analytic_odoo/account_analytic_account', key: 'addon-acct' },
+    { label: 'Analytic Lines', to: '/addon/analytic_odoo/account_analytic_line', key: 'addon-line' },
+    { label: 'Analytic Plans', to: '/addon/analytic_odoo/account_analytic_plan', key: 'addon-plan' },
   ],
 };
 

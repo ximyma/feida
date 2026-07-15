@@ -95,7 +95,7 @@ db.onModuleInit();
   }
 
   // 初始化 ORM 模型注册表 (参照 Odoo models.py)
-  const { ModelRegistry } = require('./modules/orm/model-registry');
+  const { ModelRegistry } = require('./modules/orm/model-class');
   const modelRegistry = new ModelRegistry(db);
   // 从所有已发现的模块加载模型 (直接扫描文件系统)
   const modulesDir = path.join(__dirname, '..', '..', 'modules');
@@ -111,12 +111,37 @@ db.onModuleInit();
   }
   // 手动注册核心表模型 (未模块化的表)
   registerCoreModels(modelRegistry);
-  // 解析继承链
-  modelRegistry.resolveInheritance();
+  
+  // ===== 从 addons/ 加载 Odoo 模块模型 =====
+  const addonsDir = path.join(__dirname, '..', '..', 'addons');
+  const addonModels: Array<{ addon: string; models: string[] }> = [];
+  if (require('fs').existsSync(addonsDir)) {
+    for (const entry of require('fs').readdirSync(addonsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(addonsDir, entry.name);
+      try {
+        const loaded = modelRegistry.loadFromModule(dir);
+        if (loaded.length > 0) {
+          console.log(`[Addon] ${entry.name}: +${loaded.length} 模型`);
+          addonModels.push({ addon: entry.name, models: loaded.map((m: any) => m._name) });
+          // 标记为 addon 模型
+          for (const m of loaded) {
+            const def = modelRegistry.getDef(m._name);
+            if (def) { def._addon = true; def._addonName = entry.name; }
+          }
+        }
+      } catch (e: any) { console.error('[Addon] 加载失败:', entry.name, e.message); }
+    }
+  }
   console.log(`[ORM] 总计注册 ${modelRegistry.list().length} 个模型`);
   // 暴露给 apiRouter 使用
   (global as any).__feida_models = modelRegistry;
   (global as any).__feida_module_registry = moduleRegistry;
+  
+  // 初始化 Odoo 风格 Environment (Recordset 引擎)
+  const { Environment } = require('./modules/orm/environment');
+  const env = Environment.createProxy(new Environment((db as any).db, modelRegistry, { uid: 1 }));
+  (global as any).__feida_env = env;
 
   // 初始化增强版工作流引擎
   initWorkflowEngine(db);
@@ -187,48 +212,57 @@ function apiRouter() {
   // GET /api/model/:model/search  → model.search(domain)
   // GET /api/model/:model/browse/:id → model.browse(id)
   // POST /api/model/:model/create → model.create(values)
-  // PUT /api/model/:model/write/:id → model.write(id, values)
-  // DELETE /api/model/:model/unlink/:id → model.unlink(id)
+  // ===== ORM CRUD (通过 Environment + Recordset) =====
   router.get('/model/:model/search', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    const env = (global as any).__feida_env;
+    if (!env) { res.status(500).json({ error: 'ORM未初始化' }); return; }
     try {
-      const domain = req.query.domain ? JSON.parse(req.query.domain as string) : {};
-      const records = m.search(domain, { limit: parseInt(req.query.limit as string) || 100 });
-      res.json({ success: true, data: records, length: records.length });
+      const model = env[req.params.model.replace(/\./g, '_')];
+      if (!model) { res.status(404).json({ error: '模型不存在' }); return; }
+      const limit = parseInt(req.query.limit as string) || 100;
+      const rs = model.search([], { limit });
+      const data: any[] = [];
+      for (const rec of rs) data.push(rec);
+      res.json({ success: true, data, length: data.length });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   router.get('/model/:model/browse/:id', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
-    const record = m.browse(req.params.id);
-    if (!record) { res.status(404).json({ error: '记录不存在' }); return; }
-    res.json({ success: true, data: record });
+    const env = (global as any).__feida_env;
+    if (!env) { res.status(500).json({ error: 'ORM未初始化' }); return; }
+    try {
+      const rs = env[req.params.model.replace(/\./g, '_')];
+      if (!rs) { res.status(404).json({ error: '模型不存在' }); return; }
+      const record = rs.browse(req.params.id);
+      res.json({ success: true, data: record._data.get(req.params.id) || null });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   router.post('/model/:model/create', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
-    // 校验
-    const errors = m.validate(req.body);
-    if (Object.keys(errors).length > 0) { res.status(400).json({ error: '校验失败', details: errors }); return; }
+    const env = (global as any).__feida_env;
+    if (!env) { res.status(500).json({ error: 'ORM未初始化' }); return; }
     try {
-      const result = m.create(req.body);
-      res.json({ success: true, id: result.id });
+      const model = env[req.params.model.replace(/\./g, '_')];
+      if (!model) { res.status(404).json({ error: '模型不存在' }); return; }
+      const result = model.create(req.body);
+      res.json({ success: true, id: result._ids[0] });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   router.put('/model/:model/write/:id', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    const env = (global as any).__feida_env;
+    if (!env) { res.status(500).json({ error: 'ORM未初始化' }); return; }
     try {
-      m.write(req.params.id, req.body);
+      const model = env[req.params.model.replace(/\./g, '_')];
+      if (!model) { res.status(404).json({ error: '模型不存在' }); return; }
+      model.browse(req.params.id).write(req.body);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   router.delete('/model/:model/unlink/:id', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
+    const env = (global as any).__feida_env;
+    if (!env) { res.status(500).json({ error: 'ORM未初始化' }); return; }
     try {
-      m.unlink(req.params.id);
+      const model = env[req.params.model.replace(/\./g, '_')];
+      if (!model) { res.status(404).json({ error: '模型不存在' }); return; }
+      model.browse(req.params.id).unlink();
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -251,14 +285,13 @@ function apiRouter() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   router.get('/model/:model/fields', (req, res) => {
-    const m = (global as any).__feida_models?.get(req.params.model);
-    if (!m) { res.status(404).json({ error: '模型不存在' }); return; }
-    const parts = req.params.model.split('.'), last = parts[parts.length - 1];
-    const fieldDefs = m.getFieldDefs();
-    const dbRaw = (global as any).__feida_raw_db;
-    const colInfo: any[] = dbRaw ? dbRaw.prepare(`PRAGMA table_info("${req.params.model}")`).all() : [];
-    const colSet = new Set(colInfo.map((c: any) => c.name));
-    res.json({ model: req.params.model, fieldCount: fieldDefs.length, fields: fieldDefs, actualColumns: colSet.size });
+    const def = (global as any).__feida_models?.getDef(req.params.model);
+    if (!def) { res.status(404).json({ error: '模型不存在' }); return; }
+    const fieldDefs = Object.entries(def._fields).map(([name, field]: [string, any]) => ({
+      name, type: field.type, label: field.label || name,
+      required: field.required || false, selection: field.selection,
+    }));
+    res.json({ model: req.params.model, fieldCount: fieldDefs.length, fields: fieldDefs, actualColumns: Object.keys(def._fields).length });
   });
   router.get('/model/:model/count', (req, res) => {
     try {
@@ -303,6 +336,36 @@ function apiRouter() {
   router.get('/views/list', (_req, res) => {
     const registry = (global as any).__feida_module_registry;
     res.json(registry ? registry.getViews() : []);
+  });
+
+  // ===== Addon 模块列表 + 详情 =====
+  router.get('/addons/list', (_req, res) => {
+    const models = (global as any).__feida_models;
+    const all = models ? models.list() : [];
+    // 过滤来自addons的模型
+    const addonModels = all.filter((m: any) => {
+      const def = models.getDef?.(m.name);
+      return def && def._addon === true;
+    });
+    // 按addon分组
+    const groups: Record<string, { name: string; models: Array<{name:string; description:string; fields:number}> }> = {};
+    for (const m of addonModels) {
+      const def = models.getDef(m.name);
+      const addon = def._addonName || 'unknown';
+      if (!groups[addon]) groups[addon] = { name: addon, models: [] };
+      groups[addon].models.push({ name: m.name, description: m.description, fields: m.fields });
+    }
+    res.json(Object.values(groups));
+  });
+  
+  router.get('/addons/:addon/models', (req, res) => {
+    const models = (global as any).__feida_models;
+    const all = models ? models.list() : [];
+    const addonModels = all.filter((m: any) => {
+      const def = models.getDef?.(m.name);
+      return def && def._addonName === req.params.addon;
+    });
+    res.json(addonModels);
   });
 
   // 输入验证辅助

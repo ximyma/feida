@@ -145,6 +145,7 @@ import CMSAdminPage from './pages/Admin/CMSAdminPage';
 import AIAssistantPage from './pages/AIAssistantPage/AIAssistantPage';
 import AppsPage from './pages/AppsPage/AppsPage';
 import OdooModelsPage from './pages/AppsPage/OdooModelsPage';
+import ModuleRunPage from './pages/AppsPage/ModuleRunPage';
 import AIKnowledgePage from './pages/AIKnowledgePage/AIKnowledgePage';
 import AIBIAnalyticsPage from './pages/AIBIAnalyticsPage/AIBIAnalyticsPage';
 import AIAlertsPage from './pages/AIAlertsPage/AIAlertsPage';
@@ -355,6 +356,7 @@ export default function App() {
         <Route path="/ai-assistant" element={<AIAssistantPage />} />
         <Route path="/apps/:tab?" element={<AppsPage />} />
         <Route path="/odoo-models" element={<OdooModelsPage />} />
+        <Route path="/addon/:addon/:model" element={<ModuleRunPage />} />
         <Route path="/ai-knowledge" element={<AIKnowledgePage />} />
         <Route path="/ai-bianalytics" element={<AIBIAnalyticsPage />} />
         <Route path="/ai-alerts" element={<AIAlertsPage />} />
