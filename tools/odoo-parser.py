@@ -37,13 +37,25 @@ def parse_fields(body):
     """解析字段定义"""
     fields = {}
     # 匹配: name = fields.Char('Label', required=True, ...)
-    # 也处理多行
+    # 支持多行、嵌套括号
     body_flat = body.replace('\n', ' ')
-    pattern = re.compile(r'(\w+)\s*[:=]\s*fields\.(\w+)\(([^)]*)\)')
-    for fm in pattern.finditer(body_flat):
+    # 找到所有 fields.Xxx( 位置，手动计数括号配对
+    pos = 0
+    while True:
+        fm = re.search(r'(\w+)\s*[:=]\s*fields\.(\w+)\s*\(', body_flat[pos:])
+        if not fm: break
         fname = fm.group(1)
         ftype = fm.group(2)
-        fargs = fm.group(3)
+        # 从(后开始计数括号
+        start = pos + fm.end()
+        depth = 1
+        end = start
+        while end < len(body_flat) and depth > 0:
+            if body_flat[end] == '(': depth += 1
+            elif body_flat[end] == ')': depth -= 1
+            end += 1
+        fargs = body_flat[start:end-1]  # 不包含最后的)
+        pos = end
         
         if fname.startswith('_') or ftype not in FIELD_TYPE_MAP:
             continue
@@ -94,12 +106,23 @@ def parse_file(filepath):
     blocks = extract_class_blocks(content)
     
     for class_name, body in blocks:
-        # 只解析有 _name 的类
+        # 提取 _name 和 _inherit
         name_m = re.search(r'_name\s*=\s*[\x27\"]([^\x27\"]+)[\x27\"]', body)
-        if not name_m:
-            continue
+        inherits = []
+        inh_list = re.search(r'_inherit\s*=\s*\[([^\]]*)\]', body)
+        if inh_list:
+            inherits = [m.strip(' \'\"').replace('.', '_') for m in re.findall(r'[\x27\"]([^\x27\"]+)[\x27\"]', inh_list.group(1))]
+        inh_single = re.search(r'_inherit\s*=\s*[\x27\"]([^\x27\"]+)[\x27\"]', body)
+        if inh_single:
+            inherits = [inh_single.group(1).replace('.', '_')]
         
-        odoo_name = name_m.group(1)
+        # 无 _name 但有 _inherit: 使用父模型名
+        if not name_m and inherits:
+            odoo_name = inherits[0].replace('.', '_')
+        elif name_m:
+            odoo_name = name_m.group(1)
+        else:
+            continue
         model = {
             "_name": odoo_name.replace('.', '_'),
             "_odoo_name": odoo_name,
@@ -112,10 +135,8 @@ def parse_file(filepath):
         if desc_m:
             model["_description"] = desc_m.group(1)
         
-        # _inherit
-        inh_single = re.search(r'_inherit\s*=\s*[\x27\"]([^\x27\"]+)[\x27\"]', body)
-        if inh_single:
-            model["_inherit"] = [inh_single.group(1).replace('.', '_')]
+        # _inherit (已在循环头部解析)
+        model["_inherit"] = inherits
         
         model["_fields"] = parse_fields(body)
         

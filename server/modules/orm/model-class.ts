@@ -121,7 +121,8 @@ export class ModelRegistry {
 
   /** 从模块目录加载模型 */
   loadFromModule(moduleDir: string): ModelClass[] {
-    const modelsDir = path.join(moduleDir, 'models');
+    const absDir = path.resolve(moduleDir);
+    const modelsDir = path.join(absDir, 'models');
     if (!fs.existsSync(modelsDir)) return [];
     const loaded: ModelClass[] = [];
     const files = fs.readdirSync(modelsDir).filter(f => f.endsWith('.js') || f.endsWith('.ts'));
