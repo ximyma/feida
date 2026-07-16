@@ -11118,6 +11118,7 @@ app.use('/uploads', express.static(uploadDir));
 
 app.use('/api', apiAuthMiddleware, apiRouter());
 
+app.use('/addons', express.static(path.join(__dirname, '..', '..', 'addons'), { maxAge: 0, etag: false }));
 app.use(express.static(path.join(__dirname, '../client')));
 
 app.get('*', (_req, res) => {
