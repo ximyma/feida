@@ -1,0 +1,14 @@
+{
+  "name": "演示ERP",
+  "name_en": "Demo ERP",
+  "version": "1.0.0",
+  "author": "飞达",
+  "category": "演示",
+  "depends": [],
+  "summary": "演示飞达ORM全部能力: 关联/校验/钩子/聚合/选择",
+  "description": "包含城市→联系人→订单→订单明细→产品 的完整关联模型链路",
+  "installable": true,
+  "auto_install": true,
+  "application": true,
+  "sequence": 600
+}

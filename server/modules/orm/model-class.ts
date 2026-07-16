@@ -22,6 +22,7 @@ export class ModelClass {
   _fields: Record<string, any>;
   _sql_constraints: Array<[string, string, string]>;
   _methods: Record<string, Function>;
+  _hooks: Record<string, Function[]>;
 
   constructor(def: ModelDef) {
     this._name = def._name;
@@ -31,6 +32,7 @@ export class ModelClass {
     this._fields = { ...def._fields };
     this._sql_constraints = def._sql_constraints || [];
     this._methods = def._methods || {};
+    this._hooks = def._hooks || {};
   }
 }
 
@@ -43,6 +45,7 @@ export interface ModelDef {
   _fields: Record<string, any>;
   _sql_constraints?: Array<[string, string, string]>;
   _methods?: Record<string, Function>;
+  _hooks?: Record<string, Function[]>;
 }
 
 export class ModelRegistry {

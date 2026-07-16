@@ -251,6 +251,9 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: 'Analytic Accounts', to: '/addon/analytic_odoo/account_analytic_account', key: 'addon-acct' },
     { label: 'Analytic Lines', to: '/addon/analytic_odoo/account_analytic_line', key: 'addon-line' },
     { label: 'Analytic Plans', to: '/addon/analytic_odoo/account_analytic_plan', key: 'addon-plan' },
+    { label: '联系人', to: '/addon/demo_erp/demo_contact', key: 'addon-contact' },
+    { label: '订单', to: '/addon/demo_erp/demo_order', key: 'addon-order' },
+    { label: '产品', to: '/addon/demo_erp/demo_product', key: 'addon-product' },
   ],
 };
 
