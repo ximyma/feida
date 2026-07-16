@@ -163,6 +163,8 @@ export class Recordset {
         processed[k] = v;
       }
     }
+    // 公式计算
+    this._evalFormulas(processed);
     const cols = Object.keys(processed);
     try {
       this.env.cr.prepare(`INSERT INTO "${this._name}" (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map(c => processed[c]));
@@ -199,6 +201,15 @@ export class Recordset {
       }
     }
     processed.updated_at = new Date().toISOString();
+    // 公式计算
+    const fullRecord: Record<string, any> = {};
+    if (this._ids.length === 1) { this._ensureLoaded(); Object.assign(fullRecord, this._data.get(this._ids[0])); }
+    Object.assign(fullRecord, processed);
+    this._evalFormulas(fullRecord);
+    // 将公式计算结果合并回 processed
+    for (const [k, v] of Object.entries(fullRecord)) {
+      if (this._fieldDefs[k]?.formula) processed[k] = v;
+    }
     const setters = Object.keys(processed).map(c => `${c}=?`).join(',');
     const vals = Object.keys(processed).map(c => processed[c]);
     vals.push(...this._ids);
@@ -326,6 +337,23 @@ export class Recordset {
       const rows = this.env.cr.prepare(`SELECT * FROM "${this._name}" WHERE id IN (${this._ids.map(() => '?').join(',')})`).all(...this._ids);
       for (const row of rows) this._data.set(row.id, row);
     } catch {}
+  }
+
+  /** 公式计算: price*qty, amount*1.13, len(name) 等 */
+  private _evalFormulas(record: Record<string, any>): void {
+    for (const [name, field] of Object.entries(this._fieldDefs)) {
+      if (!field.formula) continue;
+      try {
+        let expr = field.formula as string;
+        for (const [k, v] of Object.entries(record)) {
+          if (v !== undefined && v !== null && (typeof v === 'number' || typeof v === 'string')) {
+            expr = expr.replace(new RegExp('\\b' + k + '\\b', 'g'), String(v));
+          }
+        }
+        const fn = new Function('"use strict"; return (' + expr + ')');
+        record[name] = Number(fn()) || 0;
+      } catch { /* formula eval failed */ }
+    }
   }
 
   private _validate(values: Record<string, any>): Record<string, string> {

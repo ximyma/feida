@@ -290,6 +290,7 @@ function apiRouter() {
     const fieldDefs = Object.entries(def._fields).map(([name, field]: [string, any]) => ({
       name, type: field.type, label: field.label || name,
       required: field.required || false, selection: field.selection,
+      formula: field.formula, relation: field.relation,
     }));
     res.json({ model: req.params.model, fieldCount: fieldDefs.length, fields: fieldDefs, actualColumns: Object.keys(def._fields).length });
   });
@@ -442,6 +443,19 @@ function apiRouter() {
       }
     }
     res.json(modules);
+  });
+
+  router.post('/lowcode/save-app-config', (req, res) => {
+    const { moduleName, config } = req.body;
+    if (!moduleName || !config) { res.status(400).json({ error: '缺少参数' }); return; }
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const dir = path.join(process.cwd(), 'addons', moduleName);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'app.json'), JSON.stringify(config, null, 2), 'utf-8');
+      res.json({ success: true, path: `addons/${moduleName}/app.json` });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   router.post('/lowcode/deploy', (req, res) => {
