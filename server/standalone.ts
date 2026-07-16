@@ -475,6 +475,91 @@ function apiRouter() {
     }
   });
 
+  // ===== 应用管理 API =====
+  router.get('/apps/list', (_req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const addonsDir = path.join(process.cwd(), 'addons');
+    const apps: any[] = [];
+    if (fs.existsSync(addonsDir)) {
+      for (const entry of fs.readdirSync(addonsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const appJsonPath = path.join(addonsDir, entry.name, 'app.json');
+        const manifestPath = path.join(addonsDir, entry.name, 'manifest.json');
+        const modelsDir = path.join(addonsDir, entry.name, 'models');
+        if (!fs.existsSync(appJsonPath) && !fs.existsSync(manifestPath)) continue;
+        
+        let config: any = {};
+        try { config = JSON.parse(fs.readFileSync(appJsonPath, 'utf-8')); } catch { config = {}; }
+        let manifest: any = {};
+        try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch {}
+        
+        const models = fs.existsSync(modelsDir)
+          ? fs.readdirSync(modelsDir).filter((f: string) => f.endsWith('.js')).length
+          : 0;
+        
+        apps.push({
+          id: entry.name,
+          name: config.name || manifest.name || entry.name,
+          description: config.description || manifest.summary || '',
+          icon: config.icon || '📋',
+          color: config.color || '#1677ff',
+          version: manifest.version || '1.0.0',
+          models,
+          menu: config.menu?.length || 0,
+          status: config.status || 'published',
+          author: manifest.author || '',
+          createdAt: '',
+          updatedAt: '',
+        });
+      }
+    }
+    apps.sort((a: any, b: any) => a.name.localeCompare(b.name));
+    res.json(apps);
+  });
+
+  router.post('/apps/publish', (req, res) => {
+    const { moduleName, status, version } = req.body;
+    if (!moduleName) { res.status(400).json({ error: '缺少 moduleName' }); return; }
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const appPath = path.join(process.cwd(), 'addons', moduleName, 'app.json');
+      let config: any = {};
+      if (fs.existsSync(appPath)) config = JSON.parse(fs.readFileSync(appPath, 'utf-8'));
+      if (status) config.status = status;
+      if (version) {
+        config.version = version;
+        // Also update manifest
+        const manifestPath = path.join(process.cwd(), 'addons', moduleName, 'manifest.json');
+        if (fs.existsSync(manifestPath)) {
+          let mf = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+          mf.version = version;
+          fs.writeFileSync(manifestPath, JSON.stringify(mf, null, 2), 'utf-8');
+        }
+      }
+      fs.writeFileSync(appPath, JSON.stringify(config, null, 2), 'utf-8');
+      res.json({ success: true, app: config });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.delete('/apps/unlink/:moduleName', (req, res) => {
+    const { moduleName } = req.params;
+    if (!moduleName || moduleName === 'demo_erp') { res.status(400).json({ error: '不能删除该应用' }); return; }
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const dir = path.join(process.cwd(), 'addons', moduleName);
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+      // 从 ORM 注销
+      const reg = (global as any).__feida_models;
+      if (reg && reg._unregister) reg._unregister(moduleName);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // 输入验证辅助
   function requireFields(body: any, fields: string[]): string | null {
     for (const f of fields) {

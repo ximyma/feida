@@ -8,6 +8,7 @@
  *   4. 一键发布
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Steps, Card, Button, Input, Form, Select, Space, Tag, message, Divider, Typography, Row, Col, Tooltip } from 'antd';
 import { PlusOutlined, RocketOutlined, TableOutlined, HomeOutlined, SettingOutlined, FormOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { TemplateDesigner, toModelFields, FieldDef } from './TemplateDesigner';
@@ -17,6 +18,9 @@ const BASE = '/api';
 const APP_ICONS = ['📊','📋','🏪','👥','📦','💰','📅','🏥','🎓','⚙️','🏭','🚚'];
 
 const LowCodeBuilder: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const editMode = searchParams.get('edit') || '';
   const [step, setStep] = useState(0);
   // Step 1
   const [appName, setAppName] = useState('');
@@ -41,6 +45,21 @@ const LowCodeBuilder: React.FC = () => {
     });
     // 自动生成模块名
     if (!moduleName) setModuleName('app_' + Date.now().toString(36));
+
+    // 编辑模式: 加载已有应用配置
+    if (editMode) {
+      setModuleName(editMode);
+      fetch(`/addons/${editMode}/app.json?t=${Date.now()}`).then(r => r.json()).then(cfg => {
+        setAppName(cfg.name || editMode);
+        setAppDesc(cfg.description || '');
+        setAppIcon(cfg.icon || '📊');
+        if (cfg.menu) {
+          setTables(cfg.menu.map((m: any) => ({
+            name: m.table, label: m.label, icon: m.icon || '📋', fields: [],
+          })));
+        }
+      });
+    }
   }, []);
 
   const activeTable = tables[activeTableIdx] || tables[0];
