@@ -254,6 +254,7 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: '联系人', to: '/addon/demo_erp/demo_contact', key: 'addon-contact' },
     { label: '订单', to: '/addon/demo_erp/demo_order', key: 'addon-order' },
     { label: '产品', to: '/addon/demo_erp/demo_product', key: 'addon-product' },
+    { label: '低代码平台', to: '/lowcode', key: 'lowcode' },
   ],
 };
 

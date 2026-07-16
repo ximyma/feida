@@ -1,0 +1,13 @@
+{
+  "name": "my_test",
+  "name_en": "my_test",
+  "version": "1.0.0",
+  "author": "低代码",
+  "category": "LowCode",
+  "depends": [],
+  "summary": "低代码生成的模块",
+  "installable": true,
+  "auto_install": true,
+  "application": true,
+  "sequence": 700
+}

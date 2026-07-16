@@ -368,6 +368,99 @@ function apiRouter() {
     res.json(addonModels);
   });
 
+  // ===== 低代码平台 API =====
+  router.post('/lowcode/create-module', (req, res) => {
+    const { moduleName, models } = req.body;
+    if (!moduleName || !Array.isArray(models)) {
+      res.status(400).json({ error: '缺少 moduleName 或 models' }); return;
+    }
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const modelsDir = path.join(process.cwd(), 'addons', moduleName, 'models');
+      fs.mkdirSync(modelsDir, { recursive: true });
+
+      for (const modelDef of models) {
+        if (!modelDef._name) continue;
+        // 生成模型文件
+        const content = '// 低代码生成: ' + modelDef._name + '\n' +
+          'exports.model = ' + JSON.stringify(modelDef, null, 2) + ';\n';
+        fs.writeFileSync(path.join(modelsDir, modelDef._name + '.js'), content, 'utf-8');
+        // 动态注册到 ORM
+        const reg = (global as any).__feida_models;
+        if (reg) {
+          reg.register(modelDef);
+          // 标记为 addon
+          const def = reg.getDef(modelDef._name);
+          if (def) { def._addon = true; def._addonName = moduleName; }
+        }
+      }
+      // 生成 manifest
+      const manifest = {
+        name: moduleName, name_en: moduleName, version: '1.0.0', author: '低代码',
+        category: 'LowCode', depends: [], summary: '低代码生成的模块',
+        installable: true, auto_install: true, application: true, sequence: 700,
+      };
+      fs.writeFileSync(path.join(process.cwd(), 'addons', moduleName, 'manifest.json'), JSON.stringify(manifest, null, 2));
+      res.json({ success: true, module: moduleName, models: models.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/lowcode/add-field', (req, res) => {
+    const { table, fieldName, fieldDef } = req.body;
+    if (!table || !fieldName || !fieldDef) {
+      res.status(400).json({ error: '缺少 table/fieldName/fieldDef' }); return;
+    }
+    try {
+      const rawDb = (global as any).__feida_raw_db;
+      const typeMap: Record<string, string> = { char:'TEXT', text:'TEXT', integer:'INTEGER', float:'REAL', boolean:'INTEGER DEFAULT 0', date:'TEXT', datetime:'TEXT', selection:'TEXT', many2one:'TEXT DEFAULT \'\'' };
+      const sqlType = typeMap[fieldDef.type] || 'TEXT';
+      rawDb.exec('ALTER TABLE "' + table + '" ADD COLUMN "' + fieldName + '" ' + sqlType);
+      // 更新内存中的模型定义
+      const reg = (global as any).__feida_models;
+      if (reg) {
+        const def = reg.getDef(table);
+        if (def) def._fields[fieldName] = fieldDef;
+      }
+      res.json({ success: true, table, field: fieldName });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get('/lowcode/list-modules', (_req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const addonsDir = path.join(process.cwd(), 'addons');
+    const modules: Array<{ name: string; models: string[]; codegen: boolean }> = [];
+    if (fs.existsSync(addonsDir)) {
+      for (const entry of fs.readdirSync(addonsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const modelsDir = path.join(addonsDir, entry.name, 'models');
+        const models = fs.existsSync(modelsDir)
+          ? fs.readdirSync(modelsDir).filter((f: string) => f.endsWith('.js')).map((f: string) => f.replace('.js', ''))
+          : [];
+        modules.push({ name: entry.name, models, codegen: true });
+      }
+    }
+    res.json(modules);
+  });
+
+  router.post('/lowcode/deploy', (req, res) => {
+    const { moduleName } = req.body;
+    if (!moduleName) { res.status(400).json({ error: '缺少 moduleName' }); return; }
+    // 热加载: 重新扫描 addons
+    const reg = (global as any).__feida_models;
+    if (reg) {
+      const path = require('path');
+      const dir = path.join(process.cwd(), 'addons', moduleName);
+      try {
+        reg.loadFromModule(dir);
+        res.json({ success: true, module: moduleName });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    } else {
+      res.status(500).json({ error: 'ORM未初始化' });
+    }
+  });
+
   // 输入验证辅助
   function requireFields(body: any, fields: string[]): string | null {
     for (const f of fields) {
