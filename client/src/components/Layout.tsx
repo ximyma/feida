@@ -356,10 +356,10 @@ const Layout: React.FC = () => {
   const USER_ROLE_PERMS: Record<string, string[]> = {
     super_admin: ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_apps','p_system'],
     sys_admin:   ['p_org','p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_logistics','p_approval','p_training','p_office','p_product','p_plm','p_warehouse','p_sales','p_purchase','p_production','p_finance','p_dashboard','p_website','p_quality','p_selfservice','p_apps','p_system'],
-    hr_admin:    ['p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_approval'],
-    hr_staff:    ['p_personnel','p_attendance','p_salary','p_approval'],
-    dept_manager:['p_org','p_personnel','p_attendance','p_approval'],
-    employee:    ['p_personnel','p_attendance','p_approval'],
+    hr_admin:    ['p_personnel','p_attendance','p_salary','p_performance','p_recruitment','p_approval','p_apps'],
+    hr_staff:    ['p_personnel','p_attendance','p_salary','p_approval','p_apps'],
+    dept_manager:['p_org','p_personnel','p_attendance','p_approval','p_apps'],
+    employee:    ['p_personnel','p_attendance','p_approval','p_apps'],
   };
 
   const userPerms = (() => {
@@ -435,6 +435,7 @@ const Layout: React.FC = () => {
   const isModuleActive = (path: string) => {
     if (path === '/cms') return location.pathname.startsWith('/admin/cms');
     if (path === '/shop-admin') return location.pathname.startsWith('/admin/shop');
+    if (path === '/apps') return location.pathname.startsWith('/apps') || location.pathname.startsWith('/lowcode') || location.pathname.startsWith('/apps-manager') || location.pathname.startsWith('/app/') || location.pathname.startsWith('/odoo-models') || location.pathname.startsWith('/addon/');
     return location.pathname.startsWith(path);
   };
 
