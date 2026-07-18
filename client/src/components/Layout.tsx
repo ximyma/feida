@@ -39,6 +39,9 @@ import {
   DollarSign,
   ShoppingCart,
   Sparkles,
+  Rocket,
+  AppWindow,
+  Monitor,
 } from 'lucide-react';
 
 const menuItems = [
@@ -46,6 +49,9 @@ const menuItems = [
   { id: 'org', to: '/organization', icon: Building2, label: '组织管理' },
   { id: 'product', to: '/product', icon: Package, label: '产品档案' },
   { id: 'statistics', to: '/statistics', icon: BarChart3, label: '数据统计' },
+  { id: 'lowcode', to: '/lowcode', icon: Rocket, label: '低代码平台' },
+  { id: 'apps-manager', to: '/apps-manager', icon: AppWindow, label: '应用管理' },
+  { id: 'app-demo', to: '/app/demo_erp', icon: Monitor, label: 'ERP演示' },
 ];
 
 const subMenuItems: Record<string, { label: string; to: string; key?: string }[]> = {
@@ -396,6 +402,7 @@ const Layout: React.FC = () => {
   })();
 
   const hasModule = (path: string): boolean => {
+    if (path === '/apps') return true; // 更多应用始终可见
     const perm = MODULE_PERM[path];
     return perm ? userPerms.includes(perm) : true;
   };
@@ -412,6 +419,11 @@ const Layout: React.FC = () => {
     ['/personnel','/salary','/attendance','/performance','/recruitment','/logistics','/approval','/product','/system','/cms','/shop-admin','/ai','/apps'].forEach(p => {
       initial[p] = location.pathname.startsWith(p) ||
         (p === '/cms' && location.pathname.startsWith('/admin/cms')) ||
+        (p === '/shop-admin' && location.pathname.startsWith('/admin/shop')) ||
+        (p === '/apps' && (location.pathname.startsWith('/lowcode') || location.pathname.startsWith('/apps-manager') || location.pathname.startsWith('/app/'))) ||
+        // 默认展开: 首页、更多应用
+        (p === '/apps' && location.pathname === '/') ||
+        false;
         (p === '/shop-admin' && location.pathname.startsWith('/admin/shop'));
     });
     return initial;
