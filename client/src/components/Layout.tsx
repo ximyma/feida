@@ -250,19 +250,8 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
   '/apps': [
     { label: '博客', to: '/apps/blog', key: 'app-blog' },
     { label: '论坛', to: '/apps/forum', key: 'app-forum' },
-    { label: '在线学习', to: '/apps/elearning', key: 'app-elearning' },
-    { label: '财务管理', to: '/apps/finance', key: 'app-finance' },
-    { label: '鞋服管理', to: '/apps/shoe', key: 'app-shoe' },
-    { label: 'Odoo模型', to: '/odoo-models', key: 'odoo-models' },
-    { label: 'Analytic Accounts', to: '/addon/analytic_odoo/account_analytic_account', key: 'addon-acct' },
-    { label: 'Analytic Lines', to: '/addon/analytic_odoo/account_analytic_line', key: 'addon-line' },
-    { label: 'Analytic Plans', to: '/addon/analytic_odoo/account_analytic_plan', key: 'addon-plan' },
-    { label: '联系人', to: '/addon/demo_erp/demo_contact', key: 'addon-contact' },
-    { label: '订单', to: '/addon/demo_erp/demo_order', key: 'addon-order' },
-    { label: '产品', to: '/addon/demo_erp/demo_product', key: 'addon-product' },
     { label: '低代码平台', to: '/lowcode', key: 'lowcode' },
     { label: '应用管理', to: '/apps-manager', key: 'apps-manager' },
-    { label: '🗄 ERP系统', to: '/app/demo_erp', key: 'app-demo-erp' },
   ],
 };
 
