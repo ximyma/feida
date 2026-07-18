@@ -41,7 +41,6 @@ import {
   Sparkles,
   Rocket,
   AppWindow,
-  Monitor,
 } from 'lucide-react';
 
 const menuItems = [
@@ -51,7 +50,6 @@ const menuItems = [
   { id: 'statistics', to: '/statistics', icon: BarChart3, label: '数据统计' },
   { id: 'lowcode', to: '/lowcode', icon: Rocket, label: '低代码平台' },
   { id: 'apps-manager', to: '/apps-manager', icon: AppWindow, label: '应用管理' },
-  { id: 'app-demo', to: '/app/demo_erp', icon: Monitor, label: 'ERP演示' },
 ];
 
 const subMenuItems: Record<string, { label: string; to: string; key?: string }[]> = {
