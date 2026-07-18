@@ -147,6 +147,7 @@ async function chatCompletionStreamFull(messages, options = {}) {
   const model = resolveModelConfig(options);
   const config = { ...model, ...getRuntimeConfig(), ...options };
   const isOllama = config.providerType === 'ollama';
+  const onToken = options.onToken || (() => {});
 
   const body = JSON.stringify({
     model: config.model, messages,
@@ -175,14 +176,14 @@ async function chatCompletionStreamFull(messages, options = {}) {
         const lines = buffer.split('\n'); buffer = lines.pop() || '';
         for (const line of lines) {
           if (!line.trim()) continue;
-          if (line.startsWith('data: ')) {
-            // OpenAI SSE 格式
-            const j = line.slice(6).trim(); if (j === '[DONE]') continue;
-            try { const p = JSON.parse(j); const c = p.choices?.[0]?.delta?.content || ''; if (c) fullContent += c; } catch {}
-          } else {
-            // Ollama JSON 行格式 ({"message":{"content":"..."},"done":false})
-            try { const p = JSON.parse(line); const c = p.message?.content || ''; if (c) fullContent += c; } catch {}
-          }
+            if (line.startsWith('data: ')) {
+              // OpenAI SSE 格式
+              const j = line.slice(6).trim(); if (j === '[DONE]') continue;
+              try { const p = JSON.parse(j); const c = p.choices?.[0]?.delta?.content || ''; if (c) { fullContent += c; onToken(c); } } catch {}
+            } else {
+              // Ollama JSON 行格式 ({"message":{"content":"..."},"done":false})
+              try { const p = JSON.parse(line); const c = p.message?.content || ''; if (c) { fullContent += c; onToken(c); } } catch {}
+            }
         }
       });
       res.on('end', () => { resolve({ content: fullContent, model: config.model }); });

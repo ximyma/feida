@@ -218,6 +218,7 @@ export default function AIAssistantPage() {
           try {
             const d = JSON.parse(eventData);
             if (eventType === 'start') statusText = '🤔 分析请求中...';
+            else if (eventType === 'delta') { finalContent += d.content || ''; statusText = ''; }
             else if (eventType === 'step') statusText = `🔄 第${d.iteration}轮思考...`;
             else if (eventType === 'tool_start') { toolSteps.push({ id: 't_'+Date.now(), tool: d.tool, params: d.params, status: 'running', result: '' }); statusText = `🔧 执行: ${d.tool}`; }
             else if (eventType === 'tool_end') { const last = toolSteps[toolSteps.length-1]; if(last){last.status='done';last.result=JSON.stringify(d.result).slice(0,600);} statusText = '📊 分析结果...'; }

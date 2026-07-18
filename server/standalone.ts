@@ -3057,12 +3057,31 @@ function apiRouter() {
       send('start', { model: cfg.model, sessionId: options?.sessionId });
 
       // 流式执行 → 每步实时推事件
+      // 用 chatCompletionStreamFull 包装 chatFn，实现逐字流式输出
+      const streamChatFn = async (body: any, cfg: any) => {
+        const msgs = body.messages;
+        const isOllama = (cfg?.providerType || cfg?.provider_type) === 'ollama';
+        if (isOllama) {
+          return aiService.chatCompletionDirect(body, cfg);
+        }
+        try {
+          const fullContent = await aiService.chatCompletionStreamFull(msgs, {
+            model: cfg?.model || body?.model, baseURL: cfg?.baseURL, apiKey: cfg?.apiKey, providerType: cfg?.providerType || cfg?.provider_type || 'openai',
+            onToken: (token: string) => { send('delta', { content: token }); },
+          });
+          return { choices: [{ message: { content: fullContent.content } }] };
+        } catch (e: any) {
+          console.error('[stream-chat] fallback to direct:', e.message?.slice(0,100));
+          return aiService.chatCompletionDirect(body, cfg);
+        }
+      };
+
       const result = await AgentSystem.chat(
         userMsg?.content || '',
         {
           sessionId: options?.sessionId || options?.conversationId,
           modelCfg: cfg,
-          chatFn: aiService.chatCompletionDirect,
+          chatFn: streamChatFn,
           modelId: options?.modelId || options?.model,
           systemPrompt: messages[0]?.role === 'system' ? messages[0].content : undefined,
           useTags: isOllama,
