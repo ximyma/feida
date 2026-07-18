@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Tabs, Card, Button, Space, Tag, message, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { TiptapEditorComplete } from '@/components/business-ui/tiptap-editor';
 
 const BASE = '/api';
 
@@ -27,7 +28,7 @@ const tabConfig: Record<string, TabCfg> = {
     formFields: [
       { name: 'title', label: '标题', type: 'text', required: true },
       { name: 'summary', label: '摘要', type: 'text' },
-      { name: 'content', label: '内容', type: 'text' },
+      { name: 'content', label: '内容', type: 'richtext' },
       { name: 'category_id', label: '分类', type: 'text' },
       { name: 'status', label: '状态', type: 'select', options: [{label:'草稿',value:'draft'},{label:'已发布',value:'published'}] },
     ],
@@ -44,7 +45,7 @@ const tabConfig: Record<string, TabCfg> = {
     ],
     formFields: [
       { name: 'title', label: '标题', type: 'text', required: true },
-      { name: 'content', label: '内容', type: 'text' },
+      { name: 'content', label: '内容', type: 'richtext' },
       { name: 'board_id', label: '版块', type: 'select', options: [{label:'技术讨论',value:'board_001'},{label:'产品反馈',value:'board_002'},{label:'综合水区',value:'board_003'}] },
       { name: 'is_pinned', label: '置顶', type: 'select', options: [{label:'否',value:'0'},{label:'是',value:'1'}] },
     ],
@@ -142,6 +143,17 @@ const tabConfig: Record<string, TabCfg> = {
     ],
   },
 };
+
+/** 富文本输入：桥接 TiptapEditorComplete 与 antd Form */
+function RichtextInput({ value, onChange }: { value?: string; onChange?: (html: string) => void }) {
+  return (
+    <TiptapEditorComplete
+      value={value || ''}
+      onValueChange={(html: string) => onChange?.(html)}
+      placeholder="请输入内容..."
+    />
+  );
+}
 
 export default function AppsPage() {
   const [activeTab, setActiveTab] = useState('blog');
@@ -256,9 +268,13 @@ export default function AppsPage() {
       >
         <Form form={form} layout="vertical" style={{marginTop:16}}>
           {cfg?.formFields.map((f) => (
-            <Form.Item key={f.name} name={f.name} label={f.label} rules={f.required?[{required:true,message:`请输入${f.label}`}]:undefined}>
+            <Form.Item key={f.name} name={f.name} label={f.label} rules={f.required?[{required:true,message:`请输入${f.label}`}]:undefined}
+              getValueFromEvent={f.type === 'richtext' ? (html: string) => html : undefined}>
               {f.type === 'select' ? <Select options={f.options} allowClear /> :
                f.type === 'number' ? <InputNumber style={{width:'100%'}} /> :
+               f.type === 'richtext' ? (
+                 <RichtextInput />
+               ) :
                <Input />}
             </Form.Item>
           ))}
