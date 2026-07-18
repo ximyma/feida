@@ -319,7 +319,8 @@ export default function AIAssistantPage() {
         width: sidebarOpen ? 260 : 0, overflow: 'hidden',
         transition: 'width 0.3s', flexShrink: 0,
       }}>
-        <Card size="small" style={{ height: '100%' }}
+        <Card size="small" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+          styles={{ body: { flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', padding: 12 } }}
           title={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, fontWeight: 'bold' }}>对话历史</span>
@@ -331,7 +332,7 @@ export default function AIAssistantPage() {
             新对话
           </Button>
 
-          <div style={{ overflow: 'auto', maxHeight: 'calc(100% - 60px)' }}>
+          <div style={{ flex: 1, overflow: 'auto' }}>
             {conversations.length === 0 ? (
               <Empty description="暂无对话" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
