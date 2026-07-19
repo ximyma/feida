@@ -261,6 +261,68 @@ export async function runAgentLoop(
       return { content: clean || '无响应', steps, iterations: steps.length };
     }
 
+    // ── DSML / XML 工具调用 (LLM 误用非标准格式时自动转换) ──
+    if (response.content) {
+      const dsmlRegex = /<\|?DSML\|?\s*invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)(?:<\/\|?DSML\|?\s*invoke>|(?=<\|?DSML\|?\s*invoke)|$)/gi;
+      const dsmlCalls: Array<{ name: string; params: any }> = [];
+      let dm;
+      while ((dm = dsmlRegex.exec(response.content)) !== null) {
+        const toolName = dm[1];
+        const rawBlock = dm[2];
+        const params: any = {};
+        const paramRegex = /<\|?DSML\|?\s*parameter\s+name="([^"]+)"[^>]*>([^<]*)<\s*\/\|?DSML\|?\s*parameter>/gi;
+        let pm;
+        while ((pm = paramRegex.exec(rawBlock)) !== null) {
+          let val: any = pm[2].trim();
+          try { val = JSON.parse(val); } catch { /* keep as string */ }
+          if (rawBlock.includes(`name="${pm[1]}"`) && rawBlock.includes('string="false"')) {
+            try { val = JSON.parse(val); } catch { /* keep raw */ }
+          }
+          params[pm[1]] = val;
+        }
+        if (toolName) dsmlCalls.push({ name: toolName, params });
+      }
+      if (dsmlCalls.length > 0) {
+        const clean = response.content.replace(/<\|?DSML\|?\s*invoke[\s\S]*?(?:<\/\|?DSML\|?\s*invoke>|(?=<\|?DSML\|?\s*invoke))/gi, '').trim();
+        agent.addAssistantMessage(clean || `执行 ${dsmlCalls.map(c => c.name).join(', ')}`);
+        for (const dc of dsmlCalls) {
+          onEvent?.({ type: 'tool_start', data: { tool: dc.name, params: dc.params } });
+          const tool = tools.find(t => t.name === dc.name);
+          const rawResult = tool ? await tool.executeTool(dc.params) : { success: false, error: `未知工具: ${dc.name}` };
+          const result = capToolResult(rawResult, false);
+          steps.push({ tool: dc.name, params: dc.params, result });
+          agent.addToolResult(`dsml_${dc.name}_${Date.now()}`, result.success ? JSON.stringify(result) : `${JSON.stringify(result)}\n请分析错误并重试。`);
+        }
+        continue;
+      }
+      // XML 格式: <invoke name="tool"><parameter name="p">v</parameter></invoke>
+      const xmlRegex = /<invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/invoke>/gi;
+      const xmlCalls: Array<{ name: string; params: any }> = [];
+      let xm;
+      while ((xm = xmlRegex.exec(response.content)) !== null) {
+        const params: any = {};
+        const pRegex = /<parameter\s+name="([^"]+)"[^>]*>([^<]*)<\/parameter>/gi;
+        let pm;
+        while ((pm = pRegex.exec(xm[2])) !== null) {
+          try { params[pm[1]] = JSON.parse(pm[2].trim()); } catch { params[pm[1]] = pm[2].trim(); }
+        }
+        if (xm[1]) xmlCalls.push({ name: xm[1], params });
+      }
+      if (xmlCalls.length > 0) {
+        const clean = response.content.replace(/<invoke[\s\S]*?<\/invoke>/gi, '').trim();
+        agent.addAssistantMessage(clean || '执行工具调用中...');
+        for (const xc of xmlCalls) {
+          onEvent?.({ type: 'tool_start', data: { tool: xc.name, params: xc.params } });
+          const tool = tools.find(t => t.name === xc.name);
+          const rawResult = tool ? await tool.executeTool(xc.params) : { success: false, error: `未知工具: ${xc.name}` };
+          const result = capToolResult(rawResult, false);
+          steps.push({ tool: xc.name, params: xc.params, result });
+          agent.addToolResult(`xml_${xc.name}_${Date.now()}`, JSON.stringify(result));
+        }
+        continue;
+      }
+    }
+
     // ── 空响应处理 ──
     if (!response.content && !response.tool_calls?.length) {
       if (i > 0) {
