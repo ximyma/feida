@@ -4,10 +4,47 @@
   "icon": "shop",
   "color": "#1677ff",
   "menu": [
-    { "label": "联系人", "table": "demo_contact", "icon": "user", "desc": "管理客户和供应商信息" },
-    { "label": "城市", "table": "demo_city", "icon": "environment", "desc": "基础城市数据" },
-    { "label": "产品", "table": "demo_product", "icon": "inbox", "desc": "产品目录和定价" },
-    { "label": "订单", "table": "demo_order", "icon": "file", "desc": "销售订单管理" },
-    { "label": "订单明细", "table": "demo_order_line", "icon": "bars", "desc": "订单行项目" }
+    {
+      "label": "联系人",
+      "table": "demo_contact",
+      "icon": "user",
+      "desc": "管理客户和供应商信息"
+    },
+    {
+      "label": "城市",
+      "table": "demo_city",
+      "icon": "environment",
+      "desc": "基础城市数据"
+    },
+    {
+      "label": "产品",
+      "table": "demo_product",
+      "icon": "inbox",
+      "desc": "产品目录和定价"
+    },
+    {
+      "label": "订单",
+      "table": "demo_order",
+      "icon": "file",
+      "desc": "销售订单管理"
+    },
+    {
+      "label": "订单明细",
+      "table": "demo_order_line",
+      "icon": "bars",
+      "desc": "订单行项目"
+    }
+  ],
+  "relations": [
+    {
+      "from_template_name": "����",
+      "from_field_name": "customer_id",
+      "relation_type": "belongs_to",
+      "to_template_name": "�ͻ�",
+      "display_field": "name",
+      "on_delete": "cascade",
+      "id": "rel_1784504280354",
+      "created_at": "2026-07-19T23:38:00.354Z"
+    }
   ]
 }
