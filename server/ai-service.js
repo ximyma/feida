@@ -31,7 +31,7 @@ function getDb() {
 
 const runtimeConfig = {
   temperature: 0.7,
-  maxTokens: 2048,
+  maxTokens: 4096,
   streamTimeout: 120000,
   retrieval: {
     topK: 5, scoreThreshold: 0.1, rerankEnabled: true,

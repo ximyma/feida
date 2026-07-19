@@ -29,7 +29,7 @@ export function createLLMCaller(chatFn: (body: any, cfg: any) => Promise<any>, m
         model: modelCfg.model || 'deepseek-chat',
         messages,
         temperature: config.temperature ?? 0.3,
-        max_tokens: 4096,
+        max_tokens: config.maxTokens || 8192,
       };
       if (tools.length > 0) {
         body.tools = tools.map(t => ({ type: 'function', function: t }));

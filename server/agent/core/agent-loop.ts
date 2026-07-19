@@ -18,9 +18,10 @@ import { registerAllTools } from '../tools/registry';
 registerAllTools();
 
 // ── 常量 ──
-const MAX_CURRENT_RESULT_CHARS = 50000;
-const MAX_HISTORY_RESULT_CHARS = 20000;
-const AGGRESSIVE_LIMIT = 10000;
+const MAX_CURRENT_RESULT_CHARS = 8000;
+const MAX_HISTORY_RESULT_CHARS = 5000;
+const AGGRESSIVE_LIMIT = 5000;
+const MAX_COMBINED_RESULT_CHARS = 40000; // 一轮多工具总结果上限
 const MAX_SAME_ARGS_CALLS = 5;
 const MAX_SAME_TOOL_FAILURES = 8;
 
@@ -201,6 +202,7 @@ export async function runAgentLoop(
     // ── OpenAI tool_calls ──
     if (!isOllama && response.tool_calls?.length) {
       agent.addAssistantMessage(response.content || '', response.tool_calls);
+      let combinedResultSize = 0;
       for (const tc of response.tool_calls) {
         const fnParams = parseToolArgs(tc.function.arguments);
         onEvent?.({ type: 'tool_start', data: { tool: tc.function.name, params: fnParams } });
@@ -216,12 +218,19 @@ export async function runAgentLoop(
 
         const tool = tools.find(t => t.name === tc.function.name);
         const rawResult = tool ? await tool.executeTool(fnParams) : { success: false, error: `未知工具: ${tc.function.name}` };
+        // 总量裁剪: 多工具并行时，总结果过大则后续工具只保留摘要
+        const perResultCap = combinedResultSize > MAX_COMBINED_RESULT_CHARS ? AGGRESSIVE_LIMIT / 2 : MAX_CURRENT_RESULT_CHARS;
         const result = capToolResult(rawResult, false);
         steps.push({ tool: tc.function.name, params: fnParams, result });
         failureHistory.push({ name: tc.function.name, argsKey: JSON.stringify(fnParams), success: result.success });
         if (failureHistory.length > MAX_HISTORY) failureHistory.shift();
 
-        const resultStr = JSON.stringify(result);
+        let resultStr = JSON.stringify(result);
+        combinedResultSize += resultStr.length;
+        // 超过总量上限时截断后续结果
+        if (combinedResultSize > MAX_COMBINED_RESULT_CHARS && resultStr.length > AGGRESSIVE_LIMIT) {
+          resultStr = resultStr.slice(0, AGGRESSIVE_LIMIT) + `\n[已截断: 本轮总结果超过${MAX_COMBINED_RESULT_CHARS}字符]`;
+        }
         if (!result.success) {
           agent.addToolResult(tc.id, `${resultStr}\n\n请分析错误并换一种方法重试。`);
         } else {
