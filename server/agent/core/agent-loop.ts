@@ -174,6 +174,17 @@ export async function runAgentLoop(
       return { content: '无响应', steps, iterations: steps.length };
     }
 
+    // ── DSML 检测 (LLM误用非标准格式时自动矫正) ──
+    if (response.content && /<\|?DSML\|?/i.test(response.content)) {
+      // LLM 误用了 DSML 格式 → 注入矫正指令重试
+      const clean = response.content.replace(/<\|?DSML\|?[\s\S]*$/i, '').trim();
+      agent.addAssistantMessage(clean || '分析中...');
+      agent.messages.push({ role: 'user',
+        content: '你刚才使用了 DSML 格式输出工具调用。请改用标准的 function calling 机制调用工具，或者直接用中文总结已有结果回复用户。不要使用任何 DSML/XML/标签格式。'
+      } as any);
+      continue;
+    }
+
     // ── 纯文本 → 完成 ──
     onEvent?.({ type: 'done', data: { content: response.content || '无响应' } });
     return { content: response.content || '无响应', steps, iterations: steps.length };

@@ -268,20 +268,32 @@ export default function AIAssistantPage() {
     // ===== 统一所有对话走 SSE agentStream (代码/工具/通用) =====
     if (agentMode === 'code') {
       const codeMessages = [
-        { role: 'system', content: `你是飞达项目的代码助手。可用工具: read_file/write_file/patch/grep/glob/bash/sql_query。直接调用工具获取真实数据，操作完成后用中文回复结果。` },
+        { role: 'system', content: `你是飞达项目的代码助手。你可以通过 API 的工具调用(Tool Calls)功能使用 read_file/write_file/patch/grep/glob/bash/sql_query 工具。
+
+重要规则:
+1. 所有工具调用通过 API 的 function calling 机制完成，不要在文本中输出 DSML/XML/标签格式
+2. 先分析用户需求，再选择合适的工具，执行后基于结果回复
+3. 用中文简洁回复，表格/列表整理信息
+4. 禁止编造数据，必须基于工具实际返回结果` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
       await agentStream(codeMessages, convId);
     } else if (/数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text)) {
       const toolMessages = [
-        { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。必须使用工具获取真实结果，不要猜测。` },
+        { role: 'system', content: `你是飞达智能HR系统的AI助手。你可以通过 API 工具调用功能使用 sql_query/grep/glob/bash/read_file 等工具查询数据库、搜索代码。
+
+重要规则:
+1. 通过 function calling 调用工具，不要在文本中输出 DSL/XML/标签格式
+2. 基于工具返回结果回复，不要编造数据
+3. 用中文回答，列表/表格展示多源信息
+4. 先分析再执行，工具失败时换方法重试` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
       await agentStream(toolMessages, convId);
     } else {
       // 通用对话也走 agentStream (获得流式+工具能力)
       const generalMessages = [
-        { role: 'system', content: `你是飞达智能HR系统的AI助手。可以用中文回答各种问题，也可以使用sql_query查询数据库、grep搜索代码等工具。请友好热情地回复。` },
+        { role: 'system', content: `你是飞达智能HR系统的AI助手。用中文回答各种问题。可以通过 function calling 使用 sql_query/grep/glob/bash/read_file 等工具获取真实数据。**不要在文本中输出 DSML/XML/标签格式的工具调用！**` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
       await agentStream(generalMessages, convId);
