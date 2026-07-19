@@ -62,7 +62,22 @@ function parseToolArgs(argsStr: string): any {
   }
 }
 
-// ── 消息验证 ──
+/** JSON 修复: 处理字符串值内部未转义双引号 (如bash命令 -name "*.ts") */
+function repairDSMLJson(raw: string): any {
+  try { return JSON.parse(raw); } catch {}
+  let s = raw.trim().replace(/,(\s*[}\]])/g, '$1');
+  const opens = (s.match(/\{/g) || []).length;
+  const closes = (s.match(/\}/g) || []).length;
+  if (opens > closes) s += '}'.repeat(opens - closes);
+  try { return JSON.parse(s); } catch {}
+  // 修复内层未转义引号: 用 JSON.stringify 包裹字符串值
+  s = s.replace(/"([^"]*?)"\s*:\s*"([^"]+?)"(?=\s*[,}])/g, (_m: string, k: string, v: string) => {
+    return `"${k}": ${JSON.stringify(v)}`;
+  });
+  try { return JSON.parse(s); } catch { return {}; }
+}
+
+// ── 消息验证 ──void
 function dropOrphanedToolResults(messages: any[]): any[] {
   const knownIds = new Set<string>();
   for (const m of messages) {
@@ -295,7 +310,7 @@ export async function runAgentLoop(
           let val = pm[3].trim();
           // string="false" → JSON值
           if ((pm[2] || '').includes('"false"') || rawBlock.includes(`name="${pm[1]}" string="false"`)) {
-            try { val = JSON.parse(val); } catch { /* keep raw */ }
+            try { val = repairDSMLJson(val); } catch { /* keep raw */ }
           }
           params[pm[1]] = val;
         }
@@ -304,14 +319,31 @@ export async function runAgentLoop(
         if (Object.keys(params).length === 0) {
           const trimmed = rawBlock.trim();
           if (trimmed.startsWith('{')) {
-            try { Object.assign(params, JSON.parse(trimmed)); } catch { /* not JSON */ }
+            try { Object.assign(params, repairDSMLJson(trimmed)); } catch { /* not JSON */ }
           }
         }
 
-        // arguments参数展开: {"file_path":"..."} → params
+        // arguments参数展开: {"command":"..."} → 合并到 params
         if (params.arguments && typeof params.arguments === 'object') {
           Object.assign(params, params.arguments);
           delete params.arguments;
+        }
+        // JSON解析失败但有command/file_path文本 → 从原始block提取
+        if (Object.keys(params).length === 0) {
+          if (toolName === 'bash') {
+            const cmdMatch = rawBlock.match(/"command"\s*:\s*"([^"]*)/);
+            if (cmdMatch) params.command = cmdMatch[1];
+          } else if (toolName === 'read_file') {
+            const fpMatch = rawBlock.match(/"file_path"\s*:\s*"([^"]*)/);
+            if (fpMatch) params.file_path = fpMatch[1];
+          } else if (toolName === 'grep' || toolName === 'glob') {
+            const patMatch = rawBlock.match(/"pattern"\s*:\s*"([^"]*)/);
+            if (patMatch) {
+              params.pattern = patMatch[1];
+              const pathMatch = rawBlock.match(/"path"\s*:\s*"([^"]*)/);
+              if (pathMatch) params.path = pathMatch[1];
+            }
+          }
         }
 
         if (toolName && Object.keys(params).length > 0) {
