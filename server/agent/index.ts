@@ -90,13 +90,17 @@ export async function chat(
   // 确保会话存在 (自动生成标题)
   try { createSession(sessionId, generateTitle(userMessage)); } catch { /* ignore */ }
 
-  // 加载历史消息
+  // 加载历史消息 — 同时用于 context summary 和结构化消息注入
   let historyMessages = '';
+  const historyList: Array<{ role: string; content: string }> = [];
   try {
-    const msgs = loadMessages(sessionId, 10);
+    const msgs = loadMessages(sessionId, 20);
     historyMessages = msgs.filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => `${m.role === 'user' ? '用户' : '助手'}: ${m.content.slice(0, 200)}`)
       .join('\n');
+    // 保留最近5轮作为结构化消息
+    const recent = msgs.slice(-10).filter(m => m.role === 'user' || m.role === 'assistant');
+    historyList.push(...recent.map(m => ({ role: m.role, content: m.content.slice(0, 2000) })));
   } catch { /* ignore */ }
 
   // PromptBuilder 模块化构建系统提示词
@@ -122,6 +126,11 @@ export async function chat(
     maxSteps: options.maxSteps || 15,
     temperature: options.temperature ?? 0.3,
   });
+  // 注入历史对话作为结构化消息 (在用户消息之前)
+  for (const h of historyList) {
+    if (h.role === 'user') agent.addUserMessage(h.content);
+    else if (h.role === 'assistant') agent.addAssistantMessage(h.content);
+  }
   agent.addUserMessage(userMessage);
 
   // 执行

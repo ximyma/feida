@@ -3041,18 +3041,8 @@ function apiRouter() {
       const cfg = aiService.resolveModelConfig({ modelId: options?.modelId || options?.model });
       const isOllama = cfg.providerType === 'ollama';
 
+      // Agent 内部会从 sessionId 加载历史，这里不再重复合并
       const userMsg = messages[messages.length - 1];
-      const allMessages = [...messages];
-      if (options?.sessionId || options?.conversationId) {
-        try {
-          const history = AgentSystem.loadMessages(options.sessionId || options.conversationId, 10);
-          for (const h of history) {
-            if (!allMessages.find(m => m.content === h.content)) {
-              allMessages.splice(allMessages.length - 1, 0, h);
-            }
-          }
-        } catch (e: any) { console.error('[Agent] load history failed:', e.message); }
-      }
 
       send('start', { model: cfg.model, sessionId: options?.sessionId });
 
