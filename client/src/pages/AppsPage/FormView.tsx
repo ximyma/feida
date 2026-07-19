@@ -3,14 +3,65 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { Card, Form, Input, Select, Button, Space, message, InputNumber, Switch, Spin, Typography, Breadcrumb } from 'antd';
+import { Card, Form, Input, Select, Button, Space, message, InputNumber, Switch, Spin, Typography, Breadcrumb, Rate, DatePicker } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 
 const { Title } = Typography;
 const BASE = '/api';
 
-interface FieldDef { name: string; type: string; label: string; required: boolean; selection?: Array<{ label: string; value: string }>; }
+interface FieldDef { name: string; type: string; label: string; required: boolean; selection?: Array<{ label: string; value: string }>; relation?: string; }
 interface AppConfig { name: string; menu: Array<{ label: string; table: string }>; color: string; }
+
+/** many2one 关联记录选择器 (带搜索) */
+const Many2OneSelect: React.FC<{ field: FieldDef; value?: any; onChange?: (v: any) => void }> = ({ field, value, onChange }) => {
+  const [options, setOptions] = useState<Array<{ label: string; value: any }>>([]);
+  const [search, setSearch] = useState('');
+  const [currentLabel, setCurrentLabel] = useState('');
+
+  useEffect(() => {
+    // 加载初始选项和当前值的显示名
+    const load = async () => {
+      const relTable = field.relation || field.name.replace(/_id$/, '');
+      try {
+        const res = await fetch(`${BASE}/model/${relTable}?limit=20`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const opts = data.map((r: any) => ({ label: r.name || r.title || r.label || r[Object.keys(r)[0]], value: r.id }));
+          setOptions(opts);
+          if (value) {
+            const found = opts.find((o: any) => o.value === value);
+            if (found) setCurrentLabel(found.label);
+          }
+        }
+      } catch {}
+    };
+    load();
+  }, [field.relation, field.name]);
+
+  const handleSearch = async (q: string) => {
+    setSearch(q);
+    const relTable = field.relation || field.name.replace(/_id$/, '');
+    try {
+      const res = await fetch(`${BASE}/model/${relTable}?search=${encodeURIComponent(q)}&limit=20`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setOptions(data.map((r: any) => ({ label: r.name || r.title || r.label || r[Object.keys(r)[0]], value: r.id })));
+      }
+    } catch {}
+  };
+
+  return (
+    <Select
+      showSearch value={value}
+      filterOption={false}
+      onSearch={handleSearch}
+      onChange={onChange}
+      placeholder={`选择${field.label || field.relation}`}
+      options={options}
+      allowClear
+    />
+  );
+};
 
 const FormView: React.FC = () => {
   const { module: moduleName = '', table: tableName = '', id } = useParams<{ module: string; table: string; id?: string }>();
@@ -83,16 +134,30 @@ const FormView: React.FC = () => {
                 valuePropName={f.type === 'boolean' ? 'checked' : undefined}>
                 {f.type === 'selection' && f.selection ? (
                   <Select allowClear options={f.selection.map(s => ({ label: s.label, value: s.value }))} placeholder={`选择${f.label}`} />
+                ) : f.type === 'many2one' ? (
+                  <Many2OneSelect field={f} />
                 ) : f.type === 'boolean' ? (
                   <Switch />
                 ) : f.type === 'integer' ? (
                   <InputNumber style={{ width: '100%' }} />
-                ) : f.type === 'float' ? (
-                  <InputNumber style={{ width: '100%' }} step={0.01} />
-                ) : f.type === 'text' ? (
-                  <Input.TextArea rows={3} />
+                ) : f.type === 'float' || f.type === 'monetary' ? (
+                  <InputNumber style={{ width: '100%' }} step={0.01} prefix={f.type === 'monetary' ? '¥' : undefined} />
+                ) : f.type === 'text' || f.type === 'html' ? (
+                  <Input.TextArea rows={4} />
                 ) : f.type === 'date' ? (
-                  <Input type="date" />
+                  <DatePicker style={{ width: '100%' }} />
+                ) : f.type === 'datetime' ? (
+                  <DatePicker showTime style={{ width: '100%' }} />
+                ) : f.type === 'email' ? (
+                  <Input type="email" />
+                ) : f.type === 'url' ? (
+                  <Input type="url" />
+                ) : f.type === 'color' ? (
+                  <Input type="color" style={{ width: 60, height: 32 }} />
+                ) : f.type === 'rating' ? (
+                  <Rate />
+                ) : f.type === 'phone' ? (
+                  <Input type="tel" />
                 ) : (
                   <Input />
                 )}

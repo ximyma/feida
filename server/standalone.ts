@@ -475,6 +475,60 @@ function apiRouter() {
     }
   });
 
+  // ===== 应用关联关系 API =====
+  // 存储到 app.json 的 relations 字段
+  router.get('/apps/:app/relations', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const appJsonPath = path.join(process.cwd(), 'addons', req.params.app, 'app.json');
+      if (!fs.existsSync(appJsonPath)) {
+        res.json({ success: true, data: [] }); return;
+      }
+      const config = JSON.parse(fs.readFileSync(appJsonPath, 'utf-8'));
+      res.json({ success: true, data: config.relations || [] });
+    } catch (e: any) { res.json({ success: false, error: e.message }); }
+  });
+
+  router.post('/apps/:app/relations', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const appJsonPath = path.join(process.cwd(), 'addons', req.params.app, 'app.json');
+      const config = fs.existsSync(appJsonPath) ? JSON.parse(fs.readFileSync(appJsonPath, 'utf-8')) : {};
+      if (!config.relations) config.relations = [];
+      const record = { ...req.body, id: 'rel_' + Date.now(), created_at: new Date().toISOString() };
+      config.relations.push(record);
+      fs.writeFileSync(appJsonPath, JSON.stringify(config, null, 2), 'utf-8');
+      res.json({ success: true, data: record });
+    } catch (e: any) { res.json({ success: false, error: e.message }); }
+  });
+
+  router.put('/apps/:app/relations/:id', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const appJsonPath = path.join(process.cwd(), 'addons', req.params.app, 'app.json');
+      const config = JSON.parse(fs.readFileSync(appJsonPath, 'utf-8'));
+      const idx = (config.relations || []).findIndex((r: any) => r.id === req.params.id);
+      if (idx >= 0) { config.relations[idx] = { ...config.relations[idx], ...req.body }; }
+      fs.writeFileSync(appJsonPath, JSON.stringify(config, null, 2), 'utf-8');
+      res.json({ success: true });
+    } catch (e: any) { res.json({ success: false, error: e.message }); }
+  });
+
+  router.delete('/apps/:app/relations/:id', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const appJsonPath = path.join(process.cwd(), 'addons', req.params.app, 'app.json');
+      const config = JSON.parse(fs.readFileSync(appJsonPath, 'utf-8'));
+      config.relations = (config.relations || []).filter((r: any) => r.id !== req.params.id);
+      fs.writeFileSync(appJsonPath, JSON.stringify(config, null, 2), 'utf-8');
+      res.json({ success: true });
+    } catch (e: any) { res.json({ success: false, error: e.message }); }
+  });
+
   // ===== 应用管理 API =====
   router.get('/apps/list', (_req, res) => {
     const fs = require('fs');

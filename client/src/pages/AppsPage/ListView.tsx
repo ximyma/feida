@@ -43,6 +43,26 @@ const ListView: React.FC = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // 加载 many2one 关联数据缓存(显示名称)
+  useEffect(() => {
+    const many2oneFields = fieldDefs.filter(f => f.type === 'many2one');
+    for (const f of many2oneFields) {
+      const relTable = (f as any).relation || f.name.replace(/_id$/, '');
+      fetch(`${BASE}/model/${relTable}?limit=500`)
+        .then(r => r.json())
+        .then(j => {
+          if (Array.isArray(j)) {
+            const cache: Record<string, string> = {};
+            j.forEach((r: any) => {
+              cache[r.id] = r.name || r.title || r.label || r[Object.keys(r)[0]];
+            });
+            (f as any)._relatedCache = cache;
+            setFieldDefs(prev => [...prev]); // 触发重新渲染
+          }
+        }).catch(() => {});
+    }
+  }, [fieldDefs.length, tableName]);
+
   const handleDelete = async (id: string) => {
     await fetch(`${BASE}/model/${tableName}/unlink/${id}`, { method: 'DELETE' });
     message.success('已删除');
@@ -66,13 +86,27 @@ const ListView: React.FC = () => {
     : data;
 
   const columns = [
-    ...fieldDefs.slice(0, 5).map(f => ({
+    ...fieldDefs.slice(0, 6).map(f => ({
       title: f.label || f.name, dataIndex: f.name, key: f.name, ellipsis: true,
       render: f.type === 'boolean' ? (v: any) => <Tag color={v ? 'green' : 'default'}>{v ? '是' : '否'}</Tag>
         : f.type === 'selection' ? (v: string) => {
             const opt = f.selection?.find(s => s.value === v);
             return <Tag>{opt?.label || v}</Tag>;
-          } : undefined,
+          }
+        : f.type === 'many2one' ? (v: string) => {
+            // 通过关系数据表缓存显示名称
+            const relName = (f as any)._relatedCache?.[v];
+            return relName || v || '';
+          }
+        : f.type === 'date' || f.type === 'datetime' ? (v: string) => {
+            if (!v) return '';
+            return new Date(v).toLocaleDateString('zh-CN', { year:'numeric',month:'2-digit',day:'2-digit' });
+          }
+        : f.type === 'monetary' ? (v: number) => {
+            if (v == null) return '';
+            return `¥${Number(v).toLocaleString('zh-CN', {minimumFractionDigits:2})}`;
+          }
+        : undefined,
       sorter: (a: any, b: any) => {
         const va = a[f.name]; const vb = b[f.name];
         if (va == null) return 1; if (vb == null) return -1;

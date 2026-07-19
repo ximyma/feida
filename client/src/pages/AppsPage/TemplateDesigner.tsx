@@ -43,6 +43,7 @@ const FIELD_GROUPS = [
     types: [
       { type: 'boolean', label: '开关', icon: '☑', desc: '是/否,启用/禁用' },
       { type: 'selection', label: '下拉选择', icon: '▼', desc: '预定义选项' },
+      { type: 'color', label: '颜色', icon: '🎨', desc: '颜色选择器' },
     ],
   },
   {
@@ -50,6 +51,7 @@ const FIELD_GROUPS = [
     types: [
       { type: 'many2one', label: '关联表', icon: '🔗', desc: '外键关联另一张表' },
       { type: 'one2many', label: '子表', icon: '📋', desc: '一对多明细' },
+      { type: 'many2many', label: '多对多', icon: '🔀', desc: '多对多关联' },
     ],
   },
   {
@@ -60,10 +62,26 @@ const FIELD_GROUPS = [
     ],
   },
   {
+    label: '联系方式',
+    types: [
+      { type: 'email', label: '邮箱', icon: '✉️', desc: '邮箱地址,自动验证' },
+      { type: 'url', label: '网址', icon: '🌐', desc: 'URL链接' },
+      { type: 'phone', label: '电话', icon: '📞', desc: '电话号码' },
+    ],
+  },
+  {
+    label: '金额',
+    types: [
+      { type: 'monetary', label: '货币', icon: '💰', desc: '金额,带货币符号' },
+    ],
+  },
+  {
     label: '高级',
     types: [
       { type: 'formula', label: '公式计算', icon: '𝑓', desc: '表达式计算字段' },
       { type: 'sequence', label: '自动编号', icon: '#', desc: '自增编号' },
+      { type: 'html', label: '富文本', icon: '📝', desc: 'HTML富文本编辑器' },
+      { type: 'rating', label: '评分', icon: '⭐', desc: '星级评分' },
     ],
   },
 ];
