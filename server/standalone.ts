@@ -11237,7 +11237,20 @@ app.use('/uploads', express.static(uploadDir));
 app.use('/api', apiAuthMiddleware, apiRouter());
 
 app.use('/addons', express.static(path.join(__dirname, '..', '..', 'addons'), { maxAge: 0, etag: false }));
-app.use(express.static(path.join(__dirname, '../client')));
+
+// 静态文件服务 - 强制正确 MIME type（修复 "Expected JavaScript module but got octet-stream"）
+const clientDir = path.join(__dirname, '../client');
+app.use(express.static(clientDir, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    } else if (filePath.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    } else if (filePath.endsWith('.svg')) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+    }
+  },
+}));
 
 app.get('*', (_req, res) => {
   const indexPath = path.join(__dirname, '../client/index.html');
