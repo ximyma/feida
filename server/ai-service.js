@@ -153,6 +153,7 @@ async function chatCompletionStreamFull(messages, options = {}) {
     model: config.model, messages,
     temperature: config.temperature, max_tokens: config.maxTokens,
     stream: true,
+    ...(options.tools ? { tools: options.tools, tool_choice: options.tool_choice || 'auto' } : {}),
     ...(isOllama ? { options: { temperature: config.temperature, num_predict: config.maxTokens } } : {}),
   });
 

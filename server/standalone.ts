@@ -3061,9 +3061,14 @@ function apiRouter() {
       const streamChatFn = async (body: any, cfg: any) => {
         const msgs = body.messages;
         const isOllama = (cfg?.providerType || cfg?.provider_type) === 'ollama';
-        if (isOllama) {
+        const hasTools = (body?.tools && body.tools.length > 0);
+        
+        // 有工具时用非流式 (避免流式tool_calls合并复杂度)
+        if (isOllama || hasTools) {
           return aiService.chatCompletionDirect(body, cfg);
         }
+        
+        // 无工具的纯文本对话用流式输出
         try {
           const fullContent = await aiService.chatCompletionStreamFull(msgs, {
             model: cfg?.model || body?.model, baseURL: cfg?.baseURL, apiKey: cfg?.apiKey, providerType: cfg?.providerType || cfg?.provider_type || 'openai',

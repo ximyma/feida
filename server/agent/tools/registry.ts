@@ -11,6 +11,7 @@ import { GlobTool } from './builtin/glob';
 import { SqlQueryTool } from './builtin/sql-query';
 import { WebSearchTool } from './builtin/web-search';
 import { WebFetchTool } from './builtin/web-fetch';
+import { SearchNewsTool } from './builtin/search-news';
 import { SendFileTool } from './builtin/send-file';
 import { MemorySearchTool } from './builtin/memory-search';
 import { MemoryGetTool } from './builtin/memory-get';
@@ -20,7 +21,7 @@ export function registerAllTools(): void {
   toolManager.registerAll([
     new ReadFileTool(), new WriteFileTool(), new PatcherTool(),
     new BashTool(), new GrepperTool(), new GlobTool(),
-    new SqlQueryTool(), new WebSearchTool(), new WebFetchTool(),
+    new SqlQueryTool(), new WebSearchTool(), new WebFetchTool(), new SearchNewsTool(),
     new SendFileTool(),
     new MemorySearchTool(), new MemoryGetTool(),
   ]);

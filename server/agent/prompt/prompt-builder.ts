@@ -155,7 +155,13 @@ export class PromptBuilder {
   buildRules(): this {
     const text = this.config.useTags
       ? this.ollamaToolGuide()
-      : '当用户请求需要查询/搜索/文件操作/命令执行时，必须使用工具获取真实结果。如果工具返回错误，分析原因后尝试别的方法，不要放弃。';
+      : `## 多步工具使用规则（必须遵守）
+
+1. **持续执行直到任务完成**: 每次工具返回结果后，你必须分析结果并决定下一步。如果需要更多数据、搜索更多内容、执行更多操作，必须继续调用工具，不要在第一轮就输出最终答案。
+2. **一个工具不够时继续调用**: 例如搜索新闻时，先用 search_news 搜索，再用 web_fetch 获取详细内容。分多步完成。
+3. **分析失败原因**: 如果工具返回错误，换一种方法重试，例如换搜索词、换工具，不要立即放弃。
+4. **信息不足时追问**: 如果用户需求不明确，先消化已有信息，再决定下一步。
+5. **只用真实数据**: 所有回复必须基于工具返回的真实数据，禁止编造。`;
 
     this.sections.rules = [
       '## 行为规则',
@@ -163,7 +169,8 @@ export class PromptBuilder {
       text,
       '',
       '- 使用 Markdown 格式回复',
-      '- 用中文回答，数据库相关保持英文',
+      '- 用中文回答',
+      '- 长篇或多源信息时用表格/列表展示',
       '- 表名/字段名用反引号',
     ].join('\n');
     return this;
@@ -197,6 +204,7 @@ export class PromptBuilder {
       '[TOOL:bash]{"command":"执行命令"}[/TOOL]',
       '[TOOL:web_search]{"query":"搜索词"}[/TOOL]',
       '[TOOL:web_fetch]{"url":"网址"}[/TOOL]',
+      '[TOOL:search_news]{"query":"新闻关键词","source":"all"}[/TOOL]',
       '[TOOL:write_file]{"file_path":"路径","content":"内容"}[/TOOL]',
       '[TOOL:patch]{"file_path":"路径","old_string":"原文","new_string":"新文"}[/TOOL]',
     ].join('\n');

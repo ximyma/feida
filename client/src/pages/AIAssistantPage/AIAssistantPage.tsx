@@ -161,10 +161,11 @@ export default function AIAssistantPage() {
     } catch { message.error('删除失败'); }
   };
 
-  const saveMessage = async (role: string, content: string) => {
-    if (!activeConversationId) return;
+  const saveMessage = async (role: string, content: string, cid?: string | null) => {
+    const c = cid || activeConversationId;
+    if (!c) return;
     try {
-      await fetch(`/api/ai/conversations/${activeConversationId}/messages`, {
+      await fetch(`/api/ai/conversations/${c}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role, content }),
@@ -244,7 +245,10 @@ export default function AIAssistantPage() {
     setLoading(true);
     setStreamingContent('');
 
-    if (!activeConversationId) {
+    // 用局部变量捕获新创建的会话ID（避免React异步状态问题）
+    let convId = activeConversationId;
+
+    if (!convId) {
       try {
         const res = await fetch('/api/ai/conversations', {
           method: 'POST',
@@ -252,11 +256,11 @@ export default function AIAssistantPage() {
           body: JSON.stringify({ title: text.substring(0, 30) }),
         });
         const data = await res.json();
-        if (data.success) setActiveConversationId(data.data.id);
+        if (data.success) { convId = data.data.id; setActiveConversationId(convId); }
       } catch {}
     }
 
-    await saveMessage('user', text);
+    await saveMessage('user', text, convId);
 
     // 收集对话上下文（必须在代码助手模式之前声明，避免 TDZ 错误）
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
@@ -267,23 +271,22 @@ export default function AIAssistantPage() {
         { role: 'system', content: `你是飞达项目的代码助手。可用工具: read_file/write_file/patch/grep/glob/bash/sql_query。直接调用工具获取真实数据，操作完成后用中文回复结果。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
-      await agentStream(codeMessages, activeConversationId);
+      await agentStream(codeMessages, convId);
     } else if (/数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text)) {
       const toolMessages = [
         { role: 'system', content: `你是飞达智能HR系统的AI助手，可以查询数据库、搜索代码、执行操作。必须使用工具获取真实结果，不要猜测。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
-      await agentStream(toolMessages, activeConversationId);
+      await agentStream(toolMessages, convId);
     } else {
       // 通用对话也走 agentStream (获得流式+工具能力)
       const generalMessages = [
         { role: 'system', content: `你是飞达智能HR系统的AI助手。可以用中文回答各种问题，也可以使用sql_query查询数据库、grep搜索代码等工具。请友好热情地回复。` },
         ...allMessages.map(m => ({ role: m.role, content: m.content })),
       ];
-      await agentStream(generalMessages, activeConversationId);
+      await agentStream(generalMessages, convId);
     }
     
-    setLoading(false);
     setLoading(false);
     return;
   }, [inputValue, loading, messages, activeConversationId, useKnowledge, selectedKbIds, selectedModelId, activeTool]);
