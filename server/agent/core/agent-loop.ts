@@ -122,6 +122,7 @@ export async function runAgentLoop(
   // 失败追踪
   const failureHistory: Array<{ name: string; argsKey: string; success: boolean }> = [];
   const MAX_HISTORY = 50;
+  let dsmlRetryCount = 0;  // DSML格式连续使用次数
 
   // 绑定进度
   for (const tool of tools) {
@@ -272,27 +273,65 @@ export async function runAgentLoop(
 
     // ── DSML / XML 工具调用 (LLM 误用非标准格式时自动转换) ──
     if (response.content) {
-      const dsmlRegex = /<\|?DSML\|?\s*invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)(?:<\/\|?DSML\|?\s*invoke>|(?=<\|?DSML\|?\s*invoke)|$)/gi;
       const dsmlCalls: Array<{ name: string; params: any }> = [];
+      const content = response.content;
+
+      // 格式1: <|DSML|tool_calls> 包裹体 (新格式)
+      const tcBlock = /<\|?DSML\|?\s*tool_calls\s*>([\s\S]*)/i.exec(content);
+      const searchText = tcBlock ? tcBlock[1] : content;
+
+      // 格式2: <|DSML|invoke name="XX"> ... </|DSML|invoke> (有闭合)
+      const invokeRegex = /<\|?DSML\|?\s*invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)(?:<\/\|?DSML\|?\s*invoke>|(?=<\|?DSML\|?\s*invoke)|$)/gi;
       let dm;
-      while ((dm = dsmlRegex.exec(response.content)) !== null) {
+      while ((dm = invokeRegex.exec(searchText)) !== null) {
         const toolName = dm[1];
         const rawBlock = dm[2];
+
+        // 尝试闭合参数标签模式
         const params: any = {};
-        const paramRegex = /<\|?DSML\|?\s*parameter\s+name="([^"]+)"[^>]*>([^<]*)<\s*\/\|?DSML\|?\s*parameter>/gi;
+        const paramRegex = /<\|?DSML\|?\s*parameter\s+name="([^"]+)"\s*(string="[^"]*"\s*)?[^>]*>([\s\S]*?)(?:<\/\|?DSML\|?\s*parameter>|(?=<\|?DSML\|?\s*)|$)/gi;
         let pm;
         while ((pm = paramRegex.exec(rawBlock)) !== null) {
-          let val: any = pm[2].trim();
-          try { val = JSON.parse(val); } catch { /* keep as string */ }
-          if (rawBlock.includes(`name="${pm[1]}"`) && rawBlock.includes('string="false"')) {
+          let val = pm[3].trim();
+          // string="false" → JSON值
+          if ((pm[2] || '').includes('"false"') || rawBlock.includes(`name="${pm[1]}" string="false"`)) {
             try { val = JSON.parse(val); } catch { /* keep raw */ }
           }
           params[pm[1]] = val;
         }
-        if (toolName) dsmlCalls.push({ name: toolName, params });
+
+        // 如果 parameter 解析失败(无参数或未闭合), 尝试整个block作为JSON
+        if (Object.keys(params).length === 0) {
+          const trimmed = rawBlock.trim();
+          if (trimmed.startsWith('{')) {
+            try { Object.assign(params, JSON.parse(trimmed)); } catch { /* not JSON */ }
+          }
+        }
+
+        // arguments参数展开: {"file_path":"..."} → params
+        if (params.arguments && typeof params.arguments === 'object') {
+          Object.assign(params, params.arguments);
+          delete params.arguments;
+        }
+
+        if (toolName && Object.keys(params).length > 0) {
+          dsmlCalls.push({ name: toolName, params });
+        }
       }
+
       if (dsmlCalls.length > 0) {
-        const clean = response.content.replace(/<\|?DSML\|?\s*invoke[\s\S]*?(?:<\/\|?DSML\|?\s*invoke>|(?=<\|?DSML\|?\s*invoke))/gi, '').trim();
+        dsmlRetryCount++;
+        // 连续3次DSML调用仍未得到满意结果 → 要求纯文本回答
+        if (dsmlRetryCount >= 3) {
+          const clean = content.replace(/<\|?DSML\|?[\s\S]*/i, '').trim();
+          const warning = '工具已多次执行但未获得足够信息。请直接用中文基于已有的知识总结回复，不要再调用工具。';
+          agent.messages.push({ role: 'user', content: warning } as any);
+          agent.addAssistantMessage(clean || '分析中...');
+          dsmlRetryCount = 0;
+          continue;
+        }
+        // 清理所有DSML标签
+        const clean = content.replace(/<\|?DSML\|?[\s\S]*/i, '').trim();
         agent.addAssistantMessage(clean || `执行 ${dsmlCalls.map(c => c.name).join(', ')}`);
         for (const dc of dsmlCalls) {
           onEvent?.({ type: 'tool_start', data: { tool: dc.name, params: dc.params } });
@@ -300,7 +339,9 @@ export async function runAgentLoop(
           const rawResult = tool ? await tool.executeTool(dc.params) : { success: false, error: `未知工具: ${dc.name}` };
           const result = capToolResult(rawResult, false);
           steps.push({ tool: dc.name, params: dc.params, result });
-          agent.addToolResult(`dsml_${dc.name}_${Date.now()}`, result.success ? JSON.stringify(result) : `${JSON.stringify(result)}\n请分析错误并重试。`);
+          const rStr = JSON.stringify(result);
+          agent.addToolResult(`dsml_${dc.name}_${Date.now()}`,
+            result.success ? rStr : `${rStr}\n请分析错误并重试。`);
         }
         continue;
       }
