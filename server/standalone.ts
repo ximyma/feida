@@ -3068,6 +3068,56 @@ function apiRouter() {
     }
   });
 
+  // ── Excel 解析 → 字段定义 ──
+  const excelUpload = multer({ dest: uploadDir, limits: { fileSize: 10 * 1024 * 1024 } });
+  router.post('/ai/parse-excel', excelUpload.single('file'), async (req: any, res) => {
+    try {
+      const file = req.file;
+      if (!file) { res.status(400).json({ success: false, error: '请上传文件' }); return; }
+
+      const XLSX = require('xlsx');
+      const workbook = XLSX.readFile(file.path);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      
+      if (!rows || rows.length < 2) {
+        res.json({ success: true, data: { fields: [], sheetName } });
+        try { require('fs').unlinkSync(file.path); } catch {} 
+        return;
+      }
+
+      const headers = rows[0].map((h: any) => String(h || '').trim());
+      const sampleRow = rows[1] || [];
+      
+      // 根据列名和样本数据推断字段类型
+      const fields = headers.map((name: string, i: number) => {
+        const sample = sampleRow[i];
+        let type = 'char';
+        
+        // 类型推断
+        if (name.match(/金额|价格|费用|amount|price|cost|fee|money/i)) type = 'monetary';
+        else if (name.match(/日期|时间|date|time/i)) type = 'date';
+        else if (name.match(/数量|编号|年龄|年限|count|number|age|qty/i)) type = 'integer';
+        else if (name.match(/备注|描述|说明|内容|note|desc|content|remark/i)) type = 'text';
+        else if (name.match(/状态|status|state/i)) type = 'selection';
+        else if (name.match(/邮箱|email|mail/i)) type = 'email';
+        else if (name.match(/电话|手机|phone|tel|mobile/i)) type = 'phone';
+        else if (name.match(/网址|链接|url|link/i)) type = 'url';
+        else if (typeof sample === 'boolean') type = 'boolean';
+        else if (typeof sample === 'number' && Number.isInteger(sample)) type = 'integer';
+        else if (typeof sample === 'number') type = 'float';
+
+        return { name: name || `field_${i}`, type, label: name, required: false };
+      });
+
+      try { require('fs').unlinkSync(file.path); } catch {}
+      res.json({ success: true, data: { fields, sheetName, rowCount: rows.length - 1 } });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // ── AI 文件上传 ──
   const aiUpload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
   router.post('/ai/upload', aiUpload.array('files', 10), async (req: any, res) => {

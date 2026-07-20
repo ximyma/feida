@@ -9,8 +9,8 @@
  * 暂用HTML5原生拖拽(后续可引入dnd-kit)
  */
 import React, { useState, useCallback } from 'react';
-import { Card, Button, Input, Select, Switch, InputNumber, Row, Col, Tag, Empty, Tooltip, Divider, Typography, Space, Tabs } from 'antd';
-import { PlusOutlined, DeleteOutlined, DragOutlined, SettingOutlined, HolderOutlined } from '@ant-design/icons';
+import { Card, Button, Input, Select, Switch, InputNumber, Row, Col, Tag, Empty, Tooltip, Divider, Typography, Space, Tabs, Modal, Upload, message } from 'antd';
+import { PlusOutlined, DeleteOutlined, DragOutlined, SettingOutlined, HolderOutlined, FileTextOutlined, FileExcelOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
@@ -115,6 +115,9 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [optionsText, setOptionsText] = useState('');
   const [dragHover, setDragHover] = useState<number | null>(null);
+  const [jsonModalOpen, setJsonModalOpen] = useState(false);
+  const [jsonText, setJsonText] = useState('');
+  const [excelUploading, setExcelUploading] = useState(false);
 
   const selectedField = selectedIdx !== null ? fields[selectedIdx] : null;
 
@@ -165,7 +168,65 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
     if (selectedIdx === srcIdx) setSelectedIdx(targetIdx);
   };
 
+  // ─── JSON 导入 ───
+  const handleJsonImport = () => {
+    try {
+      let data = JSON.parse(jsonText);
+      // 支持 [{"name":"xx","type":"char"},...] 或 {fields:[...]}
+      if (!Array.isArray(data)) {
+        if (data.fields && Array.isArray(data.fields)) data = data.fields;
+        else if (data.columns && Array.isArray(data.columns)) data = data.columns;
+        else { message.error('JSON 格式不支持，需要数组或 {fields:[...]} 格式'); return; }
+      }
+      const newFields: FieldDef[] = data.map((item: any, i: number) => ({
+        key: `j${Date.now()}_${i}`,
+        name: item.name || item.field || '',
+        type: item.type || 'char',
+        label: item.label || item.title || item.name || item.field || '',
+        required: !!item.required,
+        default: item.default,
+        placeholder: item.placeholder,
+        tooltip: item.description || item.desc,
+        selection: item.options || item.selection || item.choices,
+        relation: item.relation || item.related_model,
+      }));
+      onChange([...fields, ...newFields]);
+      setJsonModalOpen(false);
+      setJsonText('');
+      message.success(`已导入 ${newFields.length} 个字段`);
+    } catch { message.error('JSON 解析失败'); }
+  };
+
+  // ─── Excel 导入 ───
+  const handleExcelUpload = async (info: any) => {
+    const file = info.file;
+    if (!file) return;
+    setExcelUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/ai/parse-excel', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (result.success && result.data?.fields) {
+        const newFields: FieldDef[] = result.data.fields.map((item: any, i: number) => ({
+          key: `e${Date.now()}_${i}`,
+          name: item.name || `field_${i}`,
+          type: item.type || 'char',
+          label: item.label || item.title || item.name || '',
+          required: false,
+          selection: item.options || undefined,
+        }));
+        onChange([...fields, ...newFields]);
+        message.success(`从 Excel 导入 ${newFields.length} 个字段`);
+      } else {
+        message.error(result.error || '解析失败');
+      }
+    } catch { message.error('上传失败'); }
+    setExcelUploading(false);
+  };
+
   return (
+    <>
     <Row gutter={16} style={{ minHeight: 500 }}>
       {/* 左侧: 字段类型画廊 */}
       <Col span={6}>
@@ -189,7 +250,16 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
 
       {/* 中间: 表单画布 */}
       <Col span={10}>
-        <Card size="small" title={`表单画布 (${fields.length}个字段)`} style={{ height: '100%' }}>
+        <Card size="small"
+          title={`表单画布 (${fields.length}个字段)`}
+          extra={
+            <Space size={4}>
+              <Tooltip title="从 JSON 导入字段"><Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => setJsonModalOpen(true)}>JSON</Button></Tooltip>
+              <Upload accept=".xlsx,.xls,.csv" showUploadList={false} beforeUpload={(file) => { handleExcelUpload({ file }); return false; }}>
+                <Tooltip title="从 Excel 导入字段"><Button size="small" type="text" icon={<FileExcelOutlined />} loading={excelUploading}>Excel</Button></Tooltip>
+              </Upload>
+            </Space>
+          } style={{ height: '100%' }}>
           {fields.length === 0 ? (
             <Empty description="从左侧点击字段类型添加到画布" image={Empty.PRESENTED_IMAGE_SIMPLE} />
           ) : (
@@ -310,6 +380,25 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
         </Card>
       </Col>
     </Row>
+
+    {/* JSON 导入弹窗 */}
+    <Modal title="从 JSON 导入字段" open={jsonModalOpen} onCancel={() => { setJsonModalOpen(false); setJsonText(''); }}
+      onOk={handleJsonImport} okText="导入" width={600}>
+      <p style={{ color: '#666', marginBottom: 8 }}>
+        支持格式: <code>{'[{"name":"field1","type":"char","label":"字段名"}]'}</code> 或 <code>{'{"fields":[...]}'}</code>
+      </p>
+      <Input.TextArea value={jsonText} onChange={e => setJsonText(e.target.value)}
+        rows={12} placeholder={`[
+  {"name": "title", "type": "char", "label": "\\u6807\\u9898", "required": true},
+  {"name": "amount", "type": "monetary", "label": "\\u91d1\\u989d"},
+  {"name": "status", "type": "selection", "label": "\\u72b6\\u6001", "options": [{"label":"\\u5f85\\u5ba1\\u6838","value":"pending"}]}
+]`}
+      />
+      <div style={{ marginTop: 8, fontSize: 11, color: '#999' }}>
+        支持字段: name/type/label/required/default/placeholder/description/options/relation
+      </div>
+    </Modal>
+    </>
   );
 };
 
