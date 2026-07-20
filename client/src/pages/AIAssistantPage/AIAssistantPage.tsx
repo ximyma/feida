@@ -279,21 +279,29 @@ export default function AIAssistantPage() {
     const text = content || inputValue.trim();
     if (!text || loading) return;
 
-    // 构建用户消息（含文件内容）
-    let fullContent = text;
+    // 构建消息：聊天界面只显示文件名，AI上下文注入文件内容
     const currentFiles = [...attachedFiles];
+    let displayContent = text;
+    let aiContent = text;
+
     if (currentFiles.length > 0) {
-      const fileTexts = currentFiles.map(f => {
-        if (f.content && f.content.length > 500) {
-          return `\n\n【上传文件: ${f.name} (${(f.size/1024).toFixed(0)}KB)】\n\`\`\`\n${f.content}\n\`\`\``;
+      // 聊天显示：只显示文件列表
+      const fileNames = currentFiles.map(f => `📎 ${f.name} (${(f.size/1024).toFixed(0)}KB)`).join('\n');
+      displayContent = text + '\n\n' + fileNames;
+
+      // AI 上下文：注入文件内容
+      const fileContents = currentFiles.map(f => {
+        if (f.content && f.content.length > 20) {
+          return `\n\n--- 文件: ${f.name} ---\n${f.content}\n--- 文件结束 ---`;
         }
-        return `\n\n【上传文件: ${f.name} (${(f.size/1024).toFixed(0)}KB)】`;
+        return `\n\n[文件: ${f.name}, 类型: ${f.type}, 大小: ${(f.size/1024).toFixed(0)}KB]`;
       });
-      fullContent = text + fileTexts.join('');
-      setAttachedFiles([]); // 发送后清除附件
+      aiContent = text + '\n\n【以下为用户上传的文件，请基于文件内容回复】' + fileContents.join('');
+
+      setAttachedFiles([]);
     }
 
-    const userMsg: ChatMessage = { id: 'u_' + Date.now(), role: 'user', content: fullContent, timestamp: Date.now() };
+    const userMsg: ChatMessage = { id: 'u_' + Date.now(), role: 'user', content: displayContent, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setLoading(true);
@@ -316,8 +324,16 @@ export default function AIAssistantPage() {
 
     await saveMessage('user', text, convId);
 
-    // 收集对话上下文（必须在代码助手模式之前声明，避免 TDZ 错误）
+    // 收集对话上下文
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
+
+    // 有附件时，AI上下文中的用户消息替换为含文件内容的版本
+    const agentMessages = allMessages.map((m, idx) => {
+      if (m.id === userMsg.id && aiContent !== displayContent) {
+        return { role: m.role, content: aiContent };
+      }
+      return { role: m.role, content: m.content };
+    });
 
     // ===== 统一所有对话走 SSE agentStream (代码/工具/通用) =====
     if (agentMode === 'code') {
@@ -329,7 +345,7 @@ export default function AIAssistantPage() {
 2. 先分析用户需求，再选择合适的工具，执行后基于结果回复
 3. 用中文简洁回复，表格/列表整理信息
 4. 禁止编造数据，必须基于工具实际返回结果` },
-        ...allMessages.map(m => ({ role: m.role, content: m.content })),
+        ...agentMessages,
       ];
       await agentStream(codeMessages, convId);
     } else if (/数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text)) {
@@ -341,21 +357,21 @@ export default function AIAssistantPage() {
 2. 基于工具返回结果回复，不要编造数据
 3. 用中文回答，列表/表格展示多源信息
 4. 先分析再执行，工具失败时换方法重试` },
-        ...allMessages.map(m => ({ role: m.role, content: m.content })),
+        ...agentMessages,
       ];
       await agentStream(toolMessages, convId);
     } else {
       // 通用对话也走 agentStream (获得流式+工具能力)
       const generalMessages = [
         { role: 'system', content: `你是飞达智能HR系统的AI助手。用中文回答各种问题。可以通过 function calling 使用 sql_query/grep/glob/bash/read_file 等工具获取真实数据。**不要在文本中输出 DSML/XML/标签格式的工具调用！**` },
-        ...allMessages.map(m => ({ role: m.role, content: m.content })),
+        ...agentMessages,
       ];
       await agentStream(generalMessages, convId);
     }
     
     setLoading(false);
     return;
-  }, [inputValue, loading, messages, activeConversationId, useKnowledge, selectedKbIds, selectedModelId, activeTool]);
+  }, [inputValue, loading, messages, activeConversationId, useKnowledge, selectedKbIds, selectedModelId, activeTool, attachedFiles]);
 
   const clearChat = () => {
     setMessages([welcomeMsg]);
