@@ -3068,6 +3068,51 @@ function apiRouter() {
     }
   });
 
+  // ── AI 文件上传 ──
+  const aiUpload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  router.post('/ai/upload', aiUpload.array('files', 10), async (req: any, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        res.status(400).json({ success: false, error: '请上传文件' }); return;
+      }
+
+      const results = [];
+      for (const file of files) {
+        const fs = require('fs');
+        const path = require('path');
+        const ext = path.extname(file.originalname).toLowerCase();
+        const isText = ['.txt','.md','.csv','.ts','.tsx','.js','.jsx','.py','.java','.go','.rs',
+          '.c','.cpp','.h','.html','.css','.json','.xml','.yaml','.yml','.toml','.ini','.cfg',
+          '.log','.sql','.sh','.bat','.ps1','.vue','.svelte'].includes(ext);
+
+        let content = '';
+        if (isText) {
+          try {
+            const raw = fs.readFileSync(file.path, 'utf-8');
+            content = raw.slice(0, 50000); // 限制50KB
+          } catch { content = `[无法读取文件: ${file.originalname}]`; }
+        } else {
+          content = `[${file.mimetype}] 文件: ${file.originalname}, 大小: ${(file.size/1024).toFixed(1)}KB`;
+        }
+
+        results.push({
+          name: file.originalname,
+          size: file.size,
+          type: file.mimetype,
+          content,
+        });
+
+        // 清理临时文件
+        try { fs.unlinkSync(file.path); } catch {}
+      }
+
+      res.json({ success: true, data: results });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // ── 代码助手 Agent SSE流式端点 ──
   router.post('/ai/code-agent/stream', async (req, res) => {
     // SSE headers

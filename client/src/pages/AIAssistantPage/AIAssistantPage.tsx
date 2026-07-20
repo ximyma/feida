@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Card, Button, Input, Select, Tag, message, Space, Divider, Tooltip, Empty, Dropdown, Menu, Modal, Badge, Popconfirm, Avatar } from 'antd';
+import { Card, Button, Input, Select, Tag, message, Space, Divider, Tooltip, Empty, Dropdown, Menu, Modal, Badge, Popconfirm, Avatar, Upload } from 'antd';
 import {
   Send, Bot, User, Sparkles, BarChart3, FileSearch, Languages, BookOpen,
   Trash2, Copy, RefreshCw, Settings, Plus, MessageSquare, ChevronLeft,
   ChevronRight, MoreHorizontal, Edit, Brain, Wrench, Zap, Terminal,
   FileText, Calculator, Search, Globe, Code, Database, FolderOpen,
+  Paperclip, X, FileImage, FileAudio, FileVideo,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -64,6 +65,9 @@ export default function AIAssistantPage() {
   const [agentMode, setAgentMode] = useState<'general' | 'code'>('general');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ uid: string; name: string; size: number; type: string; content?: string }>>([]);
+  const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const welcomeMsg: ChatMessage = {
@@ -235,11 +239,61 @@ export default function AIAssistantPage() {
     } catch (e: any) { setMessages(prev => prev.filter(m=>m.id!==placeholderId)); setMessages(prev => [...prev,{id:'a_'+Date.now(),role:'assistant',content:e.name==='AbortError'?'⏰ 请求超时':'❌ '+e.message,timestamp:Date.now()}]); }
   };
 
+  const handleFileChange = async (info: any) => {
+    const file = info.file;
+    if (!file) return;
+    // 读取文件内容 (对于文本文件直接读，二进制文件记录元数据)
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      setAttachedFiles(prev => [...prev, {
+        uid: file.uid || Date.now().toString(),
+        name: file.name,
+        size: file.size,
+        type: file.type || 'unknown',
+        content: text?.slice(0, 50000), // 限制50KB内容
+      }]);
+      message.success(`已添加 ${file.name}`);
+    };
+    if (file.type?.startsWith('text/') || file.type?.includes('json') || file.type?.includes('javascript') || file.type?.includes('xml') ||
+        file.name?.match(/\.(txt|md|csv|ts|tsx|js|jsx|py|java|go|rs|c|cpp|h|html|css|json|xml|yaml|yml|toml|ini|cfg|log|sql|sh|bat|ps1)$/i)) {
+      reader.readAsText(file);
+    } else {
+      // 二进制/媒体文件：只记录元数据
+      setAttachedFiles(prev => [...prev, {
+        uid: file.uid || Date.now().toString(),
+        name: file.name,
+        size: file.size,
+        type: file.type || 'unknown',
+        content: `[${file.type || 'binary'}] 文件: ${file.name}, 大小: ${(file.size/1024).toFixed(1)}KB`,
+      }]);
+      message.success(`已添加 ${file.name} (元数据)`);
+    }
+  };
+
+  const removeFile = (uid: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.uid !== uid));
+  };
+
   const sendMessage = useCallback(async (content?: string) => {
     const text = content || inputValue.trim();
     if (!text || loading) return;
 
-    const userMsg: ChatMessage = { id: 'u_' + Date.now(), role: 'user', content: text, timestamp: Date.now() };
+    // 构建用户消息（含文件内容）
+    let fullContent = text;
+    const currentFiles = [...attachedFiles];
+    if (currentFiles.length > 0) {
+      const fileTexts = currentFiles.map(f => {
+        if (f.content && f.content.length > 500) {
+          return `\n\n【上传文件: ${f.name} (${(f.size/1024).toFixed(0)}KB)】\n\`\`\`\n${f.content}\n\`\`\``;
+        }
+        return `\n\n【上传文件: ${f.name} (${(f.size/1024).toFixed(0)}KB)】`;
+      });
+      fullContent = text + fileTexts.join('');
+      setAttachedFiles([]); // 发送后清除附件
+    }
+
+    const userMsg: ChatMessage = { id: 'u_' + Date.now(), role: 'user', content: fullContent, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setLoading(true);
@@ -455,10 +509,35 @@ export default function AIAssistantPage() {
         </Card>
 
         {/* 消息列表 */}
-        <div style={{
+        <div style={isDragging ? {
+          flex: 1, overflow: 'auto', padding: '8px 4px',
+          backgroundColor: '#e6f7ff', borderRadius: 8, marginBottom: 8,
+          border: '2px dashed #1890ff',
+        } : {
           flex: 1, overflow: 'auto', padding: '8px 4px',
           backgroundColor: '#f8f9fa', borderRadius: 8, marginBottom: 8,
-        }}>
+        }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+          onDrop={(e) => {
+            e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) message.info(`正在添加 ${files.length} 个文件...`);
+            files.forEach(f => handleFileChange({ file: f }));
+          }}
+        >
+          {isDragging && (
+            <div style={{ padding: 40, textAlign: 'center', color: '#1890ff', fontSize: 18, fontWeight: 500 }}>
+              📂 释放文件以上传
+            </div>
+          )}
+          {attachedFiles.length > 0 && messages.length === 0 && (
+            <div style={{ padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📁</div>
+              <div style={{ fontSize: 14, color: '#1890ff', marginBottom: 4 }}>已添加 {attachedFiles.length} 个文件</div>
+              <div style={{ fontSize: 12, color: '#999' }}>在上方输入框中输入问题后发送</div>
+            </div>
+          )}
           {messages.map(msg => (
             <div key={msg.id} style={{
               display: 'flex', gap: 12, padding: '12px 16px',
@@ -541,19 +620,52 @@ export default function AIAssistantPage() {
 
         {/* 输入区域 */}
         <div style={{ flexShrink: 0 }}>
+          {/* 已附件文件列表 */}
+          {attachedFiles.length > 0 && (
+            <div style={{ marginBottom: 8, padding: '8px 12px', background: '#fafafa', borderRadius: 8, border: '1px solid #e8e8e8' }}>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>📎 已附加文件 ({attachedFiles.length})：</div>
+              <Space wrap size={[4, 4]}>
+                {attachedFiles.map(f => (
+                  <Tag key={f.uid} closable onClose={() => removeFile(f.uid)} color="blue"
+                    icon={f.type?.startsWith('image/') ? <FileImage size={10} /> :
+                          f.type?.startsWith('audio/') ? <FileAudio size={10} /> :
+                          f.type?.startsWith('video/') ? <FileVideo size={10} /> :
+                          <FileText size={10} />}>
+                    {f.name} ({(f.size/1024).toFixed(0)}KB)
+                  </Tag>
+                ))}
+              </Space>
+            </div>
+          )}
+
           <Input.TextArea
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={agentMode === 'code' ? '代码助手模式：输入指令，如"帮我查看表结构"或"搜索权限相关代码"...' : (activeTool ? `【${AGENT_TOOLS.find(t => t.key === activeTool)?.label}模式】输入内容...` : '输入HR问题，Enter发送 / Shift+Enter换行...')}
+            placeholder={agentMode === 'code' ? '代码助手模式：输入指令...' : '输入问题，Enter发送 / Shift+Enter换行... 支持上传文件！'}
             autoSize={{ minRows: 2, maxRows: 4 }}
             disabled={loading}
             style={{ borderRadius: 8, fontSize: 14 }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-            <span style={{ fontSize: 11, color: '#999' }}>
-              {activeConversationId ? '对话已保存' : '新对话·未保存'} | 模型: 系统配置中管理
-            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Upload
+                accept="*"
+                multiple
+                showUploadList={false}
+                beforeUpload={(file) => { handleFileChange({ file }); return false; }}
+                disabled={loading}
+              >
+                <Tooltip title="上传文件 (图片/音频/视频/文档/代码)">
+                  <Button size="small" icon={<Paperclip size={14} />} disabled={loading} type="text">
+                    上传文件
+                  </Button>
+                </Tooltip>
+              </Upload>
+              <span style={{ fontSize: 11, color: '#999' }}>
+                {activeConversationId ? '对话已保存' : '新对话·未保存'}
+              </span>
+            </div>
             <Button type="primary" icon={<Send size={14} />} onClick={() => sendMessage()} loading={loading} disabled={!inputValue.trim()} size="large">
               发送
             </Button>
