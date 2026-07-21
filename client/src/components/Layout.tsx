@@ -41,6 +41,7 @@ import {
   Sparkles,
   Rocket,
   AppWindow,
+  FileSearch,
 } from 'lucide-react';
 
 const menuItems = [
