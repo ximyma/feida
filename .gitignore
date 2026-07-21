@@ -60,9 +60,10 @@ kflower-data/
 *.key
 secrets/
 
-# Models (large files)
-bge-reranker-v2-m3/
-models/
+# Odoo reference modules
+modules/models/
+shopxo/models/
+cms/models/
 
 # Python
 __pycache__/
