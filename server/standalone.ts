@@ -370,6 +370,169 @@ function apiRouter() {
   });
 
   // ===== 低代码平台 API =====
+  // ===== Odoo 模型浏览器 =====
+  router.get('/odoo/modules', (_req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const modulesDir = path.join(process.cwd(), 'modules');
+    const result: any[] = [];
+    if (fs.existsSync(modulesDir)) {
+      for (const entry of fs.readdirSync(modulesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const modelsFile = path.join(modulesDir, entry.name, 'models', 'models.js');
+        if (!fs.existsSync(modelsFile)) continue;
+        try {
+          delete require.cache[require.resolve(modelsFile)];
+          const mod = require(modelsFile);
+          const defs = Array.isArray(mod) ? mod : (mod.models || []);
+          const models = defs.map((d: any) => {
+            const fields = d._fields ? Object.keys(d._fields).length : 0;
+            return { name: d._name, description: d._description || '', fields };
+          });
+          result.push({ name: entry.name, label: entry.name, models });
+        } catch (_) {}
+      }
+    }
+    // 也包含 addons 中的系统模块
+    const addonsDir = path.join(process.cwd(), 'addons');
+    if (fs.existsSync(addonsDir)) {
+      for (const entry of fs.readdirSync(addonsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const modelsDir = path.join(addonsDir, entry.name, 'models');
+        if (!fs.existsSync(modelsDir)) continue;
+        const models: any[] = [];
+        for (const f of fs.readdirSync(modelsDir)) {
+          if (!f.endsWith('.js')) continue;
+          try {
+            const fp = path.join(modelsDir, f);
+            delete require.cache[require.resolve(fp)];
+            const mod = require(fp);
+            const def = mod.model || mod;
+            if (def._name) models.push({ name: def._name, description: def._description || '', fields: def._fields ? Object.keys(def._fields).length : 0 });
+          } catch (_) {}
+        }
+        if (models.length > 0) result.push({ name: 'addon/' + entry.name, label: 'Addon: ' + entry.name, models });
+      }
+    }
+    res.json(result);
+  });
+
+  router.get('/odoo/model/:name', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const modelName = req.params.name;
+    // search modules and addons
+    const dirs = [path.join(process.cwd(), 'modules'), path.join(process.cwd(), 'addons')];
+    for (const baseDir of dirs) {
+      if (!fs.existsSync(baseDir)) continue;
+      for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const modelsDir = path.join(baseDir, entry.name, 'models');
+        if (!fs.existsSync(modelsDir)) continue;
+        for (const f of fs.readdirSync(modelsDir)) {
+          if (!f.endsWith('.js')) continue;
+          try {
+            const fp = path.join(modelsDir, f);
+            delete require.cache[require.resolve(fp)];
+            const mod = require(fp);
+            const defs = mod.models || (mod.model ? [mod.model] : (Array.isArray(mod) ? mod : []));
+            for (const def of defs) {
+              if (def._name === modelName) {
+                res.json({ module: entry.name, model: def._name, description: def._description || '', fields: def._fields || {} });
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    }
+    res.status(404).json({ error: '模型不存在' });
+  });
+
+  // ===== 外部数据库浏览 =====
+  router.post('/db/scan', (req, res) => {
+    const { type, host, port, database, user, password, filepath } = req.body;
+    try {
+      let db: any;
+      if (type === 'sqlite' || (type === 'better-sqlite3')) {
+        const targetPath = filepath || database;
+        if (!targetPath || !require('fs').existsSync(targetPath)) {
+          res.status(400).json({ error: 'SQLite文件不存在: ' + targetPath }); return;
+        }
+        db = require('better-sqlite3')(targetPath, { readonly: true });
+        const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+        const result = tables.map((t: any) => {
+          const cols = db.prepare('PRAGMA table_info(' + JSON.stringify(t.name) + ')').all();
+          return { name: t.name, columns: cols.length, fields: cols.map((c: any) => ({ name: c.name, type: c.type, pk: !!c.pk })) };
+        });
+        db.close();
+        res.json({ success: true, tables: result });
+      } else if (type === 'mysql' || type === 'mysql2') {
+        const mysql = require('mysql2/promise');
+        mysql.createConnection({ host, port: port || 3306, user, password, database }).then((conn: any) => {
+          conn.query('SHOW TABLES').then(([rows]: any) => {
+            const tables = rows.map((r: any) => Object.values(r)[0] as string);
+            Promise.all(tables.map((t: string) => conn.query('DESCRIBE ' + t).then(([cols]: any) => ({
+              name: t, columns: cols.length, fields: cols.map((c: any) => ({ name: c.Field, type: c.Type, pk: c.Key === 'PRI' }))
+            })))).then((result: any) => {
+              conn.end();
+              res.json({ success: true, tables: result });
+            });
+          }).catch((e: any) => { conn.end(); res.status(500).json({ error: e.message }); });
+        }).catch((e: any) => { res.status(500).json({ error: e.message }); });
+      } else if (type === 'pg' || type === 'postgresql') {
+        const { Pool } = require('pg');
+        const pool = new Pool({ host, port: port || 5432, user, password, database });
+        pool.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'").then((r: any) => {
+          const tables = r.rows.map((t: any) => t.tablename);
+          Promise.all(tables.map((t: string) => pool.query("SELECT column_name,data_type,is_nullable FROM information_schema.columns WHERE table_name=$1", [t]).then((r2: any) => ({
+            name: t, columns: r2.rows.length, fields: r2.rows.map((c: any) => ({ name: c.column_name, type: c.data_type, pk: false }))
+          })))).then((result: any) => {
+            pool.end();
+            res.json({ success: true, tables: result });
+          });
+        }).catch((e: any) => { pool.end(); res.status(500).json({ error: e.message }); });
+      } else {
+        res.status(400).json({ error: '不支持的数据库类型: ' + type });
+      }
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ===== 批量数据导入 =====
+  const dataUpload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  router.post('/data/import/:table', dataUpload.single('file'), async (req: any, res) => {
+    try {
+      const { table } = req.params;
+      const { clearFirst } = req.body;
+      const file = req.file;
+      if (!file) { res.status(400).json({ error: '请上传文件' }); return; }
+
+      const XLSX = require('xlsx');
+      const workbook = XLSX.readFile(file.path);
+      const sheetName = workbook.SheetNames[0];
+      const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as Record<string, any>[];
+      try { require('fs').unlinkSync(file.path); } catch {}
+
+      if (!data || data.length === 0) { res.json({ success: true, imported: 0, message: '空文件' }); return; }
+
+      const db = require('better-sqlite3')('data/ehr.db');
+      // 清理旧数据
+      if (clearFirst === 'true' || clearFirst === true) {
+        db.prepare('DELETE FROM ' + JSON.stringify(table)).run();
+      }
+      // 批量插入
+      const columns = Object.keys(data[0]);
+      const placeholders = columns.map(() => '?').join(',');
+      const insert = db.prepare('INSERT INTO ' + JSON.stringify(table) + ' (' + columns.map(c => JSON.stringify(c)).join(',') + ') VALUES (' + placeholders + ')');
+      const insertMany = db.transaction((rows: any[]) => { for (const row of rows) insert.run(columns.map(c => row[c] ?? null)); });
+      insertMany(data);
+      db.close();
+      res.json({ success: true, imported: data.length, table, columns: columns.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   router.post('/lowcode/create-module', (req, res) => {
     const { moduleName, models } = req.body;
     if (!moduleName || !Array.isArray(models)) {

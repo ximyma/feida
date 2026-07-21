@@ -50,6 +50,8 @@ const menuItems = [
   { id: 'statistics', to: '/statistics', icon: BarChart3, label: '数据统计' },
   { id: 'lowcode', to: '/lowcode', icon: Rocket, label: '低代码平台' },
   { id: 'apps-manager', to: '/apps-manager', icon: AppWindow, label: '应用管理' },
+  { id: 'odoo-browser', to: '/odoo-browser', icon: FileSearch, label: 'Odoo模型浏览器' },
+  { id: 'db-import', to: '/db-import', icon: Database, label: '数据库导入' },
 ];
 
 const subMenuItems: Record<string, { label: string; to: string; key?: string }[]> = {

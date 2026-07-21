@@ -150,6 +150,8 @@ import LowCodeBuilder from './pages/AppsPage/LowCodeBuilder';
 import AppManagerPage from './pages/AppsPage/AppManagerPage';
 import AppShell from './pages/AppsPage/AppShell';
 import ModuleHome from './pages/AppsPage/ModuleHome';
+import OdooModelBrowser from './pages/AppsPage/OdooModelBrowser';
+import DBImportWizard from './pages/AppsPage/DBImportWizard';
 import ListView from './pages/AppsPage/ListView';
 import FormView from './pages/AppsPage/FormView';
 import DetailView from './pages/AppsPage/DetailView';
@@ -366,6 +368,8 @@ export default function App() {
         <Route path="/addon/:addon/:model" element={<ModuleRunPage />} />
         <Route path="/lowcode" element={<LowCodeBuilder />} />
         <Route path="/apps-manager" element={<AppManagerPage />} />
+        <Route path="/odoo-browser" element={<OdooModelBrowser />} />
+        <Route path="/db-import" element={<DBImportWizard />} />
         <Route path="/app/:module" element={<AppShell />}>
           <Route index element={<ModuleHome />} />
           <Route path=":table" element={<ListView />} />

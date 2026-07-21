@@ -5,8 +5,8 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { Table, Button, Input, Space, Tag, Popconfirm, Tooltip, message, Row, Col, Typography } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Space, Tag, Popconfirm, Tooltip, message, Row, Col, Typography, Modal, Upload, Checkbox, Progress } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, ImportOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 
 const { Title } = Typography;
 const BASE = '/api';
@@ -23,6 +23,10 @@ const ListView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importClear, setImportClear] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const menuLabel = appConfig?.menu?.find(m => m.table === tableName)?.label || tableName;
 
@@ -125,6 +129,24 @@ const ListView: React.FC = () => {
     )},
   ];
 
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('clearFirst', importClear ? 'true' : 'false');
+      const r = await fetch(`${BASE}/data/import/${tableName}`, { method: 'POST', body: formData });
+      const j = await r.json();
+      if (j.error) { message.error(j.error); } else {
+        message.success(`已导入 ${j.imported} 条数据`);
+        setImportOpen(false); setImportFile(null);
+        loadData();
+      }
+    } catch (e: any) { message.error(e.message); }
+    setImporting(false);
+  };
+
   return (
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
@@ -141,6 +163,7 @@ const ListView: React.FC = () => {
             )}
             <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/app/${moduleName}/${tableName}/new`)}>新建</Button>
+            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入数据</Button>
           </Space>
         </Col>
       </Row>
@@ -151,6 +174,21 @@ const ListView: React.FC = () => {
         rowSelection={{ selectedRowKeys, onChange: (keys: React.Key[]) => setSelectedRowKeys(keys) }}
         onRow={(rec) => ({ onClick: () => navigate(`/app/${moduleName}/${tableName}/${rec.id}`), style: { cursor: 'pointer' } })}
         pagination={{ pageSize: 15, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} / ${t} 条` }} />
+      <Modal title="导入数据" open={importOpen} onCancel={() => { setImportOpen(false); setImportFile(null); }}
+        onOk={handleImport} okText="导入" confirmLoading={importing} okButtonProps={{ disabled: !importFile }}>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Upload.Dragger accept=".xlsx,.xls,.csv" maxCount={1} beforeUpload={(file) => { setImportFile(file); return false; }}
+            fileList={importFile ? [{ uid: '1', name: importFile.name, status: 'done' as const }] : []}
+            onRemove={() => setImportFile(null)}>
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">点击或拖拽 Excel/CSV 文件</p>
+            <p className="ant-upload-hint">第一行为表头，每行为一条记录</p>
+          </Upload.Dragger>
+          <Checkbox checked={importClear} onChange={e => setImportClear(e.target.checked)}>
+            导入前清空现有数据（⚠️ 不可恢复）
+          </Checkbox>
+        </Space>
+      </Modal>
     </div>
   );
 };
