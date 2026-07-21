@@ -251,8 +251,7 @@ const subMenuItems: Record<string, { label: string; to: string; key?: string }[]
     { label: '低代码平台', to: '/lowcode', key: 'lowcode' },
     { label: '应用管理', to: '/apps-manager', key: 'apps-manager' },
     { type: 'divider' as const },
-    { label: 'Odoo模型浏览器', to: '/odoo-browser', key: 'odoo-browser' },
-    { label: '数据库导入', to: '/db-import', key: 'db-import' },
+    { label: '模型集成中心', to: '/odoo-browser', key: 'odoo-browser' },
   ],
 };
 
