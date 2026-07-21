@@ -445,6 +445,31 @@ function apiRouter() {
     res.json(modules);
   });
 
+  // 列出 addon 的模型定义(含字段详情)
+  router.get('/addons/:module/models/list', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const modelsDir = path.join(process.cwd(), 'addons', req.params.module, 'models');
+    const models: any[] = [];
+    if (fs.existsSync(modelsDir)) {
+      for (const file of fs.readdirSync(modelsDir)) {
+        if (!file.endsWith('.js')) continue;
+        try {
+          const mod = require(path.join(modelsDir, file));
+          const def = mod.model || mod;
+          const fields: any[] = [];
+          if (def._fields && typeof def._fields === 'object') {
+            for (const [k, v] of Object.entries(def._fields)) {
+              fields.push({ name: k, ...(v as any) });
+            }
+          }
+          models.push({ name: def._name || file.replace('.js', ''), fields, label: def._description || '' });
+        } catch { /* skip invalid model files */ }
+      }
+    }
+    res.json({ models });
+  });
+
   router.post('/lowcode/save-app-config', (req, res) => {
     const { moduleName, config } = req.body;
     if (!moduleName || !config) { res.status(400).json({ error: '缺少参数' }); return; }

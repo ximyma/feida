@@ -8,8 +8,8 @@
  *
  * 暂用HTML5原生拖拽(后续可引入dnd-kit)
  */
-import React, { useState, useCallback } from 'react';
-import { Card, Button, Input, Select, Switch, InputNumber, Row, Col, Tag, Empty, Tooltip, Divider, Typography, Space, Tabs, Modal, Upload, message } from 'antd';
+import React, { useState, useCallback, useRef } from 'react';
+import { Card, Button, Input, Select, Switch, InputNumber, Row, Col, Tag, Empty, Tooltip, Divider, Typography, Space, Tabs, Modal, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, DragOutlined, SettingOutlined, HolderOutlined, FileTextOutlined, FileExcelOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -198,8 +198,10 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
   };
 
   // ─── Excel 导入 ───
-  const handleExcelUpload = async (info: any) => {
-    const file = info.file;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleExcelClick = () => { fileInputRef.current?.click(); };
+  const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     setExcelUploading(true);
     try {
@@ -223,6 +225,7 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
       }
     } catch { message.error('上传失败'); }
     setExcelUploading(false);
+    if (e.target) e.target.value = ''; // 重置以便重复上传同一个文件
   };
 
   return (
@@ -255,9 +258,8 @@ export const TemplateDesigner: React.FC<TemplateDesignerProps> = ({ fields, onCh
           extra={
             <Space size={4}>
               <Tooltip title="从 JSON 导入字段"><Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => setJsonModalOpen(true)}>JSON</Button></Tooltip>
-              <Upload accept=".xlsx,.xls,.csv" showUploadList={false} beforeUpload={(file) => { handleExcelUpload({ file }); return false; }}>
-                <Tooltip title="从 Excel 导入字段"><Button size="small" type="text" icon={<FileExcelOutlined />} loading={excelUploading}>Excel</Button></Tooltip>
-              </Upload>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcelFileChange} />
+              <Tooltip title="从 Excel 导入字段"><Button size="small" type="text" icon={<FileExcelOutlined />} loading={excelUploading} onClick={handleExcelClick}>Excel</Button></Tooltip>
             </Space>
           } style={{ height: '100%' }}>
           {fields.length === 0 ? (

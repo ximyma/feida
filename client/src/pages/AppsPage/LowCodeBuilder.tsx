@@ -46,17 +46,37 @@ const LowCodeBuilder: React.FC = () => {
     // 自动生成模块名
     if (!moduleName) setModuleName('app_' + Date.now().toString(36));
 
-    // 编辑模式: 加载已有应用配置
+    // 编辑模式: 加载已有应用配置(含字段)
     if (editMode) {
       setModuleName(editMode);
-      fetch(`/addons/${editMode}/app.json?t=${Date.now()}`).then(r => r.json()).then(cfg => {
+      Promise.all([
+        fetch(`/addons/${editMode}/app.json?t=${Date.now()}`).then(r => r.json()),
+        fetch(`/addons/${editMode}/models/list?t=${Date.now()}`).then(r => r.json()).catch(() => ({ models: [] })),
+      ]).then(([cfg, modelData]) => {
         setAppName(cfg.name || editMode);
         setAppDesc(cfg.description || '');
         setAppIcon(cfg.icon || '📊');
         if (cfg.menu) {
-          setTables(cfg.menu.map((m: any) => ({
-            name: m.table, label: m.label, icon: m.icon || '📋', fields: [],
-          })));
+          setTables(cfg.menu.map((m: any) => {
+            // 从模型数据中加载字段定义
+            const model = (modelData.models || []).find((md: any) => md.name === m.table);
+            let fields: FieldDef[] = [];
+            if (model?.fields) {
+              fields = model.fields.map((f: any, i: number) => ({
+                key: `e${i}_${Date.now()}`,
+                name: f.name || '',
+                type: f.type || 'char',
+                label: f.label || f.name || '',
+                required: !!f.required,
+                default: f.default,
+                placeholder: f.placeholder,
+                tooltip: f.description,
+                selection: f.selection || f.options,
+                relation: f.relation,
+              }));
+            }
+            return { name: m.table, label: m.label, icon: m.icon || '📋', fields };
+          }));
         }
       });
     }
