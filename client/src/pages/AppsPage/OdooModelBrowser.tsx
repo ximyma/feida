@@ -6,7 +6,7 @@
  *   Tab2 - 数据库表导入: 连接外部数据库, 导入表为应用
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Space, Typography, Tag, Empty, Spin, message, Modal, Input, Collapse, Table, Upload, Tabs, Tooltip, Steps, Form, Select } from 'antd';
+import { Card, Button, Space, Typography, Tag, Empty, Spin, message, Modal, Input, Collapse, Table, Upload, Tabs, Tooltip, Steps, Form, Select, Row, Col } from 'antd';
 import { AppstoreOutlined, EyeOutlined, ReloadOutlined, UploadOutlined, FolderOpenOutlined, InboxOutlined, ImportOutlined, RocketOutlined, DatabaseOutlined, LinkOutlined, FileAddOutlined, TableOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
