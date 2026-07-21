@@ -383,10 +383,25 @@ function apiRouter() {
 
       for (const modelDef of models) {
         if (!modelDef._name) continue;
-        // 生成模型文件
-        const content = '// 低代码生成: ' + modelDef._name + '\n' +
-          'exports.model = ' + JSON.stringify(modelDef, null, 2) + ';\n';
-        fs.writeFileSync(path.join(modelsDir, modelDef._name + '.js'), content, 'utf-8');
+        const filePath = path.join(modelsDir, modelDef._name + '.js');
+
+        // 如果已有模型文件，合并字段（编辑模式保留全部字段）
+        let finalDef = modelDef;
+        if (fs.existsSync(filePath)) {
+          try {
+            delete require.cache[require.resolve(filePath)];
+            const existing = require(filePath);
+            const existingDef = existing.model || existing;
+            if (existingDef._fields) {
+              // 合并: 新字段覆盖旧字段，旧字段保留（键合并）
+              finalDef = { ...existingDef, _fields: { ...existingDef._fields, ...modelDef._fields } };
+            }
+          } catch (_) { /* 读取失败则覆盖 */ }
+        }
+
+        const content = '// 低代码生成: ' + finalDef._name + '\n' +
+          'exports.model = ' + JSON.stringify(finalDef, null, 2) + ';\n';
+        fs.writeFileSync(filePath, content, 'utf-8');
         // 动态注册到 ORM
         const reg = (global as any).__feida_models;
         if (reg) {
