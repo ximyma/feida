@@ -92,6 +92,8 @@ const OdooModelBrowser: React.FC = () => {
   const [appBuilderModule, setAppBuilderModule] = useState<OdooModule | null>(null);
   const [appBuilderModels, setAppBuilderModels] = useState<Array<{ name: string; description: string; fields: Record<string,any>; selected: boolean; relations: string[] }>>([]);
   const [appBuilderSelectAll, setAppBuilderSelectAll] = useState(true);
+  const [viewData, setViewData] = useState<any>(null);
+  const [parsingViews, setParsingViews] = useState(false);
 
   const openAppBuilder = async (mod: OdooModule) => {
     setAppBuilderModule(mod);
@@ -127,6 +129,19 @@ const OdooModelBrowser: React.FC = () => {
     }
     setAppBuilderModels(loaded);
     setAppBuilderSelectAll(true);
+
+    // 尝试解析 Odoo 视图 (菜单/表单/列表)
+    setParsingViews(true); setViewData(null);
+    try {
+      const r = await fetch(`${BASE}/odoo/parse-views`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ dirPath: mod.name }) });
+      const vd = await r.json();
+      if (!vd.error && vd.user_models) {
+        setViewData(vd);
+        const userModels = new Set(vd.user_models || []);
+        setAppBuilderModels(loaded.map(m => ({ ...m, selected: userModels.has(m.name), isUserModel: userModels.has(m.name) })));
+      }
+    } catch {}
+    setParsingViews(false);
     setQuickImportModel(null);
   };
 
@@ -145,17 +160,40 @@ const OdooModelBrowser: React.FC = () => {
 
     try {
       await fetch(`${BASE}/lowcode/create-module`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName, models }) });
+      // 构建菜单: 有视图数据用菜单树, 否则平铺
+      let menu: any[];
+      let appName = appBuilderModule.label;
+      if (viewData && viewData.menu_tree) {
+        menu = flattenMenuTree(viewData.menu_tree, viewData.actions || []);
+        appName = viewData.module || appBuilderModule.label;
+      } else {
+        menu = selected.map(m => ({ label: m.description || m.name, table: m.name, icon: '📋' }));
+      }
+
       await fetch(`${BASE}/lowcode/save-app-config`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ moduleName, config: {
-          name: appBuilderModule.label, description: 'Odoo导入: ' + appBuilderModule.label, icon: '📦',
-          menu: selected.map(m => ({ label: m.description || m.name, table: m.name, icon: m.name.includes('categ') ? '📁' : m.name.includes('comment') ? '💬' : '📋' }))
-        }})
+        body:JSON.stringify({ moduleName, config: { name: appName, description: 'Odoo导入: ' + appName, icon: '📦', menu } })
       });
       await fetch(`${BASE}/lowcode/deploy`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName }) });
       message.success({ content: `🎉 应用「${appBuilderModule.label}」创建成功！${selected.length}个表。按 F5 刷新后在「应用管理」查看`, duration: 6 });
       setAppBuilderOpen(false);
     } catch (e: any) { message.error(e.message); }
     setQuickImportModel(null);
+  };
+
+  const flattenMenuTree = (tree: any[], actions: any[], prefix = ''): any[] => {
+    const result: any[] = [];
+    const actionMap = new Map((actions || []).map((a: any) => [a.id, a]));
+    for (const node of tree) {
+      const action = node.action ? actionMap.get(node.action) : null;
+      const table = action?.res_model || '';
+      if (table && table !== 'ir.actions.report') {
+        result.push({ label: prefix + node.name, table, icon: '📋', desc: action?.name || '' });
+      }
+      if (node.children?.length) {
+        result.push(...flattenMenuTree(node.children, actions, prefix ? prefix + ' / ' + node.name : node.name));
+      }
+    }
+    return result;
   };
 
   // DB 扫描
@@ -392,22 +430,36 @@ const OdooModelBrowser: React.FC = () => {
       </Modal>
 
       {/* 应用构建器 — 选择模块内模型组合创建多表应用 */}
-      <Modal title={<><RocketOutlined /> 构建应用: {appBuilderModule?.label}</>} open={appBuilderOpen}
-        onCancel={() => setAppBuilderOpen(false)} width={700} onOk={createAppFromModule}
+      <Modal title={<><RocketOutlined /> 构建应用: {appBuilderModule?.label} {(viewData?.user_models?.length||0) > 0 && <Tag color="green">Odoo视图已解析</Tag>}</>}
+        open={appBuilderOpen} onCancel={() => setAppBuilderOpen(false)} width={750} onOk={createAppFromModule}
         okText={`创建应用 (${appBuilderModels.filter(m=>m.selected).length}个表)`} confirmLoading={quickImportModel==='creating'}>
-        <Text type="secondary">选择要包含的数据表。模块内所有相关表自动检测关联关系。</Text>
+        {viewData?.user_models ? (
+          <Space direction="vertical" style={{width:'100%'}}>
+            <Text type="secondary"><strong>{viewData.user_models.length}</strong> 个用户操作模型 | <strong>{viewData.total_views}</strong> 个视图 | <strong>{appBuilderModels.length - viewData.user_models.length}</strong> 个辅助表 | 自动勾选有菜单入口的模型</Text>
+            {viewData.menu_tree?.length > 0 && <Text type="secondary" style={{fontSize:11}}>
+              📁 菜单: {viewData.menu_tree.map((m:any)=>m.name).join(' → ')}
+            </Text>}
+          </Space>
+        ) : parsingViews ? <Text type="secondary"><Spin size="small"/> 正在解析Odoo视图...</Text> :
+          <Text type="secondary">选择要包含的数据表。模块内所有相关表自动检测关联关系。</Text>}
         <Table dataSource={appBuilderModels} rowKey="name" size="small" style={{ marginTop: 12 }}
           rowSelection={{ selectedRowKeys: appBuilderModels.filter(m=>m.selected).map(m=>m.name),
             onChange: (keys) => setAppBuilderModels(appBuilderModels.map(m => ({ ...m, selected: keys.includes(m.name) }))) }}
           columns={[
-            { title:'表名', dataIndex:'name', render:(v:string)=><Text code strong>{v}</Text> },
+            { title:'表名', dataIndex:'name', width:200, render:(v:string)=><Text code strong>{v}</Text> },
             { title:'描述', dataIndex:'description', ellipsis:true },
-            { title:'字段', render:(_:any,r:any)=><Tag color="green">{Object.keys(r.fields||{}).length-1}</Tag>, width:70, align:'center' as const },
-            { title:'关联表', dataIndex:'relations', render:(rels:string[])=>rels.length===0?<Text type="secondary">独立</Text>:
-              rels.map(r=><Tag key={r} color="orange" style={{fontSize:11}}>{r}</Tag>) },
+            { title:'分类', width:90, render:(_:any,r:any)=>(r as any).isUserModel ? <Tag color="green">用户操作</Tag> : <Tag>辅助</Tag> },
+            { title:'字段', render:(_:any,r:any)=><Tag color="blue">{Object.keys(r.fields||{}).length-1}</Tag>, width:60, align:'center' as const },
+            { title:'视图', width:100, render:(_:any,r:any)=>{
+              const v = viewData?.model_views?.[r.name];
+              if (!v) return null;
+              return <Space size={2}>{v.form_groups?.length>0 && <Tag color="purple" style={{fontSize:10}}>{v.form_groups.length}组</Tag>}{v.form_pages?.length>0 && <Tag color="cyan" style={{fontSize:10}}>{v.form_pages.length}页签</Tag>}</Space>;
+            }},
+            { title:'关联表', dataIndex:'relations', render:(rels:string[])=>rels.length===0?<Text type="secondary">-</Text>:
+              rels.slice(0,2).map(r=><Tag key={r} color="orange" style={{fontSize:10}}>{r}</Tag>) },
           ]} />
         <div style={{ marginTop: 8, background: '#fff7e6', padding: '8px 12px', borderRadius: 6, fontSize: 12 }}>
-          <Text type="secondary">💡 取消勾选不需要的表。关联关系(many2one/one2many)会自动保留。</Text>
+          <Text type="secondary">💡 自动勾选有菜单入口的模型。取消勾选不需要的表。关联关系自动保留。表单按Odoo XML视图分组+页签。</Text>
         </div>
       </Modal>
     </div>

@@ -449,6 +449,24 @@ function apiRouter() {
     res.status(404).json({ error: '模型不存在' });
   });
 
+  // ===== 解析 Odoo 视图 (菜单/表单/列表) =====
+  router.post('/odoo/parse-views', (req, res) => {
+    const { dirPath } = req.body;
+    if (!dirPath) { res.status(400).json({ error: '请提供模块目录路径' }); return; }
+    const { execSync } = require('child_process');
+    const path = require('path');
+    const parser = path.join(__dirname, '..', '..', 'server', 'odoo-view-parser.py');
+    const pythonPath = process.env.PYTHON || 'python';
+    try {
+      const result = execSync(`${JSON.stringify(pythonPath)} ${JSON.stringify(parser)} ${JSON.stringify(dirPath)}`, {
+        encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, timeout: 30000,
+      });
+      res.json(JSON.parse(result));
+    } catch (e: any) {
+      res.status(500).json({ error: '解析失败: ' + (e.stderr || e.message).slice(0, 300) });
+    }
+  });
+
   // ===== 批量扫描 Odoo 模块目录 =====
   router.post('/odoo/scan-addons', (req, res) => {
     const { dirPath } = req.body;
