@@ -1,0 +1,32 @@
+{
+  "name": "客户关系管理",
+  "description": "客户关系管理",
+  "icon": "👥",
+  "color": "#1677ff",
+  "menu": [
+    {
+      "label": "客户信息",
+      "table": "custominfo",
+      "icon": "📋",
+      "desc": "管理客户信息"
+    },
+    {
+      "label": "联系人信息",
+      "table": "contactinfo",
+      "icon": "📋",
+      "desc": "管理联系人信息"
+    },
+    {
+      "label": "商机信息",
+      "table": "opportunity",
+      "icon": "📋",
+      "desc": "管理商机信息"
+    },
+    {
+      "label": "跟进记录",
+      "table": "follow",
+      "icon": "📋",
+      "desc": "管理跟进记录"
+    }
+  ]
+}

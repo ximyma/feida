@@ -9,7 +9,7 @@
  *   - 统计信息(模型数/菜单数/版本)
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Tag, Button, Space, Input, Dropdown, Empty, Spin, Statistic, Typography, Popconfirm, message, Tooltip, Badge } from 'antd';
+import { Card, Row, Col, Tag, Button, Space, Input, Dropdown, Empty, Spin, Statistic, Typography, message, Tooltip } from 'antd';
 import { AppstoreOutlined, SearchOutlined, PlusOutlined, EllipsisOutlined, RocketOutlined, ReloadOutlined, DeleteOutlined, EditOutlined, EyeOutlined, StopOutlined, SettingOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -129,17 +129,17 @@ const AppManagerPage: React.FC = () => {
               <Col key={app.id} xs={24} sm={12} lg={8}>
                 <Card hoverable size="small" style={{ borderTop: `3px solid ${app.color || '#1677ff'}`, height: '100%' }}
                   actions={[
-                    <Tooltip title="进入应用"><Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/app/${app.id}`)}>进入</Button></Tooltip>,
-                    app.status === 'draft' && (
-                      <Tooltip title="发布"><Button type="link" icon={<RocketOutlined />} onClick={() => handleAction('publish', app)}>发布</Button></Tooltip>
-                    ),
-                    app.status === 'published' && (
-                      <Tooltip title="下架"><Button type="link" icon={<StopOutlined />} onClick={() => handleAction('unpublish', app)}>下架</Button></Tooltip>
-                    ),
-                    <Popconfirm title="确认删除此应用?" description="删除后不可恢复" onConfirm={() => handleAction('delete', app)} okText="确认" cancelText="取消">
-                      <Tooltip title="删除"><Button type="link" danger icon={<DeleteOutlined />}>删除</Button></Tooltip>
-                    </Popconfirm>,
-                  ].filter(Boolean)}>
+                    <Tooltip title="编辑表单和菜单"><Button type="link" icon={<EditOutlined />} onClick={() => handleAction('design', app)}>编辑</Button></Tooltip>,
+                    <Tooltip title="进入使用"><Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/app/${app.id}`)}>进入</Button></Tooltip>,
+                    <Dropdown menu={{ items: [
+                      { key: 'publish', label: '发布', icon: <RocketOutlined />, onClick: () => handleAction('publish', app), disabled: app.status === 'published' },
+                      { key: 'unpublish', label: '下架', icon: <StopOutlined />, onClick: () => handleAction('unpublish', app), disabled: app.status === 'draft' },
+                      { type: 'divider' },
+                      { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true, onClick: () => handleAction('delete', app) },
+                    ] }}>
+                      <Tooltip title="更多操作"><Button type="link" icon={<EllipsisOutlined />}>更多</Button></Tooltip>
+                    </Dropdown>,
+                  ]}>
                   {/* Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
