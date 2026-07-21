@@ -200,7 +200,7 @@ export class ModelRegistry {
       many2many: 'TEXT', binary: 'TEXT', monetary: 'REAL',
     };
     const sqlType = typeMap[field.type] || 'TEXT';
-    let ddl = `${name} ${sqlType}`;
+    let ddl = `"${name}" ${sqlType}`;
     if (field.default !== undefined && field.default !== null) {
       const dv = typeof field.default === 'string' ? `'${field.default}'` : field.default;
       ddl += ` DEFAULT ${dv}`;
