@@ -87,24 +87,73 @@ const OdooModelBrowser: React.FC = () => {
     setImportingOdoo(false);
   };
 
-  // 一键: Odoo model → 低代码应用
-  const quickAsApp = async (modelName: string) => {
-    setQuickImportModel(modelName);
-    try {
-      const r1 = await fetch(`${BASE}/odoo/model/${modelName}`);
-      const def = await r1.json();
-      if (def.error) { message.error(def.error); setQuickImportModel(null); return; }
+  // 一键: 整个模块 → 低代码应用（多表）
+  const [appBuilderOpen, setAppBuilderOpen] = useState(false);
+  const [appBuilderModule, setAppBuilderModule] = useState<OdooModule | null>(null);
+  const [appBuilderModels, setAppBuilderModels] = useState<Array<{ name: string; description: string; fields: Record<string,any>; selected: boolean; relations: string[] }>>([]);
+  const [appBuilderSelectAll, setAppBuilderSelectAll] = useState(true);
 
-      const fields = def.fields || {};
+  const openAppBuilder = async (mod: OdooModule) => {
+    setAppBuilderModule(mod);
+    setAppBuilderOpen(true);
+    setQuickImportModel('loading');
+    const allModelNames = mod.models.map(m => m.name);
+    const loaded: Array<{ name: string; description: string; fields: Record<string,any>; selected: boolean; relations: string[] }> = [];
+    for (const m of mod.models) {
+      try {
+        const r = await fetch(`${BASE}/odoo/model/${m.name}`);
+        const def = await r.json();
+        if (!def.error) {
+          const relations: string[] = [];
+          const fs = def.fields || {};
+          // 检测显式关联 (relation属性)
+          for (const [k, v] of Object.entries(fs)) {
+            const fv = v as any;
+            if (fv.relation) relations.push(fv.relation);
+          }
+          // 自动推断关联: 同模块内的 _id 后缀字段 → many2one
+          for (const [k, v] of Object.entries(fs)) {
+            if (k.endsWith('_id') && !(v as any).relation) {
+              const targetName = k.replace(/_id$/, '');
+              if (allModelNames.includes(targetName)) {
+                relations.push(targetName);
+                (v as any).relation = targetName;
+              }
+            }
+          }
+          loaded.push({ name: m.name, description: def.description || m.name, fields: fs, selected: true, relations });
+        }
+      } catch {}
+    }
+    setAppBuilderModels(loaded);
+    setAppBuilderSelectAll(true);
+    setQuickImportModel(null);
+  };
+
+  const createAppFromModule = async () => {
+    const selected = appBuilderModels.filter(m => m.selected);
+    if (selected.length === 0) { message.error('至少选择一个表'); return; }
+    if (!appBuilderModule) return;
+    setQuickImportModel('creating');
+
+    const moduleName = 'app_odoo_' + appBuilderModule.name.replace(/[^a-zA-Z0-9_]/g, '_');
+    const models = selected.map(m => {
       const flds: Record<string,any> = {};
-      for (const [k,v] of Object.entries(fields)) { if (k!=='id') flds[k] = v; }
+      for (const [k, v] of Object.entries(m.fields)) { if (k !== 'id') flds[k] = v; }
+      return { _name: m.name, _description: m.description, _fields: flds };
+    });
 
-      const moduleName = 'app_odoo_' + modelName.replace(/\./g,'_');
-      await fetch(`${BASE}/lowcode/create-module`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName, models:[{ _name:modelName, _description:def.description||modelName, _fields:flds }] }) });
-      await fetch(`${BASE}/lowcode/save-app-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName, config:{ name:def.description||modelName, description:'Odoo导入: '+modelName, icon:'📦', menu:[{label:def.description||modelName, table:modelName, icon:'📋'}] } }) });
+    try {
+      await fetch(`${BASE}/lowcode/create-module`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName, models }) });
+      await fetch(`${BASE}/lowcode/save-app-config`, { method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ moduleName, config: {
+          name: appBuilderModule.label, description: 'Odoo导入: ' + appBuilderModule.label, icon: '📦',
+          menu: selected.map(m => ({ label: m.description || m.name, table: m.name, icon: m.name.includes('categ') ? '📁' : m.name.includes('comment') ? '💬' : '📋' }))
+        }})
+      });
       await fetch(`${BASE}/lowcode/deploy`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ moduleName }) });
-
-      message.success({ content: `🎉 应用创建成功！按 F5 刷新后在「应用管理」查看`, duration: 6 });
+      message.success({ content: `🎉 应用「${appBuilderModule.label}」创建成功！${selected.length}个表。按 F5 刷新后在「应用管理」查看`, duration: 6 });
+      setAppBuilderOpen(false);
     } catch (e: any) { message.error(e.message); }
     setQuickImportModel(null);
   };
@@ -208,20 +257,19 @@ const OdooModelBrowser: React.FC = () => {
                   {filtered.map(mod => (
                     <Collapse.Panel key={mod.name} header={
                       <Space><strong>{mod.label}</strong><Tag>{mod.models.length}模型</Tag><Tag color="blue">{mod.models.reduce((s,m)=>s+m.fields,0)}字段</Tag></Space>
+                    } extra={
+                      <Button size="small" type="primary" icon={<RocketOutlined/>} loading={quickImportModel==='loading'} onClick={e => { e.stopPropagation(); openAppBuilder(mod); }}>组合创建应用</Button>
                     }>
                       <Table dataSource={mod.models} rowKey="name" size="small" pagination={false}
                         columns={[
                           { title:'模型名',dataIndex:'name',render:(v:string)=><Text code>{v}</Text> },
                           { title:'描述',dataIndex:'description',ellipsis:true },
                           { title:'字段',dataIndex:'fields',width:70,align:'center' as const,render:(v:number)=><Tag color="green">{v}</Tag> },
-                          { title:'操作',width:200,render:(_:any,r:any)=>(
-                            <Space size={4}>
-                              <Button size="small" icon={<EyeOutlined/>} onClick={async()=>{
-                                const re=await fetch(`${BASE}/odoo/model/${r.name}`); const d=await re.json();
-                                Modal.info({title:d.model||r.name,content:<div>{Object.entries(d.fields||{}).map(([k,v]:any)=><Tag key={k}>{k}:{v.type}</Tag>)}</div>,width:600});
-                              }}>字段</Button>
-                              <Button size="small" type="primary" icon={<RocketOutlined/>} loading={quickImportModel===r.name} onClick={()=>quickAsApp(r.name)}>创建应用</Button>
-                            </Space>
+                          { title:'操作',width:100,render:(_:any,r:any)=>(
+                            <Button size="small" icon={<EyeOutlined/>} onClick={async()=>{
+                              const re=await fetch(`${BASE}/odoo/model/${r.name}`); const d=await re.json();
+                              Modal.info({title:d.model||r.name,content:<div>{Object.entries(d.fields||{}).map(([k,v]:any)=><Tag key={k} color={v.relation?'orange':'default'}>{v.relation?k+'→'+v.relation:k}</Tag>)}</div>,width:600});
+                            }}>字段</Button>
                           )},
                         ]} />
                     </Collapse.Panel>
@@ -340,6 +388,26 @@ const OdooModelBrowser: React.FC = () => {
         <div style={{marginTop:16,textAlign:'right'}}>
           <Button type="primary" icon={<ImportOutlined/>} loading={importingOdoo}
             disabled={!importPath && importFiles.length===0} onClick={handleOdooImport}>开始导入</Button>
+        </div>
+      </Modal>
+
+      {/* 应用构建器 — 选择模块内模型组合创建多表应用 */}
+      <Modal title={<><RocketOutlined /> 构建应用: {appBuilderModule?.label}</>} open={appBuilderOpen}
+        onCancel={() => setAppBuilderOpen(false)} width={700} onOk={createAppFromModule}
+        okText={`创建应用 (${appBuilderModels.filter(m=>m.selected).length}个表)`} confirmLoading={quickImportModel==='creating'}>
+        <Text type="secondary">选择要包含的数据表。模块内所有相关表自动检测关联关系。</Text>
+        <Table dataSource={appBuilderModels} rowKey="name" size="small" style={{ marginTop: 12 }}
+          rowSelection={{ selectedRowKeys: appBuilderModels.filter(m=>m.selected).map(m=>m.name),
+            onChange: (keys) => setAppBuilderModels(appBuilderModels.map(m => ({ ...m, selected: keys.includes(m.name) }))) }}
+          columns={[
+            { title:'表名', dataIndex:'name', render:(v:string)=><Text code strong>{v}</Text> },
+            { title:'描述', dataIndex:'description', ellipsis:true },
+            { title:'字段', render:(_:any,r:any)=><Tag color="green">{Object.keys(r.fields||{}).length-1}</Tag>, width:70, align:'center' as const },
+            { title:'关联表', dataIndex:'relations', render:(rels:string[])=>rels.length===0?<Text type="secondary">独立</Text>:
+              rels.map(r=><Tag key={r} color="orange" style={{fontSize:11}}>{r}</Tag>) },
+          ]} />
+        <div style={{ marginTop: 8, background: '#fff7e6', padding: '8px 12px', borderRadius: 6, fontSize: 12 }}>
+          <Text type="secondary">💡 取消勾选不需要的表。关联关系(many2one/one2many)会自动保留。</Text>
         </div>
       </Modal>
     </div>
