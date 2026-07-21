@@ -1,29 +1,9 @@
 {
-  "name": "中国本土化",
-  "name_en": "China Localization",
+  "name": "l10n_cn",
   "version": "1.0.0",
-  "author": "飞达",
-  "license": "Apache-2.0",
-  "category": "Localization/China",
-  "depends": [
-    "hr_core"
-  ],
-  "summary": "中国会计准则科目表 + 支付宝/微信支付 + 中国地区数据",
-  "description": "财务: 中国标准会计科目表(参照财政部最新准则)。支付: 支付宝/微信支付接入。基础数据: 省市区三级联动、中国节假日、税率配置。",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: l10n_cn",
+  "depends": [],
   "installable": true,
-  "application": false,
-  "sequence": 50,
-  "countries": [
-    "cn"
-  ],
-  "data": [
-    "data/account_chart.sql",
-    "data/payment_methods.sql",
-    "data/tax_rates.sql",
-    "data/holidays.sql"
-  ],
-  "hooks": {
-    "post_init": "hooks/post_init.js"
-  },
-  "auto_install": true
+  "auto_install": false
 }

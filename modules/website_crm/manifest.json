@@ -1,0 +1,9 @@
+{
+  "name": "website_crm",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: website_crm",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

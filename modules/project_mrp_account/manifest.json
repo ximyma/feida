@@ -1,0 +1,9 @@
+{
+  "name": "project_mrp_account",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: project_mrp_account",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

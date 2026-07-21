@@ -1,0 +1,9 @@
+{
+  "name": "project_timesheet_holidays",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: project_timesheet_holidays",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

@@ -1,0 +1,9 @@
+{
+  "name": "base_import",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: base_import",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

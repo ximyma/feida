@@ -1,0 +1,9 @@
+{
+  "name": "website_profile",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: website_profile",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

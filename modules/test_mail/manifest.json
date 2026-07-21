@@ -1,0 +1,9 @@
+{
+  "name": "test_mail",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: test_mail",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

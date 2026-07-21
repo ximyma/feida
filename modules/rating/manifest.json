@@ -1,0 +1,9 @@
+{
+  "name": "rating",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: rating",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

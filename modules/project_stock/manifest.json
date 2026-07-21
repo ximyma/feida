@@ -1,0 +1,9 @@
+{
+  "name": "project_stock",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: project_stock",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

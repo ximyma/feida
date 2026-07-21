@@ -1,0 +1,9 @@
+{
+  "name": "l10n_fr_facturx_chorus_pro",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: l10n_fr_facturx_chorus_pro",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

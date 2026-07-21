@@ -1,20 +1,9 @@
 {
-  "name": "鞋服行业",
-  "name_en": "Shoe & Garment",
+  "name": "shoe_garment",
   "version": "1.0.0",
-  "author": "飞达",
-  "license": "Apache-2.0",
-  "category": "Industry/鞋服",
-  "depends": [
-    "hr_core"
-  ],
-  "summary": "鞋服行业专属功能: 款号、色码、尺码组、BOM工艺路线",
-  "description": "鞋服行业核心数据模型: 款号(style)、颜色(color)、尺码(size)、尺码组(size_group)、BOM物料清单、工艺路线(process_route)。支持多色多码SKU矩阵、装箱配码、备料计算。",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: shoe_garment",
+  "depends": [],
   "installable": true,
-  "application": true,
-  "sequence": 20,
-  "data": [
-    "data/shoe_garment.sql"
-  ],
-  "auto_install": true
+  "auto_install": false
 }

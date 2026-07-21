@@ -1,0 +1,9 @@
+{
+  "name": "pos_restaurant_adyen",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: pos_restaurant_adyen",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

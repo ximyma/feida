@@ -1,0 +1,9 @@
+{
+  "name": "website_hr_recruitment",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: website_hr_recruitment",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}

@@ -1,0 +1,9 @@
+{
+  "name": "mrp_subcontracting_purchase",
+  "version": "1.0.0",
+  "author": "Odoo Import",
+  "description": "从 Odoo 模块导入: mrp_subcontracting_purchase",
+  "depends": [],
+  "installable": true,
+  "auto_install": false
+}
