@@ -1,8 +1,13 @@
 {
-  "name": "客户关系管理",
+  "name": "app_mru06doi",
+  "name_en": "app_mru06doi",
   "version": "1.0.0",
-  "author": "飞达",
-  "description": "客户信息、联系人、商机、跟进记录管理",
+  "author": "低代码",
+  "category": "LowCode",
   "depends": [],
-  "auto_install": false
+  "summary": "低代码生成的模块",
+  "installable": true,
+  "auto_install": true,
+  "application": true,
+  "sequence": 700
 }

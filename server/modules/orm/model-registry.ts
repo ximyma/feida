@@ -58,6 +58,8 @@ export class ModelRegistry {
     for (const file of files) {
       const fp = path.join(modelsDir, file);
       try {
+        // 清除 Node require 缓存，确保加载最新文件
+        delete require.cache[require.resolve(fp)];
         const mod = require(fp);
         const modelDefs: ModelOptions[] = [];
         if (mod.models && Array.isArray(mod.models)) {

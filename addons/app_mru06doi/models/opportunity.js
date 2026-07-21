@@ -1,75 +1,64 @@
-exports.model={
+// 低代码生成: opportunity
+exports.model = {
   "_name": "opportunity",
   "_description": "商机信息",
-  "_auto": true,
   "_fields": {
     "opportunity_name": {
       "type": "char",
       "label": "商机名称",
-      "required": false,
-      "default": null
+      "required": false
     },
     "customer_id": {
       "type": "many2one",
       "label": "所属客户",
       "required": false,
-      "default": null,
       "relation": "customer"
     },
     "contact_id": {
       "type": "many2one",
       "label": "联系人",
       "required": false,
-      "default": null,
       "relation": "contact"
     },
     "opportunity_type": {
       "type": "char",
       "label": "商机类型",
-      "required": false,
-      "default": null
+      "required": false
     },
     "stage": {
       "type": "char",
       "label": "阶段",
-      "required": false,
-      "default": null
+      "required": false
     },
     "amount": {
       "type": "char",
       "label": "金额",
-      "required": false,
-      "default": null
+      "required": false
     },
     "expected_close_date": {
       "type": "char",
       "label": "预计成交日期",
-      "required": false,
-      "default": null
+      "required": false
     },
     "win_probability": {
       "type": "char",
       "label": "赢单概率",
-      "required": false,
-      "default": null
+      "required": false
     },
     "competitor": {
       "type": "char",
       "label": "竞争对手",
-      "required": false,
-      "default": null
+      "required": false
     },
     "lost_reason": {
       "type": "char",
       "label": "丢单原因",
-      "required": false,
-      "default": null
+      "required": false
     },
     "owner_id": {
       "type": "many2one",
       "label": "负责人",
       "required": false,
-      "default": null,
       "relation": "owner"
     },
     "created_at": {

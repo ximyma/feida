@@ -6,87 +6,73 @@ exports.model={
     "customer_name": {
       "type": "char",
       "label": "客户名称",
-      "required": false,
-      "default": null
+      "required": true
     },
     "customer_code": {
       "type": "char",
       "label": "客户编码",
-      "required": false,
-      "default": null
+      "required": false
     },
     "customer_status": {
       "type": "char",
       "label": "客户状态",
-      "required": false,
-      "default": null
+      "required": false
     },
     "industry": {
       "type": "char",
       "label": "所属行业",
-      "required": false,
-      "default": null
+      "required": false
     },
     "region": {
       "type": "char",
       "label": "所在地区",
-      "required": false,
-      "default": null
+      "required": false
     },
     "customer_level": {
       "type": "char",
       "label": "客户等级",
-      "required": false,
-      "default": null
+      "required": false
     },
     "source": {
       "type": "char",
       "label": "客户来源",
-      "required": false,
-      "default": null
+      "required": false
     },
     "website": {
-      "type": "char",
+      "type": "url",
       "label": "网址",
-      "required": false,
-      "default": null
+      "required": false
     },
     "owner_id": {
       "type": "many2one",
       "label": "负责人",
       "required": false,
-      "default": null,
-      "relation": "owner"
+      "relation": "contactinfo"
     },
     "phone": {
-      "type": "char",
+      "type": "phone",
       "label": "电话",
-      "required": false,
-      "default": null
+      "required": false
     },
     "address": {
-      "type": "char",
+      "type": "text",
       "label": "地址",
-      "required": false,
-      "default": null
+      "required": false
     },
     "remark": {
-      "type": "char",
+      "type": "text",
       "label": "备注",
-      "required": false,
-      "default": null
+      "required": false
     },
     "created_at": {
-      "type": "char",
+      "type": "date",
       "label": "创建时间",
-      "required": false,
-      "default": "CURRENT_TIMESTAMP"
+      "required": false
     },
     "updated_at": {
-      "type": "char",
+      "type": "date",
       "label": "更新时间",
-      "required": false,
-      "default": "CURRENT_TIMESTAMP"
+      "required": false
     }
   }
 };

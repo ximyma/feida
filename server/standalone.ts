@@ -503,6 +503,15 @@ function apiRouter() {
     if (reg) {
       const path = require('path');
       const dir = path.join(process.cwd(), 'addons', moduleName);
+      // 清除所有模型文件的require缓存
+      const modelsDir = path.join(dir, 'models');
+      if (require('fs').existsSync(modelsDir)) {
+        for (const f of require('fs').readdirSync(modelsDir)) {
+          if (f.endsWith('.js')) {
+            try { delete require.cache[require.resolve(path.join(modelsDir, f))]; } catch {}
+          }
+        }
+      }
       try {
         reg.loadFromModule(dir);
         res.json({ success: true, module: moduleName });
