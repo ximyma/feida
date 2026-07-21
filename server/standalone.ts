@@ -449,6 +449,93 @@ function apiRouter() {
     res.status(404).json({ error: '模型不存在' });
   });
 
+  // ===== Odoo 模块导入（.py 文件 → Feida 模块） =====
+  const odooUpload = multer({ dest: uploadDir, limits: { fileSize: 10 * 1024 * 1024 } });
+  router.post('/odoo/import', odooUpload.array('files', 50), (req: any, res) => {
+    const { folderPath } = req.body;
+    const files = req.files || [];
+    
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      let sourceDir: string;
+      let cleanup = false;
+      
+      if (folderPath) {
+        // 方式1: 服务器本地路径
+        if (!fs.existsSync(folderPath)) {
+          res.status(400).json({ error: '目录不存在: ' + folderPath }); return;
+        }
+        sourceDir = folderPath;
+      } else if (files.length > 0) {
+        // 方式2: 上传 .py 文件 → 临时目录
+        sourceDir = path.join(uploadDir, 'odoo_import_' + Date.now());
+        const modelsDir = path.join(sourceDir, 'models');
+        fs.mkdirSync(modelsDir, { recursive: true });
+        for (const f of files) {
+          const dest = path.join(modelsDir, f.originalname);
+          fs.copyFileSync(f.path, dest);
+          fs.unlinkSync(f.path);
+        }
+        cleanup = true;
+      } else {
+        res.status(400).json({ error: '请提供 folderPath 或上传 .py 文件' }); return;
+      }
+      
+      // Step 1: 解析 Odoo .py → JSON
+      const parser = path.join(__dirname, '..', '..', 'server', 'odoo-parser.py');
+      if (!fs.existsSync(parser)) { res.status(500).json({ error: 'odoo-parser.py 未找到' }); return; }
+      
+      const pythonPath = process.env.PYTHON || 'python';
+      let jsonResult: string;
+      try {
+        jsonResult = execSync(`${JSON.stringify(pythonPath)} ${JSON.stringify(parser)} ${JSON.stringify(sourceDir)}`, {
+          encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, timeout: 30000,
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: '解析失败: ' + (e.stderr || e.message) }); 
+        if (cleanup) fs.rmSync(sourceDir, { recursive: true, force: true });
+        return;
+      }
+      
+      // Step 2: JSON → Feida 模块
+      const jsonFile = path.join(uploadDir, 'odoo_import_' + Date.now() + '.json');
+      fs.writeFileSync(jsonFile, jsonResult, 'utf-8');
+      
+      const converter = path.join(__dirname, '..', '..', 'server', 'odoo2feida.js');
+      const modulesDir = path.join(process.cwd(), 'modules');
+      let convResult: string;
+      try {
+        convResult = execSync(`node ${JSON.stringify(converter)} ${JSON.stringify(jsonFile)} ${JSON.stringify(modulesDir)}`, {
+          encoding: 'utf-8', timeout: 10000,
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: '转换失败: ' + (e.stderr || e.message) });
+        try { fs.unlinkSync(jsonFile); } catch {}
+        if (cleanup) fs.rmSync(sourceDir, { recursive: true, force: true });
+        return;
+      }
+      
+      // Step 3: 注册到 ORM
+      const convData = JSON.parse(convResult);
+      const modulePath = convData.path;
+      const reg = (global as any).__feida_models;
+      if (reg && fs.existsSync(path.join(modulePath, 'models'))) {
+        reg.loadFromModule(modulePath);
+      }
+      
+      // 清理
+      try { fs.unlinkSync(jsonFile); } catch {}
+      if (cleanup) fs.rmSync(sourceDir, { recursive: true, force: true });
+      
+      res.json({ success: true, ...convData });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ===== 外部数据库浏览 =====
   router.post('/db/scan', (req, res) => {
     const { type, host, port, database, user, password, filepath } = req.body;

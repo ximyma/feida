@@ -3,8 +3,8 @@
  * 浏览系统Odoo模块模型，一键导入为低代码应用
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Button, Space, Typography, Tag, Empty, Spin, message, Modal, Input, Collapse, Table } from 'antd';
-import { FileSearchOutlined, ImportOutlined, AppstoreOutlined, CopyOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Button, Space, Typography, Tag, Empty, Spin, message, Modal, Input, Collapse, Table, Upload, Tabs } from 'antd';
+import { FileSearchOutlined, ImportOutlined, AppstoreOutlined, CopyOutlined, EyeOutlined, ReloadOutlined, UploadOutlined, FolderOpenOutlined, InboxOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
@@ -30,6 +30,10 @@ const OdooModelBrowser: React.FC = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importPath, setImportPath] = useState('');
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importingOdoo, setImportingOdoo] = useState(false);
 
   const loadModules = async () => {
     setLoading(true);
@@ -108,6 +112,30 @@ const OdooModelBrowser: React.FC = () => {
   const totalModels = modules.reduce((s, m) => s + m.models.length, 0);
   const totalFields = modules.reduce((s, m) => s + m.models.reduce((ss, md) => ss + md.fields, 0), 0);
 
+  const handleOdooImport = async () => {
+    setImportingOdoo(true);
+    try {
+      const formData = new FormData();
+      if (importPath) {
+        formData.append('folderPath', importPath);
+      } else if (importFiles.length > 0) {
+        importFiles.forEach(f => formData.append('files', f));
+      } else {
+        message.error('请填写路径或上传文件');
+        setImportingOdoo(false); return;
+      }
+      const r = await fetch(`${BASE}/odoo/import`, { method: 'POST', body: formData });
+      const j = await r.json();
+      if (j.error) { message.error(j.error); setImportingOdoo(false); return; }
+      message.success({ content: `已导入 "${j.module}" (${j.models}模型, ${j.fields}字段)。请按 F5 刷新后查看`, duration: 6 });
+      setImportModalOpen(false);
+      setImportPath('');
+      setImportFiles([]);
+      loadModules();
+    } catch (e: any) { message.error(e.message); }
+    setImportingOdoo(false);
+  };
+
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -116,6 +144,7 @@ const OdooModelBrowser: React.FC = () => {
           <Text type="secondary">浏览 {modules.length} 个模块的 {totalModels} 个模型（{totalFields} 字段），一键导入为低代码应用</Text>
         </div>
         <Space>
+          <Button icon={<FolderOpenOutlined />} onClick={() => setImportModalOpen(true)} type="default">导入 Odoo 模块 (.py)</Button>
           <Button icon={<ReloadOutlined />} onClick={loadModules}>刷新</Button>
           <Button type="primary" icon={<EyeOutlined />} onClick={() => navigate('/apps-manager')}>应用管理</Button>
         </Space>
@@ -169,6 +198,32 @@ const OdooModelBrowser: React.FC = () => {
             ]}
           />
         )}
+      </Modal>
+
+      <Modal title="导入 Odoo Python 模型" open={importModalOpen} onCancel={() => setImportModalOpen(false)}
+        footer={null} width={600}>
+        <Tabs items={[
+          { key: 'path', label: '服务器路径', children: (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text type="secondary">指定服务器上 Odoo 模块目录（含 models/*.py）</Text>
+              <Input placeholder="D:\odoo\addons\crm" value={importPath} onChange={e => setImportPath(e.target.value)}
+                prefix={<FolderOpenOutlined />} />
+            </Space>
+          ) },
+          { key: 'upload', label: '上传 .py 文件', children: (
+            <Upload.Dragger accept=".py" multiple maxCount={50} beforeUpload={(file) => { setImportFiles(prev => [...prev, file]); return false; }}
+              fileList={importFiles.map((f, i) => ({ uid: String(i), name: f.name, status: 'done' as const }))}
+              onRemove={(file) => setImportFiles(importFiles.filter((_, i) => String(i) !== file.uid))}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">拖拽 .py 模型文件</p>
+            </Upload.Dragger>
+          ) },
+        ]} />
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <Button type="primary" icon={<ImportOutlined />} loading={importingOdoo}
+            disabled={!importPath && importFiles.length === 0}
+            onClick={handleOdooImport}>开始导入</Button>
+        </div>
       </Modal>
     </div>
   );
