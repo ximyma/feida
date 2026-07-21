@@ -445,6 +445,18 @@ function apiRouter() {
     res.json(modules);
   });
 
+  // 读取应用配置
+  router.get('/apps/:app/config', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const p = path.join(process.cwd(), 'addons', req.params.app, 'app.json');
+    if (fs.existsSync(p)) {
+      res.json(JSON.parse(fs.readFileSync(p, 'utf-8')));
+    } else {
+      res.status(404).json({ error: '应用不存在' });
+    }
+  });
+
   // 列出 addon 的模型定义(含字段详情)
   router.get('/addons/:module/models/list', (req, res) => {
     const fs = require('fs');

@@ -1,0 +1,8 @@
+{
+  "name": "客户关系管理",
+  "version": "1.0.0",
+  "author": "飞达",
+  "description": "客户信息、联系人、商机、跟进记录管理",
+  "depends": [],
+  "auto_install": false
+}

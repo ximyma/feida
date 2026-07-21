@@ -43,15 +43,25 @@ const LowCodeBuilder: React.FC = () => {
       (data || []).forEach((g: any) => g.models?.forEach((m: any) => all.push(m.name)));
       setExistingTables(all);
     });
-    // 自动生成模块名
+    // 自动生成模块名 (基于应用名)
     if (!moduleName) setModuleName('app_' + Date.now().toString(36));
+
+    // 应用名变化时自动更新模块名(slug)
+    const updateAppName = (name: string) => {
+      setAppName(name);
+      // 编辑模式不改变模块名(已固定)
+      if (!editMode && name) {
+        const slug = name.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || ('app_' + Date.now().toString(36));
+        setModuleName(slug);
+      }
+    };
 
     // 编辑模式: 加载已有应用配置(含字段)
     if (editMode) {
       setModuleName(editMode);
       Promise.all([
-        fetch(`/addons/${editMode}/app.json?t=${Date.now()}`).then(r => r.json()),
-        fetch(`/addons/${editMode}/models/list?t=${Date.now()}`).then(r => r.json()).catch(() => ({ models: [] })),
+        fetch(`${BASE}/apps/${editMode}/config?t=${Date.now()}`).then(r => r.json()),
+        fetch(`${BASE}/addons/${editMode}/models/list?t=${Date.now()}`).then(r => r.json()).catch(() => ({ models: [] })),
       ]).then(([cfg, modelData]) => {
         setAppName(cfg.name || editMode);
         setAppDesc(cfg.description || '');
@@ -170,7 +180,7 @@ const LowCodeBuilder: React.FC = () => {
         <Card title="步骤1: 应用信息">
           <Form layout="vertical" style={{ maxWidth: 500 }}>
             <Form.Item label="应用名称" required>
-              <Input placeholder="客户关系管理" value={appName} onChange={e => setAppName(e.target.value)} />
+              <Input placeholder="客户关系管理" value={appName} onChange={e => updateAppName(e.target.value)} />
             </Form.Item>
             <Form.Item label="应用图标">
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
