@@ -58,7 +58,7 @@ const AppShell: React.FC = () => {
     <Layout style={{ minHeight: '100vh' }}>
       <Sider width={220} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
         <div style={{ padding: '16px 16px 8px', borderBottom: '1px solid #f0f0f0' }}>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps')} size="small" style={{ marginBottom: 4 }}>
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/apps-manager')} size="small" style={{ marginBottom: 4 }}>
             返回应用列表
           </Button>
           <Title level={4} style={{ margin: 0, color: appConfig?.color || '#1677ff' }}>
