@@ -1,7 +1,7 @@
 @echo off
-title Feida Smart HR System v1.0.0
+title Feida Smart HR System v1.1.0
 echo ========================================
-echo   Feida Smart HR System v1.0.0
+echo   Feida Smart HR System v1.1.0
 echo   AI-Powered HR / CMS / Shop Platform
 echo ========================================
 echo.
