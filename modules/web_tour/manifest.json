@@ -1,9 +1,0 @@
-{
-  "name": "web_tour",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: web_tour",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

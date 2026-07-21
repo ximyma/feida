@@ -1,9 +1,0 @@
-{
-  "name": "barcodes_gs1_nomenclature",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: barcodes_gs1_nomenclature",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

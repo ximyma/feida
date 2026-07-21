@@ -1,9 +1,0 @@
-{
-  "name": "html_editor",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: html_editor",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

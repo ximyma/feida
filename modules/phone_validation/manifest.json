@@ -1,9 +1,0 @@
-{
-  "name": "phone_validation",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: phone_validation",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

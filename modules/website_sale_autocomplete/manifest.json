@@ -1,9 +1,0 @@
-{
-  "name": "website_sale_autocomplete",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: website_sale_autocomplete",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

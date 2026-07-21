@@ -1,9 +1,0 @@
-{
-  "name": "mass_mailing_crm_sms",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: mass_mailing_crm_sms",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

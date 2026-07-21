@@ -1,9 +1,0 @@
-{
-  "name": "l10n_gr_edi",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: l10n_gr_edi",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

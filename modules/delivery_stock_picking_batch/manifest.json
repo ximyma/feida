@@ -1,9 +1,0 @@
-{
-  "name": "delivery_stock_picking_batch",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: delivery_stock_picking_batch",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

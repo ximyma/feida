@@ -1,9 +1,0 @@
-{
-  "name": "app_mrp_production_zchart",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: app_mrp_production_zchart",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

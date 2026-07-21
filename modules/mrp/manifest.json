@@ -1,9 +1,0 @@
-{
-  "name": "mrp",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: mrp",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

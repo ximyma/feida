@@ -1,9 +1,0 @@
-{
-  "name": "sale_project",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: sale_project",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

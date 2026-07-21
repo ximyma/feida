@@ -1,9 +1,0 @@
-{
-  "name": "app_base_chinese",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: app_base_chinese",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

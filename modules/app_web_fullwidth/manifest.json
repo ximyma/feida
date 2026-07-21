@@ -1,9 +1,0 @@
-{
-  "name": "app_web_fullwidth",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: app_web_fullwidth",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

@@ -1,9 +1,0 @@
-{
-  "name": "website_event_sale",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: website_event_sale",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

@@ -1,9 +1,0 @@
-{
-  "name": "mrp_subcontracting_dropshipping",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: mrp_subcontracting_dropshipping",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

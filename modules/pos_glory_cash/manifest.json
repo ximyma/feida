@@ -1,9 +1,0 @@
-{
-  "name": "pos_glory_cash",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: pos_glory_cash",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

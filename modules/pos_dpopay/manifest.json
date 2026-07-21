@@ -1,9 +1,0 @@
-{
-  "name": "pos_dpopay",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: pos_dpopay",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}

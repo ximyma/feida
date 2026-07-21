@@ -1,9 +1,0 @@
-{
-  "name": "hr_fleet",
-  "version": "1.0.0",
-  "author": "Odoo Import",
-  "description": "从 Odoo 模块导入: hr_fleet",
-  "depends": [],
-  "installable": true,
-  "auto_install": false
-}
