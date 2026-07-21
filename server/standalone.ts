@@ -449,6 +449,73 @@ function apiRouter() {
     res.status(404).json({ error: '模型不存在' });
   });
 
+  // ===== 批量扫描 Odoo 模块目录 =====
+  router.post('/odoo/scan-addons', (req, res) => {
+    const { dirPath } = req.body;
+    if (!dirPath) { res.status(400).json({ error: '请提供 addons 目录路径' }); return; }
+    const fs = require('fs');
+    const path = require('path');
+    if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
+      res.status(400).json({ error: '目录不存在' }); return;
+    }
+    const modules: string[] = [];
+    for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const modelsDir = path.join(dirPath, entry.name, 'models');
+      if (fs.existsSync(modelsDir)) {
+        const pyCount = fs.readdirSync(modelsDir).filter((f: string) => f.endsWith('.py')).length;
+        if (pyCount > 0) modules.push(entry.name + '|' + pyCount);
+      }
+    }
+    res.json({ dir: dirPath, count: modules.length, modules });
+  });
+
+  // ===== 批量导入 Odoo 模块（多个 addon） =====
+  router.post('/odoo/batch-import', (req, res) => {
+    const { dirPath, selected } = req.body;
+    if (!dirPath || !Array.isArray(selected) || selected.length === 0) {
+      res.status(400).json({ error: '缺少参数' }); return;
+    }
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+    const parser = path.join(__dirname, '..', '..', 'server', 'odoo-parser.py');
+    const converter = path.join(__dirname, '..', '..', 'server', 'odoo2feida.js');
+    const modulesDir = path.join(process.cwd(), 'modules');
+    const pythonPath = process.env.PYTHON || 'python';
+
+    const results: any[] = [];
+    for (const name of selected) {
+      const addonDir = path.join(dirPath, name);
+      const modelsDir = path.join(addonDir, 'models');
+      if (!fs.existsSync(modelsDir)) continue;
+      try {
+        const jsonResult = execSync(`${JSON.stringify(pythonPath)} ${JSON.stringify(parser)} ${JSON.stringify(addonDir)}`, {
+          encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024, timeout: 60000,
+        });
+        const tmpFile = path.join(uploadDir, 'batch_' + Date.now() + '_' + name + '.json');
+        fs.writeFileSync(tmpFile, jsonResult, 'utf-8');
+        const convResult = execSync(`node ${JSON.stringify(converter)} ${JSON.stringify(tmpFile)} ${JSON.stringify(modulesDir)}`, {
+          encoding: 'utf-8', timeout: 30000,
+        });
+        const d = JSON.parse(convResult);
+        fs.unlinkSync(tmpFile);
+        // 注册
+        const modPath = d.path;
+        const reg = (global as any).__feida_models;
+        if (reg && fs.existsSync(path.join(modPath, 'models'))) {
+          reg.loadFromModule(modPath);
+        }
+        results.push(d);
+      } catch (e: any) {
+        results.push({ module: name, error: (e.stderr || e.message || '失败').slice(0, 200) });
+      }
+    }
+    const ok = results.filter(r => !r.error);
+    const failed = results.filter(r => r.error);
+    res.json({ success: true, imported: ok.length, failed: failed.length, results, totalModels: ok.reduce((s,r) => s + r.models, 0), totalFields: ok.reduce((s,r) => s + r.fields, 0) });
+  });
+
   // ===== Odoo 模块导入（.py 文件 → Feida 模块） =====
   const odooUpload = multer({ dest: uploadDir, limits: { fileSize: 10 * 1024 * 1024 } });
   router.post('/odoo/import', odooUpload.array('files', 50), (req: any, res) => {

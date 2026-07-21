@@ -7,7 +7,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Space, Typography, Tag, Empty, Spin, message, Modal, Input, Collapse, Table, Upload, Tabs, Tooltip, Steps, Form, Select } from 'antd';
-import { AppstoreOutlined, EyeOutlined, ReloadOutlined, UploadOutlined, FolderOpenOutlined, InboxOutlined, ImportOutlined, RocketOutlined, DatabaseOutlined, LinkOutlined, FileAddOutlined, TableOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, EyeOutlined, ReloadOutlined, UploadOutlined, FolderOpenOutlined, InboxOutlined, ImportOutlined, RocketOutlined, DatabaseOutlined, LinkOutlined, FileAddOutlined, TableOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
@@ -51,6 +51,12 @@ const OdooModelBrowser: React.FC = () => {
 
   // 一键导入 model as app
   const [quickImportModel, setQuickImportModel] = useState<string | null>(null);
+
+  // 批量扫描 Odoo 模块目录
+  const [batchDirPath, setBatchDirPath] = useState('D:\\myapps\\odoo\\addons');
+  const [batchModules, setBatchModules] = useState<Array<{ name: string; pyCount: number; selected: boolean }>>([]);
+  const [batchScanning, setBatchScanning] = useState(false);
+  const [batchImporting, setBatchImporting] = useState(false);
 
   const loadModules = async () => {
     setLoading(true);
@@ -145,6 +151,35 @@ const OdooModelBrowser: React.FC = () => {
     setImportingTables(false);
   };
 
+  // 批量扫描 Odoo addons 目录
+  const scanAddonsDir = async () => {
+    if (!batchDirPath) { message.error('输入目录路径'); return; }
+    setBatchScanning(true);
+    try {
+      const r = await fetch(`${BASE}/odoo/scan-addons`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ dirPath: batchDirPath }) });
+      const j = await r.json();
+      if (j.error) { message.error(j.error); } else {
+        setBatchModules(j.modules.map((m: string) => { const [name, cnt] = m.split('|'); return { name, pyCount: parseInt(cnt), selected: false }; }));
+        message.success(`扫描到 ${j.count} 个模块`);
+      }
+    } catch (e: any) { message.error(e.message); }
+    setBatchScanning(false);
+  };
+
+  // 批量导入选中模块
+  const batchImport = async () => {
+    const selected = batchModules.filter(m => m.selected).map(m => m.name);
+    if (selected.length === 0) { message.error('至少选择一个模块'); return; }
+    setBatchImporting(true);
+    try {
+      const r = await fetch(`${BASE}/odoo/batch-import`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ dirPath: batchDirPath, selected }) });
+      const j = await r.json();
+      message.success({ content: `导入完成: ${j.imported}成功 ${j.failed}失败 (${j.totalModels}模型 ${j.totalFields}字段)`, duration: 8 });
+      setBatchModules([]); loadModules();
+    } catch (e: any) { message.error(e.message); }
+    setBatchImporting(false);
+  };
+
   const totalModels = modules.reduce((s,m)=>s+m.models.length,0);
   const totalFields = modules.reduce((s,m)=>s+m.models.reduce((ss,md)=>ss+md.fields,0),0);
 
@@ -234,6 +269,51 @@ const OdooModelBrowser: React.FC = () => {
                   <Button onClick={()=>{setScannedTables([]);setSelectedTables([]);}} style={{ marginLeft: 8 }}>清除</Button>
                 </div>
               </Card>}
+            </div>
+          )
+        },
+        {
+          key: 'batch', label: <span><FolderOpenOutlined /> 批量导入模块目录</span>,
+          children: (
+            <div>
+              <Card style={{ maxWidth: 800 }}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Text strong>指定 Odoo addons 目录，批量扫描并选择导入</Text>
+                  <Input.Search placeholder="D:\myapps\odoo\addons" value={batchDirPath}
+                    onChange={e => setBatchDirPath(e.target.value)}
+                    onSearch={scanAddonsDir} enterButton={<><SearchOutlined /> 扫描</>} loading={batchScanning}
+                    style={{ maxWidth: 500 }} />
+                  {batchModules.length > 0 && (
+                    <>
+                      <div style={{ marginBottom: 8 }}>
+                        <Space>
+                          <Button size="small" onClick={() => setBatchModules(batchModules.map(m => ({ ...m, selected: true })))}>全选</Button>
+                          <Button size="small" onClick={() => setBatchModules(batchModules.map(m => ({ ...m, selected: false })))}>全不选</Button>
+                          <Tag>{batchModules.filter(m => m.selected).length}/{batchModules.length} 选中</Tag>
+                        </Space>
+                      </div>
+                      <div style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
+                        <Row gutter={[8, 4]}>
+                          {batchModules.map((m, i) => (
+                            <Col key={m.name} span={8}>
+                              <Tag.CheckableTag key={m.name} checked={m.selected}
+                                onChange={v => setBatchModules(batchModules.map((x, j) => j === i ? { ...x, selected: v } : x))}
+                                style={{ fontSize: 12, marginBottom: 2 }}>
+                                {m.name} <Tag color="blue" style={{ fontSize: 10 }}>{m.pyCount}py</Tag>
+                              </Tag.CheckableTag>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                      <Button type="primary" size="large" icon={<ImportOutlined />} loading={batchImporting}
+                        disabled={batchModules.filter(m => m.selected).length === 0}
+                        onClick={batchImport}>
+                        导入 {batchModules.filter(m => m.selected).length} 个选中模块
+                      </Button>
+                    </>
+                  )}
+                </Space>
+              </Card>
             </div>
           )
         },
