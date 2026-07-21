@@ -152,14 +152,22 @@ const LowCodeBuilder: React.FC = () => {
       await r2.json();
 
       // 部署
-      await fetch(`${BASE}/lowcode/deploy`, {
+      const r3 = await fetch(`${BASE}/lowcode/deploy`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ moduleName }),
       });
+      const j3 = await r3.json();
 
-      message.success(`🎉 应用「${appName}」发布成功！`);
+      const modelCount = j3.tables?.length || validTables.length;
+      message.success({
+        content: `🎉 发布成功！${modelCount}个表已部署。编辑后请：1.按 F5 刷新 2.进入应用查看`,
+        duration: 8,
+      });
       setDeployed(true);
-      setStep(3);
+      // 强制重新加载列表以获取最新数据
+      setTimeout(() => {
+        message.info({ content: '提示：进入应用后若未更新，请按 Ctrl+Shift+R 强制刷新', duration: 6 });
+      }, 2000);
     } catch (e: any) { message.error(e.message); }
     setCreating(false);
   };

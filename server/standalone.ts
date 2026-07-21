@@ -513,23 +513,31 @@ function apiRouter() {
   router.post('/lowcode/deploy', (req, res) => {
     const { moduleName } = req.body;
     if (!moduleName) { res.status(400).json({ error: '缺少 moduleName' }); return; }
-    // 热加载: 重新扫描 addons
+    const fs = require('fs');
+    const path = require('path');
     const reg = (global as any).__feida_models;
     if (reg) {
-      const path = require('path');
       const dir = path.join(process.cwd(), 'addons', moduleName);
-      // 清除所有模型文件的require缓存
       const modelsDir = path.join(dir, 'models');
-      if (require('fs').existsSync(modelsDir)) {
-        for (const f of require('fs').readdirSync(modelsDir)) {
+      // 1. 清除所有模型文件的 require 缓存
+      if (fs.existsSync(modelsDir)) {
+        for (const f of fs.readdirSync(modelsDir)) {
           if (f.endsWith('.js')) {
-            try { delete require.cache[require.resolve(path.join(modelsDir, f))]; } catch {}
+            const fp = path.join(modelsDir, f);
+            try { delete require.cache[require.resolve(fp)]; } catch {}
           }
         }
       }
+      // 2. 清除 app.json 缓存
+      const appJson = path.join(dir, 'app.json');
+      try { delete require.cache[require.resolve(appJson)]; } catch {}
+      
+      // 3. 重新加载模型到注册表
       try {
-        reg.loadFromModule(dir);
-        res.json({ success: true, module: moduleName });
+        const loaded = reg.loadFromModule(dir);
+        // 4. 返回详细信息
+        const models = loaded.map((m: any) => m._name || m.name).filter(Boolean);
+        res.json({ success: true, module: moduleName, models: models.length, tables: models });
       } catch (e: any) { res.status(500).json({ error: e.message }); }
     } else {
       res.status(500).json({ error: 'ORM未初始化' });

@@ -1,4 +1,5 @@
-exports.model={
+// 低代码生成: customer_information
+exports.model = {
   "_name": "customer_information",
   "_description": "客户信息",
   "_auto": true,

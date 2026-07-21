@@ -6,9 +6,11 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Spin, Typography, Tag, Button } from 'antd';
-import { HomeOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { Layout, Menu, Spin, Typography, Tag, Button, Tooltip, message } from 'antd';
+import { HomeOutlined, ArrowLeftOutlined, SyncOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+
+const BASE = '/api';
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -65,6 +67,15 @@ const AppShell: React.FC = () => {
             {appConfig?.name || moduleName}
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>模块: {moduleName}</Text>
+          <div style={{ marginTop: 4 }}>
+            <Tooltip title="如果编辑后未更新，点击此按钮强制重新加载模型">
+              <Button type="link" size="small" icon={<SyncOutlined />} onClick={async () => {
+                message.loading('刷新中...', 0.5);
+                await fetch(`${BASE}/lowcode/deploy`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({moduleName}) });
+                window.location.reload();
+              }}>刷新应用数据</Button>
+            </Tooltip>
+          </div>
         </div>
         <Menu mode="inline" selectedKeys={[selectedKey || '_home']} onClick={handleMenuClick} items={menuItems}
           style={{ borderRight: 0, marginTop: 8 }} />
