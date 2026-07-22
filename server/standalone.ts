@@ -2822,7 +2822,7 @@ function apiRouter() {
 
   // ==================== 文档上传与解析 ====================
 
-  router.post('/ai/kb/:kbId/upload', upload.array('files', 50), (req, res) => {
+  router.post('/ai/kb/:kbId/upload', upload.array('files', 50), async (req, res) => {
     try {
       const kbId = req.params.kbId;
       const files = req.files as Express.Multer.File[];
@@ -2840,16 +2840,70 @@ function apiRouter() {
         const safeName = Buffer.from(file.originalname, 'latin1').toString('utf8');
         const displayName = /[\u4e00-\u9fff]/.test(safeName) ? safeName : file.originalname;
 
-        // 读取文件内容 (自动检测编码)
+        // 读取文件内容 — 按文档类型选择解析器
         let content = '';
         try {
           const fs = require('fs');
           const fileData = fs.readFileSync(file.path);
-          // 尝试UTF-8解码，失败则尝试GBK
-          try { content = fileData.toString('utf-8'); if (content.includes('�')) throw new Error('encoding'); }
-          catch { content = require('iconv-lite') ? require('iconv-lite').decode(fileData, 'gbk') : fileData.toString('utf-8'); }
+
+          if (ext === 'pdf') {
+            // PDF 解析：尝试 pdf-parse，失败则用二进制标记
+            try {
+              const pdfParse = require('pdf-parse');
+              const pdfResult = await pdfParse(fileData);
+              content = pdfResult.text || '';
+            } catch {
+              content = `[PDF 文档无法解析: ${displayName}。请将内容复制粘贴为文本后上传。]`;
+            }
+          } else if (ext === 'docx') {
+            // Word 解析：mammoth
+            try {
+              const mammoth = require('mammoth');
+              const result = await mammoth.extractRawText({ buffer: fileData });
+              content = result.value || '';
+            } catch {
+              content = `[Word 文档无法解析: ${displayName}]`;
+            }
+          } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+            // Excel 解析：xlsx
+            try {
+              const XLSX = require('xlsx');
+              const workbook = XLSX.read(fileData, { type: 'buffer' });
+              const texts: string[] = [];
+              for (const sheetName of workbook.SheetNames.slice(0, 5)) {
+                const sheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+                texts.push(`[工作表: ${sheetName}]`);
+                for (const row of rows.slice(0, 200)) {
+                  texts.push(row.filter(c => c != null).join('\t'));
+                }
+              }
+              content = texts.join('\n');
+            } catch {
+              content = `[Excel 文件无法解析: ${displayName}]`;
+            }
+          } else {
+            // 纯文本文件：自动编码检测
+            try {
+              content = fileData.toString('utf-8');
+              // 检测是否包含乱码标记
+              const nonPrintable = content.match(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g);
+              if (nonPrintable && nonPrintable.length > content.length * 0.01) {
+                throw new Error('binary content');
+              }
+            } catch {
+              try {
+                const { decode } = require('iconv-lite');
+                content = decode(fileData, 'gbk');
+              } catch {
+                content = fileData.toString('utf-8');
+              }
+            }
+          }
+
           if (content.length > 500000) content = content.substring(0, 500000);
-        } catch { content = ''; }
+          if (!content.trim()) content = `[文件内容为空或无法解析: ${displayName}]`;
+        } catch { content = `[文件读取失败: ${displayName}]`; }
 
         db.insert('ai_knowledge_documents', { id: docId, kb_id: kbId, filename: file.filename, original_name: displayName, file_type: ext, file_size: file.size, file_path: file.path, content, status: 'completed' });
 
@@ -3103,13 +3157,32 @@ function apiRouter() {
     const params: any[] = [];
     if (kbIds && kbIds.length) { sql += " AND kb_id IN (" + kbIds.map(() => '?').join(',') + ")"; params.push(...kbIds); }
     sql += " ORDER BY updated_at DESC LIMIT ?";
-    params.push(l * 2);
+    params.push(500);
     try {
       const rows = db.query(sql, params);
-      const kw = query.toLowerCase();
-      const scored = rows.map((r: any) => ({ ...r, score: (r.title?.toLowerCase().includes(kw) ? 3 : 0) + (r.content?.toLowerCase().includes(kw) ? 2 : 0) })).filter((r: any) => r.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, l);
+      const aiService = require('./ai-service.js');
+      const scored = aiService.hybridSearch(query, rows, { topK: l, scoreThreshold: 0.0, searchMode: 'hybrid' });
+      console.log('[kb-search] query:', query, 'rows:', rows.length, 'results:', scored?.length);
+      if (scored?.length > 0) console.log('[kb-search] first result:', scored[0].title, 'score:', scored[0].score);
+      res.json(scored.length > 0 ? scored.slice(0, l) : []);
+    } catch(e: any) {
+      // 回退到简单的关键词匹配
+      const rows2 = db.query(sql, params);
+      const kw = query;
+      const chineseTokens = kw.replace(/[^\u4e00-\u9fff]/g, '').split('').filter(Boolean);
+      const scored = rows2.map((r: any) => {
+        let s = 0;
+        if (r.title?.includes(kw)) s += 5;
+        if (r.content?.includes(kw)) s += 3;
+        // 单字匹配
+        for (const t of chineseTokens) {
+          if (r.title?.includes(t)) s += 1;
+          if (r.content?.includes(t)) s += 0.5;
+        }
+        return { ...r, score: s };
+      }).filter((r: any) => r.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, l);
       res.json(scored);
-    } catch { res.json([]); }
+    }
   });
 
   // 知识库管理

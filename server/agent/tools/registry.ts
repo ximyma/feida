@@ -15,6 +15,7 @@ import { SearchNewsTool } from './builtin/search-news';
 import { SendFileTool } from './builtin/send-file';
 import { MemorySearchTool } from './builtin/memory-search';
 import { MemoryGetTool } from './builtin/memory-get';
+import { KnowledgeSearchTool } from './builtin/kb-search';
 import { toolManager } from './tool-manager';
 
 export function registerAllTools(): void {
@@ -24,6 +25,7 @@ export function registerAllTools(): void {
     new SqlQueryTool(), new WebSearchTool(), new WebFetchTool(), new SearchNewsTool(),
     new SendFileTool(),
     new MemorySearchTool(), new MemoryGetTool(),
+    new KnowledgeSearchTool(),
   ]);
 }
 

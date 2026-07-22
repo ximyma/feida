@@ -327,6 +327,26 @@ export default function AIAssistantPage() {
     // 收集对话上下文
     const allMessages = [...messages, userMsg].filter(m => m.id !== 'welcome' && m.role !== 'system');
 
+    // 知识库增强：搜索相关知识并注入上下文
+    let knowledgeContext = '';
+    if (useKnowledge) {
+      try {
+        const kbRes = await fetch('/api/ai/kb-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: aiContent, kbIds: selectedKbIds.length > 0 ? selectedKbIds : undefined, limit: 5 }),
+        });
+        const kbData = await kbRes.json();
+        if (Array.isArray(kbData) && kbData.length > 0) {
+          knowledgeContext = '\n\n【知识库参考资料】\n' +
+            kbData.map((r: any, i: number) =>
+              `[${i + 1}] ${r.title || ''}\n${r.content || ''}`
+            ).join('\n\n') +
+            '\n【请基于以上知识库内容回答问题，如知识库内容不足以回答请说明】\n';
+        }
+      } catch {}
+    }
+
     // 有附件时，AI上下文中的用户消息替换为含文件内容的版本
     const agentMessages = allMessages.map((m, idx) => {
       if (m.id === userMsg.id && aiContent !== displayContent) {
@@ -338,8 +358,8 @@ export default function AIAssistantPage() {
     // ===== 统一所有对话走 SSE agentStream (代码/工具/通用) =====
     if (agentMode === 'code') {
       const codeMessages = [
-        { role: 'system', content: `你是飞达项目的代码助手。你可以通过 API 的工具调用(Tool Calls)功能使用 read_file/write_file/patch/grep/glob/bash/sql_query 工具。
-
+        { role: 'system', content: `你是飞达项目的代码助手。你可以通过 API 的工具调用(Tool Calls)功能使用 read_file/write_file/patch/grep/glob/bash/sql_query/kb_search 工具。
+${knowledgeContext}
 重要规则:
 1. 所有工具调用通过 API 的 function calling 机制完成，不要在文本中输出 DSML/XML/标签格式
 2. 先分析用户需求，再选择合适的工具，执行后基于结果回复
@@ -350,8 +370,8 @@ export default function AIAssistantPage() {
       await agentStream(codeMessages, convId);
     } else if (/数据库|表结构|SQL|查询.*表|代码.*搜索|搜索.*代码|查找.*文件|运行.*构建|执行.*命令|npm|grep|bash|SELECT|INSERT|UPDATE|DELETE/i.test(text)) {
       const toolMessages = [
-        { role: 'system', content: `你是飞达智能HR系统的AI助手。你可以通过 API 工具调用功能使用 sql_query/grep/glob/bash/read_file 等工具查询数据库、搜索代码。
-
+        { role: 'system', content: `你是飞达智能HR系统的AI助手。你可以通过 API 工具调用功能使用 sql_query/grep/glob/bash/read_file/kb_search 等工具查询数据库、搜索代码和知识库。
+${knowledgeContext}
 重要规则:
 1. 通过 function calling 调用工具，不要在文本中输出 DSL/XML/标签格式
 2. 基于工具返回结果回复，不要编造数据
@@ -363,7 +383,8 @@ export default function AIAssistantPage() {
     } else {
       // 通用对话也走 agentStream (获得流式+工具能力)
       const generalMessages = [
-        { role: 'system', content: `你是飞达智能HR系统的AI助手。用中文回答各种问题。可以通过 function calling 使用 sql_query/grep/glob/bash/read_file 等工具获取真实数据。**不要在文本中输出 DSML/XML/标签格式的工具调用！**` },
+        { role: 'system', content: `你是飞达智能HR系统的AI助手。用中文回答各种问题。可以通过 function calling 使用 sql_query/grep/glob/bash/read_file/kb_search 等工具获取真实数据。**不要在文本中输出 DSML/XML/标签格式的工具调用！**
+${knowledgeContext}` },
         ...agentMessages,
       ];
       await agentStream(generalMessages, convId);
