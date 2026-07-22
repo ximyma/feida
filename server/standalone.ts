@@ -3237,7 +3237,7 @@ function apiRouter() {
 
   router.delete('/ai/knowledge/:id', (req, res) => {
     try {
-      db.query("DELETE FROM ai_knowledge WHERE id = ?", [req.params.id]);
+      const del = (db as any).delete ? (db as any).delete('ai_knowledge', req.params.id) : (db as any).run('DELETE FROM ai_knowledge WHERE id = ?', [req.params.id]);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
