@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sowork AI 企业智能ERP系统 · 教程系列索引</title>
+<style>
+  :root {
+    --bg:#ffffff; --panel:#f6f8fa; --line:#e5e8ec; --ink:#1f2329; --sub:#6b7280;
+    --brand:#1677ff; --brand-soft:#e8f1ff;
+    --mgr:#16a34a; --mgr-soft:#e7f6ec; --dev:#1677ff; --dev-soft:#e8f1ff; --both:#8b5cf6; --both-soft:#f1ebfd;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.6; }
+  header { padding:32px 24px 20px; background:linear-gradient(180deg,#f0f6ff,#ffffff); border-bottom:1px solid var(--line); }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 20px; }
+  h1 { margin:0 0 6px; font-size:26px; }
+  .sub { color:var(--sub); margin:0 0 16px; font-size:14px; }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; }
+  .stat { background:var(--brand-soft); color:var(--brand); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:600; }
+  .search { margin:18px 0 4px; }
+  .search input { width:100%; max-width:460px; padding:11px 14px; border:1px solid var(--line); border-radius:10px;
+    font-size:15px; outline:none; background:var(--panel); }
+  .search input:focus { border-color:var(--brand); background:#fff; }
+  main { padding:8px 0 60px; }
+  .part { margin-top:30px; }
+  .part h2 { font-size:18px; border-left:4px solid var(--brand); padding-left:10px; margin:0 0 14px; }
+  .pct { color:var(--sub); font-weight:400; font-size:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .card { display:block; text-decoration:none; color:inherit; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:14px; transition:.15s; }
+  .card:hover { border-color:var(--brand); box-shadow:0 4px 14px rgba(22,119,255,.12); transform:translateY(-2px); }
+  .card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .num { font-weight:800; color:var(--brand); font-size:15px; background:var(--brand-soft); border-radius:8px; padding:1px 9px; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:999px; font-weight:600; }
+  .tag-manager { color:var(--mgr); background:var(--mgr-soft); }
+  .tag-dev { color:var(--dev); background:var(--dev-soft); }
+  .tag-both { color:var(--both); background:var(--both-soft); }
+  .card-title { font-weight:700; font-size:15px; margin-bottom:6px; }
+  .card-sum { color:var(--sub); font-size:13px; min-height:54px; }
+  .card-foot { color:#9aa3af; font-size:12px; margin-top:8px; }
+  footer { color:var(--sub); font-size:12px; border-top:1px solid var(--line); padding:18px 0 40px; }
+  .note { background:#fff8e6; border:1px solid #ffe2a8; color:#8a6100; border-radius:10px; padding:10px 14px; font-size:13px; margin-top:14px; }
+  .empty { color:var(--sub); padding:40px; text-align:center; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Sowork AI 企业智能ERP系统 · 技术教程系列索引</h1>
+    <p class="sub">版本 v1.2.0 ｜ 代码级深度教程 ｜ 双读者（企业管理者 + 技术开发）｜ 配套大纲：<a href="../教程系列写作大纲V2.md">教程系列写作大纲 V2</a></p>
+    <div class="stats">
+      <span class="stat">共 47 篇</span>
+      <span class="stat">8 大 PART</span>
+      <span class="stat">约 210,283 字</span>
+      <span class="stat">每篇 ~3000 字起</span>
+    </div>
+    <div class="search"><input id="q" type="text" placeholder="搜索编号 / 标题 / 关键词（如 考勤、ORM、薪酬、SEO）…" oninput="filter()"></div>
+    <div class="note">提示：目录下另有一个无编号的 <code>薪酬管理-工资表配置公式社保.md</code>，为扩写前的旧版残留，已被本索引忽略，建议归档或删除（权威版本为 <code>16-薪酬管理-*.md</code>）。</div>
+  </div>
+</header>
+<main class="wrap">
+  <section class="part" data-part="PART 0">
+    <h2>PART 0 · 认知与入门（管理者 + 开发者共同起点） <span class="pct">（3 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./00-开篇-什么是SoworkAI企业智能ERP.md" data-search="00 00-开篇-什么是SoworkAI企业智能ERP.md 定位、能力地图、双读者指南、学习路径，全模块能力地图概览。 双读者">
+        <div class="card-top">
+          <span class="num">00</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">开篇-什么是SoworkAI企业智能ERP</div>
+        <div class="card-sum">定位、能力地图、双读者指南、学习路径，全模块能力地图概览。</div>
+        <div class="card-foot">约 3,078 字</div>
+      </a>
+      <a class="card" href="./01-功能全景图-一张图看懂所有模块.md" data-search="01 01-功能全景图-一张图看懂所有模块.md 管理者视角的能力地图 + 模块到业务价值映射，覆盖全部 27 个一级模块。 管理者向">
+        <div class="card-top">
+          <span class="num">01</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">功能全景图-一张图看懂所有模块</div>
+        <div class="card-sum">管理者视角的能力地图 + 模块到业务价值映射，覆盖全部 27 个一级模块。</div>
+        <div class="card-foot">约 3,679 字</div>
+      </a>
+      <a class="card" href="./02-5分钟跑起来-环境搭建与首次启动.md" data-search="02 02-5分钟跑起来-环境搭建与首次启动.md clone→装依赖→启动→登录端到端，含依赖陷阱、端口、默认账号。 双读者">
+        <div class="card-top">
+          <span class="num">02</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">5分钟跑起来-环境搭建与首次启动</div>
+        <div class="card-sum">clone→装依赖→启动→登录端到端，含依赖陷阱、端口、默认账号。</div>
+        <div class="card-foot">约 3,308 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 1">
+    <h2>PART 1 · 底层架构（技术地基） <span class="pct">（6 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./03-整体架构与请求生命周期.md" data-search="03 03-整体架构与请求生命周期.md 单体全栈、中间件链、apiRouter、catch-all 铁律，请求全链路剖析。 双读者">
+        <div class="card-top">
+          <span class="num">03</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">整体架构与请求生命周期</div>
+        <div class="card-sum">单体全栈、中间件链、apiRouter、catch-all 铁律，请求全链路剖析。</div>
+        <div class="card-foot">约 3,903 字</div>
+      </a>
+      <a class="card" href="./04-数据库层-驱动抽象与自动建表迁移.md" data-search="04 04-数据库层-驱动抽象与自动建表迁移.md SQLite/PG 双驱动、_ensureTable/_migrateColumns，WAL、字段约定、迁移。 开发者向">
+        <div class="card-top">
+          <span class="num">04</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">数据库层-驱动抽象与自动建表迁移</div>
+        <div class="card-sum">SQLite/PG 双驱动、_ensureTable/_migrateColumns，WAL、字段约定、迁移。</div>
+        <div class="card-foot">约 3,622 字</div>
+      </a>
+      <a class="card" href="./05-自研ORM引擎源码精读.md" data-search="05 05-自研ORM引擎源码精读.md Environment/Recordset/ModelRegistry/BaseModel，search/create/write/关联/Proxy 脏写。 开发者向">
+        <div class="card-top">
+          <span class="num">05</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">自研ORM引擎源码精读</div>
+        <div class="card-sum">Environment/Recordset/ModelRegistry/BaseModel，search/create/write/关联/Proxy 脏写。</div>
+        <div class="card-foot">约 2,581 字</div>
+      </a>
+      <a class="card" href="./06-后端引擎-中间件路由与登录安全.md" data-search="06 06-后端引擎-中间件路由与登录安全.md IP 限速、账号锁定、API 鉴权，限流/锁账号/鉴权中间件。 开发者向">
+        <div class="card-top">
+          <span class="num">06</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">后端引擎-中间件路由与登录安全</div>
+        <div class="card-sum">IP 限速、账号锁定、API 鉴权，限流/锁账号/鉴权中间件。</div>
+        <div class="card-foot">约 3,739 字</div>
+      </a>
+      <a class="card" href="./07-前端架构-路由权限渲染与防白屏.md" data-search="07 07-前端架构-路由权限渲染与防白屏.md usePermission、菜单过滤、双层 ErrorBoundary，路由表/权限渲染/防白屏。 双读者">
+        <div class="card-top">
+          <span class="num">07</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">前端架构-路由权限渲染与防白屏</div>
+        <div class="card-sum">usePermission、菜单过滤、双层 ErrorBoundary，路由表/权限渲染/防白屏。</div>
+        <div class="card-foot">约 4,197 字</div>
+      </a>
+      <a class="card" href="./08-企业级管控-RBAC权限点与i18n.md" data-search="08 08-企业级管控-RBAC权限点与i18n.md 三层 RBAC、站点 scope、双语字典，权限点/角色/站点/多语言。 双读者">
+        <div class="card-top">
+          <span class="num">08</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">企业级管控-RBAC权限点与i18n</div>
+        <div class="card-sum">三层 RBAC、站点 scope、双语字典，权限点/角色/站点/多语言。</div>
+        <div class="card-foot">约 3,734 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 2">
+    <h2>PART 2 · AI 与低代码（差异化能力） <span class="pct">（4 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./09-AI助手-SSE流式RAG与工具循环.md" data-search="09 09-AI助手-SSE流式RAG与工具循环.md 流式解析、混合检索、code-agent 工具循环，对话/知识问答/代码助手。 开发者向">
+        <div class="card-top">
+          <span class="num">09</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">AI助手-SSE流式RAG与工具循环</div>
+        <div class="card-sum">流式解析、混合检索、code-agent 工具循环，对话/知识问答/代码助手。</div>
+        <div class="card-foot">约 4,169 字</div>
+      </a>
+      <a class="card" href="./10-知识库BI分析与智能预警.md" data-search="10 10-知识库BI分析与智能预警.md 知识库管理、BI、预警规则，/ai-knowledge、/ai-bianalytics、/ai-alerts。 双读者">
+        <div class="card-top">
+          <span class="num">10</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">知识库BI分析与智能预警</div>
+        <div class="card-sum">知识库管理、BI、预警规则，/ai-knowledge、/ai-bianalytics、/ai-alerts。</div>
+        <div class="card-foot">约 2,728 字</div>
+      </a>
+      <a class="card" href="./11-低代码平台-4步向导到模型热部署.md" data-search="11 11-低代码平台-4步向导到模型热部署.md create-module/add-field 全链路，建模向导/字段/菜单/热部署。 开发者向">
+        <div class="card-top">
+          <span class="num">11</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">低代码平台-4步向导到模型热部署</div>
+        <div class="card-sum">create-module/add-field 全链路，建模向导/字段/菜单/热部署。</div>
+        <div class="card-foot">约 4,378 字</div>
+      </a>
+      <a class="card" href="./12-应用管理插件与Odoo模型集成.md" data-search="12 12-应用管理插件与Odoo模型集成.md 应用管理、插件、Odoo 导入/浏览，apps-manager/plugins/odoo-browser。 双读者">
+        <div class="card-top">
+          <span class="num">12</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">应用管理插件与Odoo模型集成</div>
+        <div class="card-sum">应用管理、插件、Odoo 导入/浏览，apps-manager/plugins/odoo-browser。</div>
+        <div class="card-foot">约 3,813 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 3">
+    <h2>PART 3 · HR 人力资源（逐模块逐功能） <span class="pct">（10 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./13-HR总览-组织架构成员主档.md" data-search="13 13-HR总览-组织架构成员主档.md 部门/职位/职级/员工主档，组织架构与成员主档。 管理者向">
+        <div class="card-top">
+          <span class="num">13</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">HR总览-组织架构成员主档</div>
+        <div class="card-sum">部门/职位/职级/员工主档，组织架构与成员主档。</div>
+        <div class="card-foot">约 3,338 字</div>
+      </a>
+      <a class="card" href="./14-人事管理-合同变动子集考核人才.md" data-search="14 14-人事管理-合同变动子集考核人才.md 9 个子页：合同/变动/子集/考核/人才逐一说清。 双读者">
+        <div class="card-top">
+          <span class="num">14</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">人事管理-合同变动子集考核人才</div>
+        <div class="card-sum">9 个子页：合同/变动/子集/考核/人才逐一说清。</div>
+        <div class="card-foot">约 12,745 字</div>
+      </a>
+      <a class="card" href="./15-考勤管理-班次排班规则打卡统计.md" data-search="15 15-考勤管理-班次排班规则打卡统计.md 8 个子页：班次/排班/规则/打卡/假期/加班/统计/日报，布局+流程+逻辑+代码。 双读者">
+        <div class="card-top">
+          <span class="num">15</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">考勤管理-班次排班规则打卡统计</div>
+        <div class="card-sum">8 个子页：班次/排班/规则/打卡/假期/加班/统计/日报，布局+流程+逻辑+代码。</div>
+        <div class="card-foot">约 10,391 字</div>
+      </a>
+      <a class="card" href="./16-薪酬管理-工资表配置公式社保.md" data-search="16 16-薪酬管理-工资表配置公式社保.md 5 个子页：薪酬首页/工资表/薪资配置/薪资公式/企业缴纳。 管理者向">
+        <div class="card-top">
+          <span class="num">16</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">薪酬管理-工资表配置公式社保</div>
+        <div class="card-sum">5 个子页：薪酬首页/工资表/薪资配置/薪资公式/企业缴纳。</div>
+        <div class="card-foot">约 8,817 字</div>
+      </a>
+      <a class="card" href="./17-绩效管理-KPI周期记录等级.md" data-search="17 17-绩效管理-KPI周期记录等级.md 4 子页：KPI/周期/记录/等级。 双读者">
+        <div class="card-top">
+          <span class="num">17</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">绩效管理-KPI周期记录等级</div>
+        <div class="card-sum">4 子页：KPI/周期/记录/等级。</div>
+        <div class="card-foot">约 3,134 字</div>
+      </a>
+      <a class="card" href="./18-招聘管理-职位简历候选人Offer.md" data-search="18 18-招聘管理-职位简历候选人Offer.md 5 子页：职位/简历/候选人/Offer/人才库。 双读者">
+        <div class="card-top">
+          <span class="num">18</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">招聘管理-职位简历候选人Offer</div>
+        <div class="card-sum">5 子页：职位/简历/候选人/Offer/人才库。</div>
+        <div class="card-foot">约 3,314 字</div>
+      </a>
+      <a class="card" href="./19-后勤管理-宿舍食堂车辆访客.md" data-search="19 19-后勤管理-宿舍食堂车辆访客.md 4 子页：宿舍/食堂/车辆/访客。 双读者">
+        <div class="card-top">
+          <span class="num">19</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">后勤管理-宿舍食堂车辆访客</div>
+        <div class="card-sum">4 子页：宿舍/食堂/车辆/访客。</div>
+        <div class="card-foot">约 2,981 字</div>
+      </a>
+      <a class="card" href="./20-培训管理-课程学习评估直播.md" data-search="20 20-培训管理-课程学习评估直播.md 课程/学习/评估/直播。 双读者">
+        <div class="card-top">
+          <span class="num">20</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">培训管理-课程学习评估直播</div>
+        <div class="card-sum">课程/学习/评估/直播。</div>
+        <div class="card-foot">约 2,855 字</div>
+      </a>
+      <a class="card" href="./21-流程审批-请假加班离职审批流引擎.md" data-search="21 21-流程审批-请假加班离职审批流引擎.md 4 子页 + workflow 引擎：请假/加班/离职/审批流。 双读者">
+        <div class="card-top">
+          <span class="num">21</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">流程审批-请假加班离职审批流引擎</div>
+        <div class="card-sum">4 子页 + workflow 引擎：请假/加班/离职/审批流。</div>
+        <div class="card-foot">约 2,937 字</div>
+      </a>
+      <a class="card" href="./22-员工自助门户.md" data-search="22 22-员工自助门户.md 个人门户：请假/考勤/薪资查询。 双读者">
+        <div class="card-top">
+          <span class="num">22</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">员工自助门户</div>
+        <div class="card-sum">个人门户：请假/考勤/薪资查询。</div>
+        <div class="card-foot">约 3,486 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 4">
+    <h2>PART 4 · ERP 企业资源（逐模块逐功能） <span class="pct">（8 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./23-ERP总览与产品基础档案.md" data-search="23 23-ERP总览与产品基础档案.md 产品 9 子页：颜色/尺码/分类/款式/SKU/箱规/编码/尺码比。 双读者">
+        <div class="card-top">
+          <span class="num">23</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">ERP总览与产品基础档案</div>
+        <div class="card-sum">产品 9 子页：颜色/尺码/分类/款式/SKU/箱规/编码/尺码比。</div>
+        <div class="card-foot">约 15,730 字</div>
+      </a>
+      <a class="card" href="./24-PLM工艺管理-物料BOM工艺路线.md" data-search="24 24-PLM工艺管理-物料BOM工艺路线.md 10 子页：物料属性/物料/工艺/路线/组件/BOM/废料/鞋底/季节。 双读者">
+        <div class="card-top">
+          <span class="num">24</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">PLM工艺管理-物料BOM工艺路线</div>
+        <div class="card-sum">10 子页：物料属性/物料/工艺/路线/组件/BOM/废料/鞋底/季节。</div>
+        <div class="card-foot">约 12,882 字</div>
+      </a>
+      <a class="card" href="./25-仓储管理-仓库货位库存入出库盘点调拨条码.md" data-search="25 25-仓储管理-仓库货位库存入出库盘点调拨条码.md 9 子页：仓库/货位/库存/入库/出库/盘点/调拨/条码。 开发者向">
+        <div class="card-top">
+          <span class="num">25</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">仓储管理-仓库货位库存入出库盘点调拨条码</div>
+        <div class="card-sum">9 子页：仓库/货位/库存/入库/出库/盘点/调拨/条码。</div>
+        <div class="card-foot">约 10,308 字</div>
+      </a>
+      <a class="card" href="./26-销售管理-客户订单发货退货.md" data-search="26 26-销售管理-客户订单发货退货.md 5 子页：客户组/客户/订单/发货/退货。 双读者">
+        <div class="card-top">
+          <span class="num">26</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">销售管理-客户订单发货退货</div>
+        <div class="card-sum">5 子页：客户组/客户/订单/发货/退货。</div>
+        <div class="card-foot">约 3,320 字</div>
+      </a>
+      <a class="card" href="./27-采购管理-供应商订单入库.md" data-search="27 27-采购管理-供应商订单入库.md 4 子页：供应商组/供应商/订单/入库。 双读者">
+        <div class="card-top">
+          <span class="num">27</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">采购管理-供应商订单入库</div>
+        <div class="card-sum">4 子页：供应商组/供应商/订单/入库。</div>
+        <div class="card-foot">约 3,159 字</div>
+      </a>
+      <a class="card" href="./28-生产管理-工作中心计划工单报工.md" data-search="28 28-生产管理-工作中心计划工单报工.md 4 子页：工作中心/计划/工单/报工，MRP 展开。 双读者">
+        <div class="card-top">
+          <span class="num">28</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">生产管理-工作中心计划工单报工</div>
+        <div class="card-sum">4 子页：工作中心/计划/工单/报工，MRP 展开。</div>
+        <div class="card-foot">约 4,017 字</div>
+      </a>
+      <a class="card" href="./29-财务管理-科目凭证应收应付收付款.md" data-search="29 29-财务管理-科目凭证应收应付收付款.md 5 子页 + 分析会计：科目/凭证/应收/应付/收付款。 双读者">
+        <div class="card-top">
+          <span class="num">29</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">财务管理-科目凭证应收应付收付款</div>
+        <div class="card-sum">5 子页 + 分析会计：科目/凭证/应收/应付/收付款。</div>
+        <div class="card-foot">约 3,829 字</div>
+      </a>
+      <a class="card" href="./30-质量管理-标准检验缺陷纠正措施.md" data-search="30 30-质量管理-标准检验缺陷纠正措施.md 4 子页：标准/检验/缺陷/纠正措施。 双读者">
+        <div class="card-top">
+          <span class="num">30</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">质量管理-标准检验缺陷纠正措施</div>
+        <div class="card-sum">4 子页：标准/检验/缺陷/纠正措施。</div>
+        <div class="card-foot">约 3,042 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 5">
+    <h2>PART 5 · CMS 内容门户 <span class="pct">（3 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./31-CMS总览与栏目管理.md" data-search="31 31-CMS总览与栏目管理.md 栏目树/拖拽排序/模板，CMSAdminPage。 管理者向">
+        <div class="card-top">
+          <span class="num">31</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">CMS总览与栏目管理</div>
+        <div class="card-sum">栏目树/拖拽排序/模板，CMSAdminPage。</div>
+        <div class="card-foot">约 2,998 字</div>
+      </a>
+      <a class="card" href="./32-文章编辑-Tiptap富文本与素材库.md" data-search="32 32-文章编辑-Tiptap富文本与素材库.md 富文本/水印/缩略图，articles/media/banners/comments。 双读者">
+        <div class="card-top">
+          <span class="num">32</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">文章编辑-Tiptap富文本与素材库</div>
+        <div class="card-sum">富文本/水印/缩略图，articles/media/banners/comments。</div>
+        <div class="card-foot">约 2,881 字</div>
+      </a>
+      <a class="card" href="./33-标签智能提取审核流回收站SEO.md" data-search="33 33-标签智能提取审核流回收站SEO.md 标签 n-gram、审核、软删除、SEO、Sitemap。 双读者">
+        <div class="card-top">
+          <span class="num">33</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">标签智能提取审核流回收站SEO</div>
+        <div class="card-sum">标签 n-gram、审核、软删除、SEO、Sitemap。</div>
+        <div class="card-foot">约 3,221 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 6">
+    <h2>PART 6 · 商城 ShopXO 超集 <span class="pct">（6 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./34-商城总览与商品管理.md" data-search="34 34-商城总览与商品管理.md SKU/相册/参数/多分类/规格图，ShopAdminPage。 管理者向">
+        <div class="card-top">
+          <span class="num">34</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">商城总览与商品管理</div>
+        <div class="card-sum">SKU/相册/参数/多分类/规格图，ShopAdminPage。</div>
+        <div class="card-foot">约 2,658 字</div>
+      </a>
+      <a class="card" href="./35-营销中心-优惠券秒杀拼团砍价分销.md" data-search="35 35-营销中心-优惠券秒杀拼团砍价分销.md 5 大营销：优惠券/秒杀/拼团/砍价/分销。 双读者">
+        <div class="card-top">
+          <span class="num">35</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">营销中心-优惠券秒杀拼团砍价分销</div>
+        <div class="card-sum">5 大营销：优惠券/秒杀/拼团/砍价/分销。</div>
+        <div class="card-foot">约 2,906 字</div>
+      </a>
+      <a class="card" href="./36-订单与支付-库存联动线下支付确认.md" data-search="36 36-订单与支付-库存联动线下支付确认.md 下单扣库存、支付确认，orders/pay、applyStockChange。 开发者向">
+        <div class="card-top">
+          <span class="num">36</span>
+          <span class="tag tag-dev">开发者向</span>
+        </div>
+        <div class="card-title">订单与支付-库存联动线下支付确认</div>
+        <div class="card-sum">下单扣库存、支付确认，orders/pay、applyStockChange。</div>
+        <div class="card-foot">约 4,371 字</div>
+      </a>
+      <a class="card" href="./37-售后-退货退款状态机.md" data-search="37 37-售后-退货退款状态机.md pending→…→refunded 状态机，aftersale。 双读者">
+        <div class="card-top">
+          <span class="num">37</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">售后-退货退款状态机</div>
+        <div class="card-sum">pending→…→refunded 状态机，aftersale。</div>
+        <div class="card-foot">约 3,761 字</div>
+      </a>
+      <a class="card" href="./38-余额积分快递地区页面装修.md" data-search="38 38-余额积分快递地区页面装修.md 辅助能力：余额/积分/快递/地区/装修。 双读者">
+        <div class="card-top">
+          <span class="num">38</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">余额积分快递地区页面装修</div>
+        <div class="card-sum">辅助能力：余额/积分/快递/地区/装修。</div>
+        <div class="card-foot">约 3,531 字</div>
+      </a>
+      <a class="card" href="./39-商城前台-首页详情购物车结算用户中心.md" data-search="39 39-商城前台-首页详情购物车结算用户中心.md 用户侧全流程：ShopHome/ProductDetail/Cart/Checkout/Pay/User。 双读者">
+        <div class="card-top">
+          <span class="num">39</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">商城前台-首页详情购物车结算用户中心</div>
+        <div class="card-sum">用户侧全流程：ShopHome/ProductDetail/Cart/Checkout/Pay/User。</div>
+        <div class="card-foot">约 4,423 字</div>
+      </a>
+    </div>
+  </section>
+  <section class="part" data-part="PART 7">
+    <h2>PART 7 · 系统管理与综合 <span class="pct">（7 篇）</span></h2>
+    <div class="grid">
+      <a class="card" href="./40-系统管理-用户角色配置数据日志.md" data-search="40 40-系统管理-用户角色配置数据日志.md 系统 15 子页（核心）：用户/角色/配置/数据/审计/登录日志。 管理者向">
+        <div class="card-top">
+          <span class="num">40</span>
+          <span class="tag tag-manager">管理者向</span>
+        </div>
+        <div class="card-title">系统管理-用户角色配置数据日志</div>
+        <div class="card-sum">系统 15 子页（核心）：用户/角色/配置/数据/审计/登录日志。</div>
+        <div class="card-foot">约 2,997 字</div>
+      </a>
+      <a class="card" href="./41-集成-企业微信钉钉API文档任务插件.md" data-search="41 41-集成-企业微信钉钉API文档任务插件.md 系统 15 子页（集成）：企业微信/钉钉/API文档/任务/插件。 双读者">
+        <div class="card-top">
+          <span class="num">41</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">集成-企业微信钉钉API文档任务插件</div>
+        <div class="card-sum">系统 15 子页（集成）：企业微信/钉钉/API文档/任务/插件。</div>
+        <div class="card-foot">约 3,350 字</div>
+      </a>
+      <a class="card" href="./42-仪表盘与数据统计.md" data-search="42 42-仪表盘与数据统计.md 首页看板 + 统计，Dashboard/Statistics。 双读者">
+        <div class="card-top">
+          <span class="num">42</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">仪表盘与数据统计</div>
+        <div class="card-sum">首页看板 + 统计，Dashboard/Statistics。</div>
+        <div class="card-foot">约 3,737 字</div>
+      </a>
+      <a class="card" href="./43-综合事务-通知公告文档问卷办公.md" data-search="43 43-综合事务-通知公告文档问卷办公.md office 3 + 会议室/物料：公告/文档/问卷/会议/物料。 双读者">
+        <div class="card-top">
+          <span class="num">43</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">综合事务-通知公告文档问卷办公</div>
+        <div class="card-sum">office 3 + 会议室/物料：公告/文档/问卷/会议/物料。</div>
+        <div class="card-foot">约 3,353 字</div>
+      </a>
+      <a class="card" href="./44-测试与质量保障.md" data-search="44 44-测试与质量保障.md 端到端断言体系，test-*.js、ok()、副作用验证。 双读者">
+        <div class="card-top">
+          <span class="num">44</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">测试与质量保障</div>
+        <div class="card-sum">端到端断言体系，test-*.js、ok()、副作用验证。</div>
+        <div class="card-foot">约 2,971 字</div>
+      </a>
+      <a class="card" href="./45-部署与运维.md" data-search="45 45-部署与运维.md Docker/compose/启动 bat/备份，Dockerfile/docker-compose。 双读者">
+        <div class="card-top">
+          <span class="num">45</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">部署与运维</div>
+        <div class="card-sum">Docker/compose/启动 bat/备份，Dockerfile/docker-compose。</div>
+        <div class="card-foot">约 2,344 字</div>
+      </a>
+      <a class="card" href="./46-二次开发与生态.md" data-search="46 46-二次开发与生态.md modules vs addons、Odoo 移植、社区贡献。 双读者">
+        <div class="card-top">
+          <span class="num">46</span>
+          <span class="tag tag-both">双读者</span>
+        </div>
+        <div class="card-title">二次开发与生态</div>
+        <div class="card-sum">modules vs addons、Odoo 移植、社区贡献。</div>
+        <div class="card-foot">约 3,567 字</div>
+      </a>
+    </div>
+  </section>
+  <div class="empty" id="empty">没有匹配的教程，换个关键词试试。</div>
+  <footer>
+    本索引由 <code>gen_index.py</code> 自动生成。产品名 <strong>Sowork AI 企业智能ERP系统</strong>，绝不用“飞达/Feida”。依赖安装一律 <code>npm install --legacy-peer-deps</code>。
+  </footer>
+</main>
+<script>
+function filter() {
+  var q = document.getElementById('q').value.trim().toLowerCase();
+  var cards = document.querySelectorAll('.card');
+  var visibleParts = 0;
+  document.querySelectorAll('.part').forEach(function(p) {
+    var seen = 0;
+    p.querySelectorAll('.card').forEach(function(c) {
+      var hit = !q || c.getAttribute('data-search').toLowerCase().indexOf(q) !== -1;
+      c.style.display = hit ? '' : 'none';
+      if (hit) seen++;
+    });
+    p.style.display = seen ? '' : 'none';
+    if (seen) visibleParts++;
+  });
+  document.getElementById('empty').style.display = visibleParts ? 'none' : 'block';
+}
+</script>
+</body>
+</html>

@@ -533,14 +533,14 @@ export async function calculateSalary(
     // 5. 计算社保（如果有配置）
     const insurance = await calculateEmployeeInsurance(db, employee, items);
     
-    // 6. 计算个税
+    // 6. 计算个税（个人五险一金作为专项扣除减免，避免与实发扣减重复计入）
     const taxableIncome = totalEarnings;
-    const socialSecurity = insurance.personal.total;
-    const housingFund = items['housing_fund'] || 0;
-    const tax = calculateTax(taxableIncome, socialSecurity, housingFund);
+    const personalInsuranceTotal = insurance.personal.total; // 养老+医疗+失业+公积金 个人部分合计
+    const tax = calculateTax(taxableIncome, personalInsuranceTotal, 0);
     
-    // 7. 计算实发工资
+    // 7. 计算实发工资（个人五险一金必须并入应扣，否则实发工资虚高）
     const grossSalary = totalEarnings;
+    totalDeductions += personalInsuranceTotal;
     const netSalary = grossSalary - totalDeductions - tax;
     
     return {

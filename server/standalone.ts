@@ -1858,28 +1858,95 @@ function apiRouter() {
         results = batchResult.results;
       }
       
-      // 保存到数据库
+      // 保存到数据库（薪资项蛇形 code -> salaries 表驼峰列，个人/公司社保单独落列）
+      const salaryItemsAll = db.findAll('salary_items') as any[];
+      const salaryItemColMap: Record<string, string> = {
+        base_salary: 'baseSalary',
+        position_salary: 'positionSalary',
+        performance: 'performance',
+        overtime_pay: 'overtime',
+        meal_allowance: 'mealAllowance',
+        transport_allowance: 'transportAllowance',
+        communication_allowance: 'otherAllowance',
+        late_deduction: 'otherDeduction',
+        absence_deduction: 'otherDeduction',
+      };
+      const allowedSalaryCols = new Set([
+        'baseSalary', 'positionSalary', 'performance', 'overtime', 'mealAllowance',
+        'transportAllowance', 'otherAllowance', 'socialInsurance', 'medicalInsurance',
+        'housingFund', 'otherDeduction',
+      ]);
+      const snakeToCamel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
       for (const r of results) {
         if (r.success) {
-          const record = {
+          const ins = r.insurance || {};
+          const cc = r.companyContributions || {};
+          const record: any = {
             id: `salary_${r.employeeId}_${month.replace('-', '')}`,
             employeeId: r.employeeId,
             employeeName: r.employeeName,
             month,
-            ...r.items,
             grossSalary: r.grossSalary,
             netSalary: r.netSalary,
             tax: r.tax,
-            companyTotal: (Object.values(r.companyContributions) as number[]).reduce((a, b) => a + b, 0),
+            companyTotal: (Object.values(cc) as number[]).reduce((a: number, b: number) => a + b, 0),
             status: 'draft',
             createdAt: new Date().toISOString(),
+            socialInsurance: ins.social || 0,
+            medicalInsurance: ins.medical || 0,
+            housingFund: ins.housingFund || 0,
+            companyPension: cc.pension || 0,
+            companyMedical: cc.medical || 0,
+            companyUnemployment: cc.unemployment || 0,
+            companyInjury: cc.injury || 0,
+            companyMaternity: cc.maternity || 0,
+            companyHousingFund: cc.housingFund || 0,
           };
-          
+          // 工资项：已知 code 精确映射列，未知项按类型归入其他补贴/扣款
+          let otherAllowance = 0, otherDeduction = 0;
+          for (const [code, val] of Object.entries(r.items || {})) {
+            const col = salaryItemColMap[code] || snakeToCamel(code);
+            if (allowedSalaryCols.has(col)) {
+              record[col] = val;
+            } else {
+              const it = (salaryItemsAll as any[]).find((i: any) => i.code === code);
+              const t = it ? it.type : '';
+              if (t === 'deductions' || t === 'insurance' || t === 'tax') otherDeduction += (val as number);
+              else otherAllowance += (val as number);
+            }
+          }
+          record.otherAllowance = otherAllowance;
+          record.otherDeduction = otherDeduction;
+
           const existing = db.findById('salaries', record.id);
           if (existing) {
             db.update('salaries', record.id, record);
           } else {
             db.insert('salaries', record);
+          }
+
+          // 回写企业缴纳台账，使"企业缴纳"功能与工资联动
+          const ccId = `cc_${r.employeeId}_${month.replace('-', '')}`;
+          const ccRecord = {
+            id: ccId,
+            employeeId: r.employeeId,
+            month,
+            pension: cc.pension || 0,
+            medical: cc.medical || 0,
+            unemployment: cc.unemployment || 0,
+            injury: cc.injury || 0,
+            maternity: cc.maternity || 0,
+            housingFund: cc.housingFund || 0,
+            enterpriseAnnuity: 0,
+            total: (Object.values(cc) as number[]).reduce((a: number, b: number) => a + b, 0),
+            createdAt: new Date().toISOString(),
+          };
+          const ccExisting = db.findById('company_contributions', ccId);
+          if (ccExisting) {
+            db.update('company_contributions', ccId, ccRecord);
+          } else {
+            db.insert('company_contributions', ccRecord);
           }
         }
       }

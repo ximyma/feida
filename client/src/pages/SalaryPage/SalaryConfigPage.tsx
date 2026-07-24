@@ -4,7 +4,7 @@ interface SalaryItem {
   id: string;
   name: string;
   code: string;
-  type: 'earnings' | 'deduction' | 'insurance' | 'tax';
+  type: 'earnings' | 'allowance' | 'deductions' | 'insurance' | 'tax';
   dataType: 'number' | 'text' | 'date';
   decimalPlaces: number;
   formula?: string;
@@ -23,6 +23,8 @@ interface RankSalary {
 
 const salaryItemTypeMap: Record<string, { label: string; color: string }> = {
   earnings: { label: '应发项', color: 'bg-green-100 text-green-700' },
+  allowance: { label: '补贴', color: 'bg-amber-100 text-amber-700' },
+  deductions: { label: '扣款项', color: 'bg-red-100 text-red-700' },
   deduction: { label: '扣款项', color: 'bg-red-100 text-red-700' },
   insurance: { label: '社保', color: 'bg-blue-100 text-blue-700' },
   tax: { label: '税', color: 'bg-purple-100 text-purple-700' },
@@ -449,7 +451,8 @@ export default function SalaryConfigPage() {
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="earnings">应发项</option>
-                <option value="deduction">扣款项</option>
+                <option value="allowance">补贴</option>
+                <option value="deductions">扣款项</option>
                 <option value="insurance">社保</option>
                 <option value="tax">税</option>
               </select>
